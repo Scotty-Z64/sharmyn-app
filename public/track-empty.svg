@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none">
+  <!-- Gold magnifying glass over a pink parcel box with a bow -->
+  <!-- parcel box -->
+  <g stroke="#E8799B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="88" y="180" width="160" height="120" rx="14" fill="#FBEAED"/>
+    <path d="M88 216 H248"/>
+    <!-- bow ribbon -->
+    <path d="M168 180 V300"/>
+    <path d="M168 180 C150 158 128 162 132 178 C135 190 154 190 168 180 Z" fill="#F3B8C6"/>
+    <path d="M168 180 C186 158 208 162 204 178 C201 190 182 190 168 180 Z" fill="#F3B8C6"/>
+  </g>
+  <!-- magnifying glass -->
+  <g stroke="#C29A3B" stroke-width="8" stroke-linecap="round">
+    <circle cx="268" cy="170" r="64" fill="#FFFFFF" fill-opacity="0.35"/>
+    <path d="M314 216 L356 258"/>
+  </g>
+  <circle cx="268" cy="170" r="64" fill="none" stroke="#C29A3B" stroke-width="8"/>
+  <!-- sparkles -->
+  <g stroke="#D9B45B" stroke-width="4" stroke-linecap="round">
+    <path d="M300 100 v16 M292 108 h16"/>
+    <path d="M120 320 v14 M113 327 h14"/>
+  </g>
+</svg>

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none">
+  <!-- Sharmyn crown: champagne gold thin-line crown with rose-pink heart gem -->
+  <g stroke="#C29A3B" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <!-- crown band -->
+    <path d="M96 268 H304" />
+    <path d="M104 268 C110 296 290 296 296 268" stroke-width="5" opacity="0.55"/>
+    <!-- crown body -->
+    <path d="M104 268 L84 156 L152 208 L200 118 L248 208 L316 156 L296 268" />
+    <!-- peak dots -->
+    <circle cx="84" cy="144" r="9" fill="#C29A3B" stroke="none"/>
+    <circle cx="316" cy="144" r="9" fill="#C29A3B" stroke="none"/>
+  </g>
+  <!-- rose-pink heart gem at center peak -->
+  <path d="M200 96
+           C 192 82 172 82 166 96
+           C 160 110 172 124 200 140
+           C 228 124 240 110 234 96
+           C 228 82 208 82 200 96 Z"
+        fill="#E8799B" stroke="#C29A3B" stroke-width="4" stroke-linejoin="round"/>
+  <!-- small sparkles -->
+  <g stroke="#D9B45B" stroke-width="4" stroke-linecap="round">
+    <path d="M60 96 v16 M52 104 h16"/>
+    <path d="M340 96 v16 M332 104 h16"/>
+  </g>
+</svg>

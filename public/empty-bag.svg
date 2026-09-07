@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none">
+  <!-- Open shopping bag in gold outline with rose-pink crown floating above -->
+  <g stroke="#C29A3B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- bag body -->
+    <path d="M110 170 H290 L304 340 C304 352 294 360 282 360 H118 C106 360 96 352 96 340 Z"/>
+    <!-- handles -->
+    <path d="M150 170 C150 132 178 116 200 116 C222 116 250 132 250 170"/>
+    <!-- inner opening hint -->
+    <path d="M124 186 H276" stroke-width="4" opacity="0.5"/>
+  </g>
+  <!-- floating rose-pink crown -->
+  <g>
+    <path d="M158 88 L150 52 L180 70 L200 40 L220 70 L250 52 L242 88 Z"
+          fill="#FBEAED" stroke="#E8799B" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M158 96 H242" stroke="#E8799B" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  <!-- sparkles -->
+  <g stroke="#D9B45B" stroke-width="4" stroke-linecap="round">
+    <path d="M84 236 v14 M77 243 h14"/>
+    <path d="M322 252 v14 M315 259 h14"/>
+  </g>
+</svg>
