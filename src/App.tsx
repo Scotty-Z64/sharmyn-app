@@ -16,6 +16,22 @@ function useIsPortal(): boolean {
   return pathname === '/manage' || pathname.startsWith('/manage/');
 }
 
+// Swaps the PWA manifest + theme color so "Add to Home Screen" installs a
+// distinct "Sharmyn Portal" icon (opening straight to /manage) when done from
+// the portal, vs the customer store's icon everywhere else. iOS Safari
+// ignores the manifest for this and just uses the current URL either way —
+// this only matters for Android/Chrome's install flow.
+function DocumentMeta() {
+  const isPortal = useIsPortal();
+  useEffect(() => {
+    const manifestLink = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+    const themeMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (manifestLink) manifestLink.href = isPortal ? '/manifest-portal.webmanifest' : '/manifest.webmanifest';
+    if (themeMeta) themeMeta.content = isPortal ? '#C29A3B' : '#E8799B';
+  }, [isPortal]);
+  return null;
+}
+
 function LenisRoot() {
   const isPortal = useIsPortal();
   useEffect(() => {
@@ -60,6 +76,7 @@ function PortalFallback() {
 export default function App() {
   return (
     <ShopProvider>
+      <DocumentMeta />
       <LenisRoot />
       <ScrollToTop />
       <Routes>
