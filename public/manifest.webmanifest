@@ -1,0 +1,16 @@
+{
+  "name": "Sharmyn — Women's Fashion Boutique",
+  "short_name": "Sharmyn",
+  "description": "Sneakers, custom jewellery, handbags and women's fashion — Sharmyn boutique.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FDF6F7",
+  "theme_color": "#E8799B",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
