@@ -19,6 +19,7 @@ export const products = mysqlTable("products", {
   availability: mysqlEnum("availability", ["in-stock", "sold-out", "back-soon"]).notNull().default("in-stock"),
   quantity: int("quantity").notNull().default(0), // units on hand
   lowStockAt: int("low_stock_at").notNull().default(3), // warn threshold
+  refNumber: int("ref_number").notNull().default(0), // customer-facing "Item #14" catalog reference
   backDate: timestamp("back_date"),
   backUntil: timestamp("back_until"),
   featured: boolean("featured").notNull().default(false),
@@ -31,12 +32,17 @@ export const orders = mysqlTable("orders", {
   customer: json("customer").notNull(), // { name, phone, email, address, city, notes }
   delivery: json("delivery"), // { method, locker?, fee } | null
   trackingNumber: varchar("tracking_number", { length: 64 }),
+  trackingSetAt: timestamp("tracking_set_at"), // when the waybill was actually assigned — "packed" moment, for daily reconciliation
   total: int("total").notNull(), // ZAR
   status: mysqlEnum("status", ["pending", "processing", "shipped", "delivered", "cancelled"]).notNull().default("pending"),
   statusHistory: json("status_history").notNull(), // { status, at }[]
   paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("unpaid"), // unpaid | paid | failed
   paymentRef: varchar("payment_ref", { length: 64 }), // gateway checkout/payment id
   refundStatus: varchar("refund_status", { length: 20 }).notNull().default("none"), // none | pending | refunded
+  // Fulfilment pipeline — every paid order waits on the supplier before it can be packed.
+  supplierOrderedAt: timestamp("supplier_ordered_at"), // owner clicked "Ordered from supplier"
+  stockReceivedAt: timestamp("stock_received_at"), // owner clicked "Stock received"
+  invoiceSentAt: timestamp("invoice_sent_at"), // guards against re-sending the invoice on a duplicate paid webhook
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

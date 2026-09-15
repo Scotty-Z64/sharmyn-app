@@ -17,6 +17,7 @@ export interface Product {
   availability: Availability;
   quantity: number;
   lowStockAt: number;
+  refNumber: number; // customer-facing catalog reference, e.g. "Item #14"
   backDate?: string | null;
   backUntil?: string | null;
   featured: boolean;
@@ -72,13 +73,28 @@ export interface Order {
   customer: OrderCustomer;
   delivery?: OrderDelivery | null;
   trackingNumber?: string | null; // Pudo / courier waybill number
+  trackingSetAt?: string | null; // when the waybill was assigned — "packed" moment
   total: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
   refundStatus: RefundStatus;
   paymentRef?: string | null; // gateway checkout/payment id
+  supplierOrderedAt?: string | null;
+  stockReceivedAt?: string | null;
+  invoiceSentAt?: string | null;
   createdAt: string;
   statusHistory: { status: OrderStatus; at: string }[];
+}
+
+/** Where a paid order sits in the fulfilment pipeline — derived, not stored. */
+export type FulfilmentStage = "awaiting_payment" | "awaiting_supplier" | "awaiting_stock" | "ready_to_pack" | "packed";
+
+export function fulfilmentStage(o: Pick<Order, "paymentStatus" | "supplierOrderedAt" | "stockReceivedAt" | "trackingSetAt">): FulfilmentStage {
+  if (o.paymentStatus !== "paid") return "awaiting_payment";
+  if (o.trackingSetAt) return "packed";
+  if (o.stockReceivedAt) return "ready_to_pack";
+  if (o.supplierOrderedAt) return "awaiting_stock";
+  return "awaiting_supplier";
 }
 
 /** POPIA-safe public projection — NO street address, phone or customer email. */

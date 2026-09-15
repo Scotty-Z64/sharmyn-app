@@ -23,6 +23,10 @@ import {
   listNotifications,
   markNotificationRead,
   getSalesReport,
+  markSupplierOrdered,
+  markStockReceived,
+  unmarkFulfilmentStage,
+  markInvoiceSent,
 } from "./queries/shop";
 import { paymentsEnabled, createYocoCheckout, verifyYocoCheckout, refundYocoCheckout } from "./lib/payments";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
@@ -35,7 +39,15 @@ import {
   updateStudioPost,
 } from "./queries/studio";
 import { adminConfigured, verifyAdminPassword, issueAdminToken, assertAdminToken, rateLimit, clientIp } from "./lib/admin";
-import { notifyOwner, notifyCustomer, notifyLowStock } from "./lib/notify";
+import { notifyOwner, notifyCustomer, notifyLowStock, sendInvoice } from "./lib/notify";
+import type { Order } from "@contracts/types";
+
+/** Fire-and-forget the invoice PDF exactly once per order, guarded by invoiceSentAt. */
+function sendInvoiceOnce(order: Order): void {
+  if (order.invoiceSentAt) return;
+  void markInvoiceSent(order.id).catch((e) => console.error("[invoice] failed to flag sent:", e));
+  void sendInvoice(order).catch((e) => console.error("[invoice] send failed:", e));
+}
 
 function requestOrigin(req: Request): string {
   try {
@@ -203,7 +215,10 @@ export const appRouter = createRouter({
             return { paymentStatus: order.paymentStatus, order: null };
           }
           const updated = await markOrderPaid(order.id, order.paymentRef);
-          if (updated) void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
+          if (updated) {
+            void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
+            sendInvoiceOnce(updated);
+          }
           return { paymentStatus: updated?.paymentStatus ?? "paid", order: updated ? toPublicOrder(updated) : null };
         }
         if (status === "failed" || status === "cancelled") {
@@ -336,14 +351,52 @@ export const appRouter = createRouter({
         assertAdminToken(input.token);
         return setTrackingNumber(input.id, input.trackingNumber);
       }),
+    // ---- fulfilment pipeline: every paid order waits on the supplier ----
+    markSupplierOrdered: publicQuery
+      .input(z.object({ token: adminToken, id: z.string() }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        return markSupplierOrdered(input.id);
+      }),
+    markStockReceived: publicQuery
+      .input(z.object({ token: adminToken, id: z.string() }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        return markStockReceived(input.id);
+      }),
+    unmarkFulfilmentStage: publicQuery
+      .input(z.object({ token: adminToken, id: z.string(), stage: z.enum(["supplier", "stock"]) }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        return unmarkFulfilmentStage(input.id, input.stage);
+      }),
     // Admin cancel: restores stock; paid orders get refundStatus='pending'.
+    // Cancels + restores stock, then — if this was actually paid through Yoco
+    // — attempts the refund in the same step, so the common case is one
+    // click instead of "cancel, then remember to go refund it." If the
+    // auto-refund attempt fails (or Yoco isn't configured), the order still
+    // comes back with refundStatus 'pending' exactly as before, and the
+    // portal's manual "Refund via Yoco" / "Mark refunded" buttons still work
+    // as the fallback — cancelling itself never fails because of this.
     adminCancelOrder: publicQuery
       .input(z.object({ token: adminToken, id: z.string() }))
       .mutation(async ({ input }) => {
         assertAdminToken(input.token);
-        const order = await cancelOrderTx(input.id);
+        let order = await cancelOrderTx(input.id);
         if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
         void notifyCustomer("order_cancelled", order).catch((e) => console.error("[notify]", e));
+
+        if (order.refundStatus === "pending" && order.paymentRef && paymentsEnabled()) {
+          try {
+            const { refunded } = await refundYocoCheckout(order.paymentRef, Math.round(order.total * 100));
+            if (refunded) {
+              const refundedOrder = await setRefundStatus(order.id, "refunded");
+              if (refundedOrder) order = refundedOrder;
+            }
+          } catch (e) {
+            console.error("[refund] auto-refund-on-cancel failed, left as pending for manual retry:", e);
+          }
+        }
         return order;
       }),
     // After refunding manually in the Yoco dashboard, mark the refund done.

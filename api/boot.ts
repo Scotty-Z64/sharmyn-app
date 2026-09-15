@@ -22,9 +22,9 @@ app.post("/api/webhooks/yoco", async (c) => {
     const orderId = payload.metadata?.orderId;
     if (!orderId || !payload.id) return c.json({ ok: true });
 
-    const { findOrder, markOrderPaid } = await import("./queries/shop");
+    const { findOrder, markOrderPaid, markInvoiceSent } = await import("./queries/shop");
     const { verifyYocoCheckout } = await import("./lib/payments");
-    const { notifyOwner } = await import("./lib/notify");
+    const { notifyOwner, sendInvoice } = await import("./lib/notify");
 
     const order = await findOrder(orderId);
     if (!order) {
@@ -46,7 +46,13 @@ app.post("/api/webhooks/yoco", async (c) => {
       return c.json({ ok: true });
     }
     const updated = await markOrderPaid(order.id, payload.id);
-    if (updated) void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
+    if (updated) {
+      void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
+      if (!updated.invoiceSentAt) {
+        void markInvoiceSent(updated.id).catch((e) => console.error("[invoice] failed to flag sent:", e));
+        void sendInvoice(updated).catch((e) => console.error("[invoice] send failed:", e));
+      }
+    }
   } catch (e) {
     console.error("[yoco-webhook] error:", e);
   }

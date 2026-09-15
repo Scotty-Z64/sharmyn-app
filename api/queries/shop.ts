@@ -41,6 +41,7 @@ function toProduct(row: typeof products.$inferSelect): Product {
     availability: row.availability,
     quantity: row.quantity,
     lowStockAt: row.lowStockAt,
+    refNumber: row.refNumber,
     backDate: row.backDate ? row.backDate.toISOString() : null,
     backUntil: row.backUntil ? row.backUntil.toISOString() : null,
     featured: row.featured,
@@ -55,11 +56,15 @@ function toOrder(row: typeof orders.$inferSelect): Order {
     customer: row.customer as OrderCustomer,
     delivery: (row.delivery as OrderDelivery | null) ?? null,
     trackingNumber: row.trackingNumber ?? null,
+    trackingSetAt: row.trackingSetAt ? row.trackingSetAt.toISOString() : null,
     total: row.total,
     status: row.status,
     paymentStatus: (row.paymentStatus as Order["paymentStatus"]) ?? "unpaid",
     refundStatus: (row.refundStatus as RefundStatus) ?? "none",
     paymentRef: row.paymentRef ?? null,
+    supplierOrderedAt: row.supplierOrderedAt ? row.supplierOrderedAt.toISOString() : null,
+    stockReceivedAt: row.stockReceivedAt ? row.stockReceivedAt.toISOString() : null,
+    invoiceSentAt: row.invoiceSentAt ? row.invoiceSentAt.toISOString() : null,
     statusHistory: row.statusHistory as Order["statusHistory"],
     createdAt: row.createdAt.toISOString(),
   };
@@ -106,10 +111,18 @@ export interface StockChangeSignal {
 }
 
 export async function upsertProduct(
-  p: Omit<Product, "createdAt"> & { createdAt?: string }
+  p: Omit<Product, "createdAt" | "refNumber"> & { createdAt?: string }
 ): Promise<StockChangeSignal> {
   const db = getDb();
   const [existing] = await db.select().from(products).where(eq(products.id, p.id));
+
+  // New products get the next sequential customer-facing ref number
+  // ("Item #14") server-side — never client-supplied, so it can't collide.
+  let refNumber = existing?.refNumber ?? 0;
+  if (!existing) {
+    const [maxRow] = await db.select({ m: sql<number>`COALESCE(MAX(ref_number), 0)` }).from(products);
+    refNumber = (maxRow?.m ?? 0) + 1;
+  }
 
   const values = {
     id: p.id,
@@ -121,6 +134,7 @@ export async function upsertProduct(
     availability: p.availability,
     quantity: Math.max(0, Math.round(p.quantity)),
     lowStockAt: Math.max(0, Math.round(p.lowStockAt ?? 3)),
+    refNumber,
     backDate: p.backDate ? new Date(p.backDate) : null,
     backUntil: p.backUntil ? new Date(p.backUntil) : null,
     featured: !!p.featured,
@@ -128,7 +142,7 @@ export async function upsertProduct(
   await db
     .insert(products)
     .values(values)
-    .onDuplicateKeyUpdate({ set: { ...values, id: undefined } as never });
+    .onDuplicateKeyUpdate({ set: { ...values, id: undefined, refNumber: undefined } as never });
 
   const [row] = await db.select().from(products).where(eq(products.id, p.id));
   const product = toProduct(row);
@@ -388,13 +402,53 @@ export async function setOrderStatus(id: string, status: OrderStatus): Promise<O
   return { ...existing, status, statusHistory };
 }
 
-export async function setTrackingNumber(id: string, trackingNumber: string | null): Promise<Order | null> {  const existing = await findOrder(id);
+export async function setTrackingNumber(id: string, trackingNumber: string | null): Promise<Order | null> {
+  const existing = await findOrder(id);
   if (!existing) return null;
+  const cleaned = trackingNumber?.trim() || null;
+  // trackingSetAt marks the "packed" moment for the daily paid-vs-packed
+  // reconciliation — set the first time a number is assigned, cleared if the
+  // waybill is removed again (e.g. corrected), untouched on a same-day edit.
+  const trackingSetAt = cleaned ? (existing.trackingNumber ? new Date(existing.trackingSetAt ?? Date.now()) : new Date()) : null;
   await getDb()
     .update(orders)
-    .set({ trackingNumber: trackingNumber?.trim() || null })
+    .set({ trackingNumber: cleaned, trackingSetAt })
     .where(eq(orders.id, id));
-  return { ...existing, trackingNumber: trackingNumber?.trim() || null };
+  return { ...existing, trackingNumber: cleaned, trackingSetAt: trackingSetAt ? trackingSetAt.toISOString() : null };
+}
+
+/** Owner confirmed the item(s) were ordered in from the supplier. */
+export async function markSupplierOrdered(id: string): Promise<Order | null> {
+  const existing = await findOrder(id);
+  if (!existing) return null;
+  const at = existing.supplierOrderedAt ?? new Date().toISOString();
+  await getDb().update(orders).set({ supplierOrderedAt: new Date(at) }).where(eq(orders.id, id));
+  return { ...existing, supplierOrderedAt: at };
+}
+
+/** Owner confirmed the supplier stock has arrived and it's ready to pack. */
+export async function markStockReceived(id: string): Promise<Order | null> {
+  const existing = await findOrder(id);
+  if (!existing) return null;
+  const at = existing.stockReceivedAt ?? new Date().toISOString();
+  await getDb().update(orders).set({ stockReceivedAt: new Date(at) }).where(eq(orders.id, id));
+  return { ...existing, stockReceivedAt: at };
+}
+
+/** Undo — in case a stage was clicked by mistake. */
+export async function unmarkFulfilmentStage(id: string, stage: "supplier" | "stock"): Promise<Order | null> {
+  const existing = await findOrder(id);
+  if (!existing) return null;
+  if (stage === "supplier") {
+    await getDb().update(orders).set({ supplierOrderedAt: null }).where(eq(orders.id, id));
+    return { ...existing, supplierOrderedAt: null };
+  }
+  await getDb().update(orders).set({ stockReceivedAt: null }).where(eq(orders.id, id));
+  return { ...existing, stockReceivedAt: null };
+}
+
+export async function markInvoiceSent(id: string): Promise<void> {
+  await getDb().update(orders).set({ invoiceSentAt: new Date() }).where(eq(orders.id, id));
 }
 
 /** Persist the gateway checkout id on an order (keeps paymentStatus as-is). */

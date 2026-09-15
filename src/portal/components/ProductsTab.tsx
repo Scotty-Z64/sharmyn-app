@@ -193,7 +193,9 @@ export default function ProductsTab() {
                   className="bg-white rounded-2xl shadow-[0_8px_30px_rgba(43,29,35,0.07)] p-3 flex gap-3 items-center">
                   <Thumb src={p.image} alt={p.name} className="w-20 h-24 rounded-xl shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-[15px] text-ink-900 truncate">{p.name}</p>
+                    <p className="font-semibold text-[15px] text-ink-900 truncate">
+                      <span className="font-mono text-ink-500">#{p.refNumber}</span> {p.name}
+                    </p>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500 mt-0.5">
                       {catLabel(p.category)} · {p.quantity} in stock
                     </p>

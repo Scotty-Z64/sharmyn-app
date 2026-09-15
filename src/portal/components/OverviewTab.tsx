@@ -1,9 +1,15 @@
 import { motion } from 'framer-motion';
-import { AlertTriangle, ArrowRight, Bell, Clock, CreditCard, Package, ShoppingBag, Boxes } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Bell, CheckCircle2, Clock, CreditCard, Package, ShoppingBag, Boxes, Scale } from 'lucide-react';
 import type { OrderStatus } from '@/portal/lib/utils-shop';
 import { formatPrice } from '@/portal/lib/utils-shop';
 import { usePortal } from '@/portal/lib/portal';
 import { CountUp, Thumb } from './bits';
+
+function isToday(iso: string): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
 
 export function useStats() {
   const { products, orders } = usePortal();
@@ -29,6 +35,16 @@ export default function OverviewTab({ goTo }: { goTo: (t: 'products' | 'stock' |
 
   const recent = orders.slice(0, 5);
   const statusLabel: Record<OrderStatus, string> = { pending: 'Pending', processing: 'Processing', shipped: 'Shipped', delivered: 'Delivered', cancelled: 'Cancelled' };
+
+  // Daily reconciliation: today's paid sales vs. today's packed parcels (a
+  // waybill actually assigned today). A mismatch means something paid today
+  // hasn't made it into a parcel yet — or a parcel went out for an order
+  // that wasn't actually marked paid, worth a second look either way.
+  const paidToday = orders.filter((o) => o.paymentStatus === 'paid' && isToday(o.createdAt));
+  const packedToday = orders.filter((o) => o.trackingSetAt && isToday(o.trackingSetAt));
+  const paidTodayTotal = paidToday.reduce((s, o) => s + o.total, 0);
+  const packedTodayTotal = packedToday.reduce((s, o) => s + o.total, 0);
+  const balanced = paidToday.length === packedToday.length && paidTodayTotal === packedTodayTotal;
 
   return (
     <div>
@@ -77,6 +93,44 @@ export default function OverviewTab({ goTo }: { goTo: (t: 'products' | 'stock' |
           </button>
         </div>
       </motion.div>
+
+      {/* Daily reconciliation */}
+      {(paidToday.length > 0 || packedToday.length > 0) && (
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
+          className={`mt-4 bg-white rounded-2xl shadow-[0_8px_30px_rgba(43,29,35,0.07)] p-4 sm:p-5 ${balanced ? '' : 'ring-1 ring-rose-300/70'}`}>
+          <div className="flex items-center justify-between">
+            <h3 className="font-display text-xl font-semibold text-ink-900 flex items-center gap-2">
+              <Scale size={18} className="text-gold-500" /> Today's reconciliation
+            </h3>
+            {balanced ? (
+              <span className="h-7 px-3 rounded-full bg-gold-400/20 text-emerald-700 text-[11px] font-semibold uppercase tracking-[0.08em] flex items-center gap-1">
+                <CheckCircle2 size={13} /> Balanced
+              </span>
+            ) : (
+              <span className="h-7 px-3 rounded-full bg-rose-100 text-rose-600 text-[11px] font-semibold uppercase tracking-[0.08em] flex items-center gap-1">
+                <AlertTriangle size={13} /> Check this
+              </span>
+            )}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-blush-50 p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-500">Paid today</p>
+              <p className="font-display text-lg font-semibold text-ink-900 mt-0.5">{formatPrice(paidTodayTotal)}</p>
+              <p className="text-[11px] text-ink-500">{paidToday.length} order{paidToday.length === 1 ? '' : 's'}</p>
+            </div>
+            <div className="rounded-xl bg-blush-50 p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-500">Packed today</p>
+              <p className="font-display text-lg font-semibold text-ink-900 mt-0.5">{formatPrice(packedTodayTotal)}</p>
+              <p className="text-[11px] text-ink-500">{packedToday.length} parcel{packedToday.length === 1 ? '' : 's'}</p>
+            </div>
+          </div>
+          {!balanced && (
+            <p className="mt-3 text-[11px] text-rose-600">
+              These don't match — a paid order from today may still need a waybill, or vice versa. Check the Orders tab's fulfilment filters.
+            </p>
+          )}
+        </motion.div>
+      )}
 
       {/* Low-stock alerts */}
       {lowStock.length > 0 && (

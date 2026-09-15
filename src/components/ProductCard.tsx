@@ -60,10 +60,17 @@ export default function ProductCard({ product, index = 0 }: { product: Product; 
             <AvailabilityBadge product={product} />
             <LowStockBadge product={product} />
           </div>
+          {product.refNumber > 0 && (
+            <span className="absolute top-2 right-2 inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-semibold bg-white/90 text-ink-900 shadow-sm">
+              #{product.refNumber}
+            </span>
+          )}
         </div>
       </button>
       <div className="pt-2.5 flex flex-col gap-0.5 flex-1">
-        <h3 className="text-[13px] sm:text-[15px] font-medium text-ink-900 leading-snug">{product.name}</h3>
+        <h3 className="text-[13px] sm:text-[15px] font-medium text-ink-900 leading-snug">
+          {product.name} <span className="text-ink-500 font-normal">#{product.refNumber}</span>
+        </h3>
         <span className="text-[14px] sm:text-[15px] font-bold text-ink-900">{formatPrice(product.price)}</span>
         <button onClick={onAdd} disabled={status === 'sold-out'}
           className={`mt-2 w-full h-11 text-[11px] font-semibold uppercase tracking-[0.16em] transition-colors ${

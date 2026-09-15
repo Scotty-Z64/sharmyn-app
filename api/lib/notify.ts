@@ -36,11 +36,19 @@ function ownerEmailConfigured(): { apiKey: string; ownerEmail: string } | null {
   return { apiKey, ownerEmail };
 }
 
-function sendEmail(apiKey: string, to: string[], subject: string, text: string): void {
+function sendEmail(
+  apiKey: string,
+  to: string[],
+  subject: string,
+  text: string,
+  attachment?: { filename: string; content: string } // content: base64
+): void {
+  const body: Record<string, unknown> = { from: "Sharmyn Store <orders@sharmyn.co.za>", to, subject, text };
+  if (attachment) body.attachments = [attachment];
   fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: "Sharmyn Store <orders@sharmyn.co.za>", to, subject, text }),
+    body: JSON.stringify(body),
   }).catch((e) => console.error("[notify] resend email failed:", e));
 }
 
@@ -101,7 +109,14 @@ function customerBody(type: CustomerEmailType, order: Order): string {
     order_delivered: `Hi ${order.customer.name}, your order has been delivered — we hope you love it!`,
     order_cancelled: `Hi ${order.customer.name}, order ${order.id} has been cancelled. Any payment made will be refunded.`,
   };
-  return [intro[type], "", `Order ${order.id}`, lines, "", `Total: R${order.total}`, "", track].join("\n");
+  // Delivered is also the natural moment to ask for feedback — folded into
+  // this email rather than a separate timed send, since there's no reliable
+  // way to delay a send by a day or two without a persistent job queue.
+  const reviewAsk =
+    type === "order_delivered"
+      ? "\n\nWe'd love to know what you think — just reply to this email with your thoughts, or tag us on Instagram with a photo!"
+      : "";
+  return [intro[type], "", `Order ${order.id}`, lines, "", `Total: R${order.total}`, "", track + reviewAsk].join("\n");
 }
 
 export async function notifyCustomer(type: CustomerEmailType, order: Order): Promise<void> {
@@ -110,4 +125,25 @@ export async function notifyCustomer(type: CustomerEmailType, order: Order): Pro
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return; // same optional gate as owner email — degrades gracefully
   sendEmail(apiKey, [to], CUSTOMER_SUBJECTS[type](order), customerBody(type, order));
+}
+
+/**
+ * Emails the auto-generated invoice PDF the moment an order is marked paid.
+ * Caller (router.ts) is responsible for the invoiceSentAt idempotency check —
+ * this function always sends when called.
+ */
+export async function sendInvoice(order: Order): Promise<void> {
+  const to = order.customer.email?.trim();
+  if (!to) return;
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return;
+  const { buildInvoicePdf } = await import("./invoice");
+  const pdf = await buildInvoicePdf(order);
+  sendEmail(
+    apiKey,
+    [to],
+    `Sharmyn — invoice for order ${order.id}`,
+    `Hi ${order.customer.name}, thanks for your payment! Your invoice for order ${order.id} is attached.`,
+    { filename: `sharmyn-invoice-${order.id}.pdf`, content: pdf.toString("base64") }
+  );
 }

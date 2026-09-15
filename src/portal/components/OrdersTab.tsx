@@ -1,12 +1,42 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronDown, MapPin, PackageCheck, PackageOpen, Pencil, XCircle } from 'lucide-react';
+import { AlertTriangle, ChevronDown, MapPin, PackageCheck, PackageOpen, Pencil, Truck, XCircle } from 'lucide-react';
 import type { Order, OrderStatus } from '@/portal/lib/utils-shop';
 import { formatPrice } from '@/portal/lib/utils-shop';
+import { fulfilmentStage } from '@contracts/types';
+import type { FulfilmentStage } from '@contracts/types';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { ConfirmDialog, STATUS_STYLE, Thumb } from './bits';
 import { waLink } from '@/config/business';
+
+const MISSED_AFTER_DAYS = 3;
+
+function isMissed(o: Order): boolean {
+  if (o.paymentStatus !== 'paid' || o.status === 'cancelled' || o.trackingSetAt) return false;
+  return Date.now() - new Date(o.createdAt).getTime() > MISSED_AFTER_DAYS * 24 * 60 * 60 * 1000;
+}
+
+function isToday(o: Order): boolean {
+  const d = new Date(o.createdAt);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
+const STAGE_LABEL: Record<FulfilmentStage, string> = {
+  awaiting_payment: 'Awaiting payment',
+  awaiting_supplier: 'Awaiting supplier order',
+  awaiting_stock: 'Awaiting stock',
+  ready_to_pack: 'Ready to pack',
+  packed: 'Packed',
+};
+const STAGE_STYLE: Record<FulfilmentStage, string> = {
+  awaiting_payment: 'bg-blush-100 text-ink-500',
+  awaiting_supplier: 'bg-[#FBF3E2] text-[#B07A1E]',
+  awaiting_stock: 'bg-[#EFEDFB] text-[#6D5BD0]',
+  ready_to_pack: 'bg-[#E8F1FA] text-[#2E6FB0]',
+  packed: 'bg-[#E6F6EE] text-[#1F8A5B]',
+};
 
 const PAYMENT_STYLE: Record<string, string> = {
   paid: 'bg-gold-400/20 text-emerald-700 ring-1 ring-emerald-500/30',
@@ -123,6 +153,9 @@ function OrderCard({ order }: { order: Order }) {
   const cancelMut = trpc.shop.adminCancelOrder.useMutation();
   const refundMut = trpc.shop.setRefundStatus.useMutation();
   const refundYocoMut = trpc.shop.refundOrder.useMutation();
+  const supplierMut = trpc.shop.markSupplierOrdered.useMutation();
+  const stockMut = trpc.shop.markStockReceived.useMutation();
+  const unmarkMut = trpc.shop.unmarkFulfilmentStage.useMutation();
   const [open, setOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const stepIdx = STEPS.indexOf(order.status);
@@ -142,11 +175,15 @@ function OrderCard({ order }: { order: Order }) {
     setConfirmCancel(false);
     if (cancelMut.isPending) return;
     try {
-      await cancelMut.mutateAsync({ token, id: order.id });
+      const result = await cancelMut.mutateAsync({ token, id: order.id });
       refresh();
-      toast(order.paymentStatus === 'paid'
-        ? 'Order cancelled. Stock restored. Refund due — one click below.'
-        : 'Order cancelled. Stock restored.');
+      if (order.paymentStatus !== 'paid') {
+        toast('Order cancelled. Stock restored.');
+      } else if (result?.refundStatus === 'refunded') {
+        toast('Order cancelled. Stock restored. Refunded via Yoco automatically.');
+      } else {
+        toast('Order cancelled. Stock restored. Refund due — one click below.');
+      }
     } catch {
       toast('Could not cancel order — try again');
     }
@@ -180,6 +217,24 @@ function OrderCard({ order }: { order: Order }) {
       else toast('Yoco refund failed — try again or refund manually in the Yoco dashboard');
     }
   };
+
+  const markSupplier = async () => {
+    if (supplierMut.isPending) return;
+    try { await supplierMut.mutateAsync({ token, id: order.id }); refresh(); toast('Marked ordered from supplier'); }
+    catch { toast('Could not update — try again'); }
+  };
+  const markStock = async () => {
+    if (stockMut.isPending) return;
+    try { await stockMut.mutateAsync({ token, id: order.id }); refresh(); toast('Marked stock received — ready to pack'); }
+    catch { toast('Could not update — try again'); }
+  };
+  const undoStage = async (stage: 'supplier' | 'stock') => {
+    if (unmarkMut.isPending) return;
+    try { await unmarkMut.mutateAsync({ token, id: order.id, stage }); refresh(); }
+    catch { toast('Could not undo — try again'); }
+  };
+
+  const stage = fulfilmentStage(order);
 
   return (
     <motion.div layout initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
@@ -284,6 +339,56 @@ function OrderCard({ order }: { order: Order }) {
                 </div>
               )}
 
+              {/* fulfilment pipeline — paid orders only; packing (waybill) is its own section below */}
+              {order.paymentStatus === 'paid' && order.status !== 'cancelled' && stage !== 'packed' && (
+                <div className="rounded-xl border border-blush-100 bg-white p-3">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500 flex items-center gap-1.5">
+                      <Truck size={13} /> Fulfilment
+                    </p>
+                    <span className={`h-6 px-2.5 rounded-full text-[10px] font-semibold uppercase tracking-[0.08em] grid place-items-center ${STAGE_STYLE[stage]}`}>
+                      {STAGE_LABEL[stage]}
+                    </span>
+                  </div>
+                  {isMissed(order) && (
+                    <p className="mb-2 flex items-center gap-1.5 text-[11px] text-rose-600 font-medium">
+                      <AlertTriangle size={13} /> Placed {Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 86400000)} days ago — still not packed
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    {stage === 'awaiting_supplier' && (
+                      <button onClick={() => void markSupplier()} disabled={supplierMut.isPending}
+                        className="flex-1 h-10 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.1em] hover:bg-gold-400 transition-colors disabled:opacity-50">
+                        Mark ordered from supplier
+                      </button>
+                    )}
+                    {stage === 'awaiting_stock' && (
+                      <>
+                        <button onClick={() => void undoStage('supplier')} disabled={unmarkMut.isPending}
+                          className="h-10 px-3 rounded-full border border-blush-100 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-500 hover:bg-blush-50">
+                          Undo
+                        </button>
+                        <button onClick={() => void markStock()} disabled={stockMut.isPending}
+                          className="flex-1 h-10 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.1em] hover:bg-gold-400 transition-colors disabled:opacity-50">
+                          Mark stock received
+                        </button>
+                      </>
+                    )}
+                    {stage === 'ready_to_pack' && (
+                      <>
+                        <button onClick={() => void undoStage('stock')} disabled={unmarkMut.isPending}
+                          className="h-10 px-3 rounded-full border border-blush-100 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-500 hover:bg-blush-50">
+                          Undo
+                        </button>
+                        <p className="flex-1 h-10 rounded-full bg-[#E8F1FA] text-[#2E6FB0] text-[11px] font-semibold uppercase tracking-[0.1em] grid place-items-center">
+                          Add a waybill below to mark packed
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* waybill */}
               <WaybillSection order={order} />
 
@@ -368,7 +473,7 @@ function OrderCard({ order }: { order: Order }) {
                   <ConfirmDialog
                     title={`Cancel order ${order.id}?`}
                     body={order.paymentStatus === 'paid'
-                      ? 'Stock will be restored. The order will be flagged "Refund due" — refund it with one click right after.'
+                      ? "Stock will be restored, and we'll try to refund it via Yoco automatically. If that doesn't go through, it'll be flagged \"Refund due\" for a one-click retry."
                       : 'Stock will be restored and the order marked as cancelled.'}
                     confirmLabel="Cancel order"
                     onConfirm={() => void cancelOrder()}
@@ -385,15 +490,29 @@ function OrderCard({ order }: { order: Order }) {
   );
 }
 
+type PipelineFilter = 'all' | 'today' | FulfilmentStage | 'missed';
+
 export default function OrdersTab() {
   const { orders, focusOrderId, setFocusOrderId } = usePortal();
   const [filter, setFilter] = useState<OrderStatus | 'all'>('all');
+  const [pipeline, setPipeline] = useState<PipelineFilter>('all');
 
   const filtered = useMemo(() => {
     if (focusOrderId) return orders.filter((o) => o.id === focusOrderId);
-    return filter === 'all' ? orders : orders.filter((o) => o.status === filter);
-  }, [orders, filter, focusOrderId]);
+    let list = filter === 'all' ? orders : orders.filter((o) => o.status === filter);
+    if (pipeline === 'today') list = list.filter(isToday);
+    else if (pipeline === 'missed') list = list.filter(isMissed);
+    else if (pipeline !== 'all') list = list.filter((o) => fulfilmentStage(o) === pipeline);
+    return list;
+  }, [orders, filter, pipeline, focusOrderId]);
   const countFor = (s: OrderStatus) => orders.filter((o) => o.status === s).length;
+
+  const todayCount = orders.filter(isToday).length;
+  const missedCount = orders.filter(isMissed).length;
+  const stageCounts: Record<FulfilmentStage, number> = {
+    awaiting_payment: 0, awaiting_supplier: 0, awaiting_stock: 0, ready_to_pack: 0, packed: 0,
+  };
+  for (const o of orders) if (o.paymentStatus === 'paid' && o.status !== 'cancelled') stageCounts[fulfilmentStage(o)]++;
 
   return (
     <div>
@@ -405,6 +524,29 @@ export default function OrdersTab() {
             {s === 'all' ? `All · ${orders.length}` : `${STEP_LABEL[s]} · ${countFor(s)}`}
           </button>
         ))}
+      </div>
+
+      {/* Fulfilment pipeline — separate from status: where a paid order actually sits between payment and packing. */}
+      <div className="mt-2 flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+        <button onClick={() => { setFocusOrderId(null); setPipeline(pipeline === 'today' ? 'all' : 'today'); }}
+          className={`h-9 px-3.5 rounded-full text-[10.5px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap transition-colors shrink-0 border ${
+            pipeline === 'today' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white border-blush-100 text-ink-500'}`}>
+          New today · {todayCount}
+        </button>
+        {(['awaiting_supplier', 'awaiting_stock', 'ready_to_pack', 'packed'] as const).map((s) => (
+          <button key={s} onClick={() => { setFocusOrderId(null); setPipeline(pipeline === s ? 'all' : s); }}
+            className={`h-9 px-3.5 rounded-full text-[10.5px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap transition-colors shrink-0 border ${
+              pipeline === s ? 'bg-ink-900 text-white border-ink-900' : 'bg-white border-blush-100 text-ink-500'}`}>
+            {STAGE_LABEL[s]} · {stageCounts[s]}
+          </button>
+        ))}
+        {missedCount > 0 && (
+          <button onClick={() => { setFocusOrderId(null); setPipeline(pipeline === 'missed' ? 'all' : 'missed'); }}
+            className={`h-9 px-3.5 rounded-full text-[10.5px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap transition-colors shrink-0 border flex items-center gap-1 ${
+              pipeline === 'missed' ? 'bg-rose-600 text-white border-rose-600' : 'bg-rose-100 border-rose-200 text-rose-600'}`}>
+            <AlertTriangle size={12} /> Missed · {missedCount}
+          </button>
+        )}
       </div>
 
       {focusOrderId && (

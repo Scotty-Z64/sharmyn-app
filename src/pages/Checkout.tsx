@@ -328,7 +328,9 @@ export default function Checkout() {
           <li key={l.productId} className="flex items-center gap-3 py-3">
             <img src={l.product.image} alt={l.product.name} className="h-14 w-14 rounded-xl object-cover bg-blush-100" />
             <div className="flex-1 min-w-0">
-              <p className="text-[14px] font-medium text-ink-900 truncate">{l.product.name}</p>
+              <p className="text-[14px] font-medium text-ink-900 truncate">
+                <span className="text-ink-500">#{l.product.refNumber}</span> {l.product.name}
+              </p>
               <p className="text-[12px] text-ink-500">Qty {l.qty}</p>
             </div>
             <p className="text-[14px] font-semibold text-ink-900">{formatPrice(l.product.price * l.qty)}</p>
