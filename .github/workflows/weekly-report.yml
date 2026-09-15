@@ -1,0 +1,25 @@
+name: Weekly report + backup
+
+# Render's free tier sleeps after inactivity — an in-process scheduler would
+# silently miss its fire time. This hits the app over HTTP instead, which
+# wakes it reliably and runs both jobs. Needs CRON_SECRET set as a repo
+# secret (Settings → Secrets and variables → Actions → New repository
+# secret) matching the value set on Render.
+on:
+  schedule:
+    # Mondays 07:00 UTC = 09:00 SAST
+    - cron: "0 7 * * 1"
+  workflow_dispatch: {} # lets you trigger it manually from the Actions tab too
+
+jobs:
+  weekly-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger weekly sales report email
+        run: |
+          curl -sf -X POST "https://sharmyn-app.onrender.com/api/cron/weekly-report?secret=${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n"
+      - name: Trigger backup email
+        run: |
+          curl -sf -X POST "https://sharmyn-app.onrender.com/api/cron/backup?secret=${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n"
