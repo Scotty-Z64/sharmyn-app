@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Pencil, Plus, Search, Star, Trash2, Upload } from 'lucide-react';
+import { Pencil, Percent, Plus, Search, Star, Trash2, Upload } from 'lucide-react';
 import type { Product } from '@/portal/lib/utils-shop';
 import { CATEGORIES, formatPrice, resolveAvailability } from '@/portal/lib/utils-shop';
 import { trpc } from '@/providers/trpc';
@@ -13,6 +13,78 @@ import { AvailBadge, ConfirmDialog, Thumb } from './bits';
 
 const catLabel = (c: Product['category']) => CATEGORIES.find((x) => x.key === c)?.label ?? c;
 
+/** Apply a % or flat Rand change across every product in a category — running (or reverting) a sale without opening each product one at a time. */
+function BulkPriceModal({ onClose }: { onClose: () => void }) {
+  const { token, toast, refresh } = usePortal();
+  const bulkMut = trpc.shop.bulkAdjustPrice.useMutation();
+  const [category, setCategory] = useState<Product['category']>('sneakers');
+  const [mode, setMode] = useState<'percent' | 'fixed'>('percent');
+  const [value, setValue] = useState('-20');
+
+  const apply = async () => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n === 0) { toast('Enter a non-zero amount'); return; }
+    if (bulkMut.isPending) return;
+    try {
+      const res = await bulkMut.mutateAsync({ token, category, mode, value: n });
+      refresh();
+      toast(`Updated ${res.count} ${catLabel(category)} price${res.count === 1 ? '' : 's'}`);
+      onClose();
+    } catch {
+      toast('Could not update prices — try again');
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[80] bg-ink-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      onClick={onClose}>
+      <motion.div initial={{ y: 30, scale: 0.97, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }}
+        exit={{ y: 20, scale: 0.97, opacity: 0 }} transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 border-t-2 border-gold-400/60">
+        <h3 className="font-display text-xl font-semibold text-ink-900 flex items-center gap-2">
+          <Percent size={18} className="text-gold-500" /> Bulk price update
+        </h3>
+        <p className="mt-1 text-sm text-ink-500">Applies to every product in the category — instant, no need to open each one.</p>
+
+        <label className="block mt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">Category</label>
+        <select value={category} onChange={(e) => setCategory(e.target.value as Product['category'])}
+          className="mt-1.5 w-full h-11 px-4 rounded-full border border-blush-100 bg-white text-sm">
+          {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+
+        <label className="block mt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">Change</label>
+        <div className="mt-1.5 flex gap-2">
+          <div className="flex gap-1 p-1 rounded-full bg-blush-100">
+            <button onClick={() => setMode('percent')}
+              className={`h-9 px-3 rounded-full text-[11px] font-semibold uppercase transition-all ${mode === 'percent' ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500'}`}>%</button>
+            <button onClick={() => setMode('fixed')}
+              className={`h-9 px-3 rounded-full text-[11px] font-semibold uppercase transition-all ${mode === 'fixed' ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500'}`}>R</button>
+          </div>
+          <input type="number" value={value} onChange={(e) => setValue(e.target.value)}
+            placeholder={mode === 'percent' ? '-20' : '-100'}
+            className="flex-1 h-11 px-4 rounded-full border border-blush-100 bg-white text-sm" />
+        </div>
+        <p className="mt-2 text-[11px] text-ink-500">
+          {mode === 'percent' ? 'Negative = discount, positive = markup (e.g. -20 for 20% off).' : 'Negative = R off, positive = R added to every price in this category.'} Never drops below R1.
+        </p>
+
+        <div className="mt-6 flex gap-3">
+          <button onClick={onClose}
+            className="flex-1 h-11 rounded-full border border-blush-100 text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-500 hover:bg-blush-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={() => void apply()} disabled={bulkMut.isPending}
+            className="flex-1 h-11 rounded-full bg-gold-500 text-white text-[12px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50">
+            {bulkMut.isPending ? 'Applying…' : 'Apply'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 export default function ProductsTab() {
   const { token, products, toast, refresh } = usePortal();
   const upsert = trpc.shop.upsertProduct.useMutation();
@@ -21,6 +93,7 @@ export default function ProductsTab() {
   const [editing, setEditing] = useState<{ draft: Draft; id: string | null } | null>(null);
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [importing, setImporting] = useState(false);
+  const [bulkPricing, setBulkPricing] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -84,6 +157,10 @@ export default function ProductsTab() {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search products…"
             className="w-full h-11 pl-10 pr-4 rounded-full border border-blush-100 bg-white text-sm focus:outline-none focus:border-rose-300" />
         </div>
+        <button onClick={() => setBulkPricing(true)}
+          className="h-11 px-4 rounded-full border border-gold-500 text-gold-500 text-[11px] font-semibold uppercase tracking-[0.1em] flex items-center gap-1.5 hover:bg-[#FBF3E2] active:scale-[0.97] transition shrink-0">
+          <Percent size={16} /> Bulk price
+        </button>
         <button onClick={() => setImporting(true)}
           className="h-11 px-4 rounded-full border border-gold-500 text-gold-500 text-[11px] font-semibold uppercase tracking-[0.1em] flex items-center gap-1.5 hover:bg-[#FBF3E2] active:scale-[0.97] transition shrink-0">
           <Upload size={16} /> Import
@@ -147,6 +224,7 @@ export default function ProductsTab() {
 
       <AnimatePresence>
         {importing && <BulkImportModal key="import" onClose={() => setImporting(false)} />}
+        {bulkPricing && <BulkPriceModal key="bulk-price" onClose={() => setBulkPricing(false)} />}
         {editing && (
           <ProductFormModal key={editing.id ?? 'new'} initial={editing.draft}
             onSave={(d) => void save(d)} onClose={() => setEditing(null)} />

@@ -122,6 +122,7 @@ function OrderCard({ order }: { order: Order }) {
   const setStatusMut = trpc.shop.setOrderStatus.useMutation();
   const cancelMut = trpc.shop.adminCancelOrder.useMutation();
   const refundMut = trpc.shop.setRefundStatus.useMutation();
+  const refundYocoMut = trpc.shop.refundOrder.useMutation();
   const [open, setOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const stepIdx = STEPS.indexOf(order.status);
@@ -144,7 +145,7 @@ function OrderCard({ order }: { order: Order }) {
       await cancelMut.mutateAsync({ token, id: order.id });
       refresh();
       toast(order.paymentStatus === 'paid'
-        ? 'Order cancelled. Stock restored. Refund due via Yoco dashboard.'
+        ? 'Order cancelled. Stock restored. Refund due — one click below.'
         : 'Order cancelled. Stock restored.');
     } catch {
       toast('Could not cancel order — try again');
@@ -159,6 +160,24 @@ function OrderCard({ order }: { order: Order }) {
       toast(`Order ${order.id} marked refunded`);
     } catch {
       toast('Could not update refund — try again');
+    }
+  };
+
+  // One-click: calls Yoco directly and flips refundStatus in the same step —
+  // no trip to the Yoco dashboard. Only works for orders actually paid
+  // through Yoco (has a paymentRef); otherwise falls back to markRefunded
+  // once the owner has refunded however it was actually paid (cash/EFT).
+  const canRefundViaYoco = !!order.paymentRef;
+  const refundViaYoco = async () => {
+    if (refundYocoMut.isPending) return;
+    try {
+      await refundYocoMut.mutateAsync({ token, id: order.id });
+      refresh();
+      toast(`Order ${order.id} refunded via Yoco`);
+    } catch (e) {
+      const code = (e as { data?: { code?: string } } | null)?.data?.code;
+      if (code === 'PRECONDITION_FAILED') toast('Not a Yoco payment — use "Mark refunded" once refunded manually');
+      else toast('Yoco refund failed — try again or refund manually in the Yoco dashboard');
     }
   };
 
@@ -300,7 +319,7 @@ function OrderCard({ order }: { order: Order }) {
                   </button>
                   {order.paymentStatus === 'paid' && (
                     <p className="mt-1.5 text-[11px] text-ink-500 text-center">
-                      Cancelling a paid order: stock restored. Refund due via Yoco dashboard.
+                      Cancelling a paid order: stock restored. Refund it with one click right after.
                     </p>
                   )}
                 </div>
@@ -310,18 +329,38 @@ function OrderCard({ order }: { order: Order }) {
                   <p className="font-semibold uppercase tracking-[0.12em] text-[10px]">Order cancelled</p>
                   <p className="mt-1">Stock was restored automatically.</p>
                   {order.refundStatus === 'pending' && (
-                    <button onClick={() => void markRefunded()} disabled={refundMut.isPending}
-                      className="mt-2 w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50">
-                      Mark refunded
-                    </button>
+                    <div className="mt-2 space-y-1.5">
+                      {canRefundViaYoco && (
+                        <button onClick={() => void refundViaYoco()} disabled={refundYocoMut.isPending}
+                          className="w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50">
+                          {refundYocoMut.isPending ? 'Refunding…' : 'Refund via Yoco'}
+                        </button>
+                      )}
+                      <button onClick={() => void markRefunded()} disabled={refundMut.isPending}
+                        className={canRefundViaYoco
+                          ? 'w-full h-9 rounded-full text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-500 hover:text-ink-900 transition-colors'
+                          : 'w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50'}>
+                        {canRefundViaYoco ? 'Already refunded another way? Mark refunded' : 'Mark refunded'}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
               {order.status !== 'cancelled' && order.refundStatus === 'pending' && (
-                <button onClick={() => void markRefunded()} disabled={refundMut.isPending}
-                  className="w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50">
-                  Mark refunded
-                </button>
+                <div className="space-y-1.5">
+                  {canRefundViaYoco && (
+                    <button onClick={() => void refundViaYoco()} disabled={refundYocoMut.isPending}
+                      className="w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50">
+                      {refundYocoMut.isPending ? 'Refunding…' : 'Refund via Yoco'}
+                    </button>
+                  )}
+                  <button onClick={() => void markRefunded()} disabled={refundMut.isPending}
+                    className={canRefundViaYoco
+                      ? 'w-full h-9 rounded-full text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-500 hover:text-ink-900 transition-colors'
+                      : 'w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50'}>
+                    {canRefundViaYoco ? 'Already refunded another way? Mark refunded' : 'Mark refunded'}
+                  </button>
+                </div>
               )}
 
               <AnimatePresence>
@@ -329,7 +368,7 @@ function OrderCard({ order }: { order: Order }) {
                   <ConfirmDialog
                     title={`Cancel order ${order.id}?`}
                     body={order.paymentStatus === 'paid'
-                      ? 'Stock will be restored. Refund due via Yoco dashboard — the order will be flagged "Refund due".'
+                      ? 'Stock will be restored. The order will be flagged "Refund due" — refund it with one click right after.'
                       : 'Stock will be restored and the order marked as cancelled.'}
                     confirmLabel="Cancel order"
                     onConfirm={() => void cancelOrder()}

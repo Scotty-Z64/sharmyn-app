@@ -8,8 +8,9 @@ import ProductsTab from '@/portal/components/ProductsTab';
 import StockTab from '@/portal/components/StockTab';
 import OrdersTab from '@/portal/components/OrdersTab';
 import StudioTab from '@/portal/components/StudioTab';
+import ReportsTab from '@/portal/components/ReportsTab';
 
-type Tab = 'overview' | 'products' | 'studio' | 'stock' | 'orders';
+type Tab = 'overview' | 'products' | 'studio' | 'stock' | 'orders' | 'reports';
 
 /* ---------------- Password gate ---------------- */
 function LoginGate({ onSuccess }: { onSuccess: (token: string) => void }) {
@@ -141,6 +142,7 @@ function Dashboard() {
     { key: 'studio', label: '✨ Studio' },
     { key: 'stock', label: 'Stock', count: stats.lowStock.length || undefined, accent: true },
     { key: 'orders', label: 'Orders', count: unreadCount || stats.pending || undefined, accent: !unreadCount, gold: unreadCount > 0 },
+    { key: 'reports', label: 'Reports' },
   ];
 
   return (
@@ -198,6 +200,7 @@ function Dashboard() {
               {tab === 'studio' && <StudioTab />}
               {tab === 'stock' && <StockTab />}
               {tab === 'orders' && <OrdersTab />}
+              {tab === 'reports' && <ReportsTab />}
             </motion.div>
           </AnimatePresence>
         )}

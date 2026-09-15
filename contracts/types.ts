@@ -94,7 +94,7 @@ export interface PublicOrder {
   statusHistory: { status: OrderStatus; at: string }[];
 }
 
-export type NotificationType = "new_order" | "paid" | "cancel_request";
+export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock";
 
 export type StudioPostStatus = "draft" | "ready" | "posted";
 export type StudioTemplate = "new-in" | "sale" | "restocked" | "elegant";
@@ -122,4 +122,32 @@ export interface OwnerNotification {
   orderId: string | null;
   read: boolean;
   createdAt: string;
+}
+
+// ---- Reports ----
+
+export interface ReportProductRow {
+  productId: string;
+  name: string;
+  category: Category;
+  qtySold: number;
+  revenue: number;
+}
+
+export interface ReportCategoryRow {
+  category: Category;
+  qtySold: number;
+  revenue: number;
+}
+
+export interface SalesReport {
+  from: string; // ISO date, inclusive
+  to: string; // ISO date, inclusive
+  orderCount: number;
+  revenue: number; // sum of non-cancelled order totals
+  avgOrderValue: number;
+  paidRevenue: number; // sum where paymentStatus = 'paid'
+  byStatus: Record<OrderStatus, number>;
+  topProducts: ReportProductRow[]; // sorted desc by revenue
+  byCategory: ReportCategoryRow[];
 }

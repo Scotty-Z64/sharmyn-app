@@ -53,6 +53,38 @@ app.post("/api/webhooks/yoco", async (c) => {
   return c.json({ ok: true });
 });
 
+// Scheduled jobs — called by an external cron (e.g. cron-job.org), not the
+// browser. Auth via `?secret=` or `Authorization: Bearer <CRON_SECRET>`,
+// checked against CRON_SECRET; returns 503 if that env var was never set
+// (the feature is simply off until configured, same pattern as the other
+// optional integrations).
+app.post("/api/cron/weekly-report", async (c) => {
+  const { cronConfigured, cronAuthorized, runWeeklyReportJob } = await import("./lib/cron");
+  if (!cronConfigured()) return c.json({ error: "CRON_NOT_CONFIGURED" }, 503);
+  const provided = c.req.query("secret") ?? c.req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
+  if (!cronAuthorized(provided)) return c.json({ error: "Unauthorized" }, 401);
+  try {
+    const result = await runWeeklyReportJob();
+    return c.json(result);
+  } catch (e) {
+    console.error("[cron] weekly-report failed:", e);
+    return c.json({ ran: false, error: "internal error" }, 500);
+  }
+});
+app.post("/api/cron/backup", async (c) => {
+  const { cronConfigured, cronAuthorized, runBackupJob } = await import("./lib/cron");
+  if (!cronConfigured()) return c.json({ error: "CRON_NOT_CONFIGURED" }, 503);
+  const provided = c.req.query("secret") ?? c.req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
+  if (!cronAuthorized(provided)) return c.json({ error: "Unauthorized" }, 401);
+  try {
+    const result = await runBackupJob();
+    return c.json(result);
+  } catch (e) {
+    console.error("[cron] backup failed:", e);
+    return c.json({ ran: false, error: "internal error" }, 500);
+  }
+});
+
 app.use("/api/trpc/*", async (c) => {
   return fetchRequestHandler({
     endpoint: "/api/trpc",

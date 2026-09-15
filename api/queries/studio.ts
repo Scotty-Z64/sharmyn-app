@@ -2,7 +2,7 @@ import { asc, desc, eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { getDb } from "./connection";
 import { studioPosts } from "@db/schema";
-import type { StudioPost, StudioPostStatus } from "@contracts/types";
+import type { Product, StudioPost, StudioPostStatus } from "@contracts/types";
 
 function toStudioPost(row: typeof studioPosts.$inferSelect): StudioPost {
   return {
@@ -88,4 +88,43 @@ export async function updateStudioPost(
 
 export async function deleteStudioPost(id: string): Promise<void> {
   await getDb().delete(studioPosts).where(eq(studioPosts.id, id));
+}
+
+const CATEGORY_HASHTAGS: Record<Product["category"], string> = {
+  sneakers: "#SharmynSneakers #SAsneakerhead #WomensSneakers",
+  jewellery: "#SharmynJewellery #CustomJewellery #HandmadeSA",
+  handbags: "#SharmynBags #SABoutique #HandbagLove",
+  clothing: "#SharmynStyle #WomensFashionSA #OOTD",
+};
+
+/**
+ * Auto-drafts a Content Studio post when a product is added or restocked
+ * (called from router.ts — see upsertProduct/adjustStock). Uses the
+ * product's own photo rather than a rendered branded template (that
+ * rendering happens client-side in the canvas engine) — the owner opens
+ * Content Studio to a caption already written instead of a blank page, and
+ * can still re-render with a template before posting.
+ */
+export async function createAutoDraftPost(
+  product: Product,
+  kind: "new-in" | "restocked"
+): Promise<StudioPost> {
+  const headline = kind === "new-in" ? `New In: ${product.name}` : `Back In Stock: ${product.name}`;
+  const captionIg =
+    kind === "new-in"
+      ? `New in ✨ ${product.name} — R${product.price}. Shop now, link in bio.`
+      : `She's back 🎉 ${product.name} just restocked — R${product.price}. Don't miss it twice.`;
+  const captionFb =
+    kind === "new-in"
+      ? `We just added ${product.name} to the shop — R${product.price}. Head to the store to grab yours before it's gone, or message us on WhatsApp for help choosing.`
+      : `Good news — ${product.name} is back in stock at R${product.price}! It sold out fast last time, so don't wait. Shop online or WhatsApp us to order.`;
+  return createStudioPost({
+    imageData: product.image,
+    template: kind,
+    headline,
+    captionIg,
+    captionFb,
+    hashtags: CATEGORY_HASHTAGS[product.category],
+    bgColor: "ivory",
+  });
 }

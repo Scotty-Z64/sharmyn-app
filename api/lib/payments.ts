@@ -48,6 +48,35 @@ export async function createYocoCheckout(order: Order, origin: string): Promise<
   return { checkoutId: data.id, redirectUrl: data.redirectUrl };
 }
 
+/**
+ * Refund a checkout via Yoco's Checkout API (POST /checkouts/{id}/refund).
+ * amountCents omitted/null refunds the full remaining balance.
+ * https://developer.yoco.com/online/api-reference/checkout/refunds/accept-refunds/
+ */
+export async function refundYocoCheckout(
+  checkoutId: string,
+  amountCents?: number | null
+): Promise<{ refunded: boolean; status: string }> {
+  const res = await fetch(`${YOCO_API}/${encodeURIComponent(checkoutId)}/refund`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(amountCents ? { amount: amountCents } : {}),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`YOCO_REFUND_FAILED:${res.status}:${text.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { status?: string };
+  const status = (data.status ?? "").toLowerCase();
+  // Yoco answers "successful" when the refund REQUEST was accepted for
+  // processing — not that funds have settled yet. Good enough to flip our
+  // refundStatus; Yoco handles the actual payout timing.
+  return { refunded: status === "successful" || status === "succeeded" || status === "processing", status };
+}
+
 /** Verify a checkout with Yoco; paid when status is 'completed'/'succeeded'. */
 export async function verifyYocoCheckout(checkoutId: string): Promise<{
   paid: boolean;

@@ -6,6 +6,7 @@ import {
   upsertProduct,
   deleteProduct,
   adjustStock,
+  bulkAdjustPrice,
   listOrders,
   findOrder,
   findPublicOrder,
@@ -21,13 +22,20 @@ import {
   markOrderPaymentFailed,
   listNotifications,
   markNotificationRead,
+  getSalesReport,
 } from "./queries/shop";
-import { paymentsEnabled, createYocoCheckout, verifyYocoCheckout } from "./lib/payments";
+import { paymentsEnabled, createYocoCheckout, verifyYocoCheckout, refundYocoCheckout } from "./lib/payments";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
 import { publishToInstagram } from "./lib/meta";
-import { createStudioPost, deleteStudioPost, listStudioPosts, updateStudioPost } from "./queries/studio";
+import {
+  createStudioPost,
+  createAutoDraftPost,
+  deleteStudioPost,
+  listStudioPosts,
+  updateStudioPost,
+} from "./queries/studio";
 import { adminConfigured, verifyAdminPassword, issueAdminToken, assertAdminToken, rateLimit, clientIp } from "./lib/admin";
-import { notifyOwner } from "./lib/notify";
+import { notifyOwner, notifyCustomer, notifyLowStock } from "./lib/notify";
 
 function requestOrigin(req: Request): string {
   try {
@@ -146,6 +154,7 @@ export const appRouter = createRouter({
         try {
           const order = await placeOrderTx(input.customer, input.items, input.delivery);
           void notifyOwner("new_order", order).catch((e) => console.error("[notify]", e));
+          void notifyCustomer("order_placed", order).catch((e) => console.error("[notify]", e));
           return order;
         } catch (e) {
           if (e instanceof Error && e.message.startsWith("OUT_OF_STOCK:")) {
@@ -224,6 +233,19 @@ export const appRouter = createRouter({
       assertAdminToken(input.token);
       return listOrders();
     }),
+    // Instant sales report over a date range — computed from orders already
+    // in the DB, nothing pre-aggregated or cached, so it's always current.
+    salesReport: publicQuery
+      .input(z.object({ token: adminToken, from: z.string(), to: z.string() }))
+      .query(({ input }) => {
+        assertAdminToken(input.token);
+        const from = new Date(input.from);
+        const to = new Date(input.to);
+        if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid date range" });
+        }
+        return getSalesReport(from, to);
+      }),
     // Full order incl. PII — admin only.
     adminGetOrder: publicQuery
       .input(z.object({ token: adminToken, id: z.string() }))
@@ -237,7 +259,15 @@ export const appRouter = createRouter({
       .input(z.object({ token: adminToken, product: productInput }))
       .mutation(async ({ input }) => {
         assertAdminToken(input.token);
-        await upsertProduct(input.product);
+        const signal = await upsertProduct(input.product);
+        if (signal.isNew) {
+          void createAutoDraftPost(signal.product, "new-in").catch((e) => console.error("[studio]", e));
+        } else if (signal.restockedFromZero) {
+          void createAutoDraftPost(signal.product, "restocked").catch((e) => console.error("[studio]", e));
+        }
+        if (signal.crossedLowStockDown) {
+          void notifyLowStock(signal.product).catch((e) => console.error("[notify]", e));
+        }
         return { ok: true };
       }),
     deleteProduct: publicQuery
@@ -259,17 +289,46 @@ export const appRouter = createRouter({
         }
         return { ok: true, count };
       }),
+    // Apply a % or flat Rand change to every product in a category — running
+    // a sale (or reverting one) without opening each product individually.
+    // Clamped server-side so nothing can be priced below R1.
+    bulkAdjustPrice: publicQuery
+      .input(
+        z.object({
+          token: adminToken,
+          category: z.enum(["sneakers", "jewellery", "handbags", "clothing"]),
+          mode: z.enum(["percent", "fixed"]),
+          value: z.number().finite(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        return bulkAdjustPrice(input.category, input.mode, input.value);
+      }),
     adjustStock: publicQuery
       .input(z.object({ token: adminToken, id: z.string(), delta: z.number().int() }))
       .mutation(async ({ input }) => {
         assertAdminToken(input.token);
-        return adjustStock(input.id, input.delta);
+        const signal = await adjustStock(input.id, input.delta);
+        if (!signal) return null;
+        if (signal.restockedFromZero) {
+          void createAutoDraftPost(signal.product, "restocked").catch((e) => console.error("[studio]", e));
+        }
+        if (signal.crossedLowStockDown) {
+          void notifyLowStock(signal.product).catch((e) => console.error("[notify]", e));
+        }
+        return signal.product;
       }),
     setOrderStatus: publicQuery
       .input(z.object({ token: adminToken, id: z.string(), status: orderStatusEnum }))
       .mutation(async ({ input }) => {
         assertAdminToken(input.token);
-        return setOrderStatus(input.id, input.status);
+        const order = await setOrderStatus(input.id, input.status);
+        if (order && (input.status === "shipped" || input.status === "delivered")) {
+          const type = input.status === "shipped" ? "order_shipped" : "order_delivered";
+          void notifyCustomer(type, order).catch((e) => console.error("[notify]", e));
+        }
+        return order;
       }),
     setTrackingNumber: publicQuery
       .input(z.object({ token: adminToken, id: z.string(), trackingNumber: z.string().nullable() }))
@@ -284,9 +343,13 @@ export const appRouter = createRouter({
         assertAdminToken(input.token);
         const order = await cancelOrderTx(input.id);
         if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+        void notifyCustomer("order_cancelled", order).catch((e) => console.error("[notify]", e));
         return order;
       }),
     // After refunding manually in the Yoco dashboard, mark the refund done.
+    // Kept for cash/EFT orders and as a manual override — refundOrder below
+    // does both steps (the actual Yoco refund + this flag) in one click for
+    // orders that were paid through Yoco.
     setRefundStatus: publicQuery
       .input(z.object({ token: adminToken, id: z.string(), refundStatus: z.enum(["none", "pending", "refunded"]) }))
       .mutation(async ({ input }) => {
@@ -294,6 +357,33 @@ export const appRouter = createRouter({
         const order = await setRefundStatus(input.id, input.refundStatus);
         if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
         return order;
+      }),
+    // One-click refund: calls Yoco directly (no trip to the Yoco dashboard),
+    // then flips refundStatus itself. Only works for orders paid via Yoco
+    // (has a paymentRef) with YOCO_SECRET_KEY configured — otherwise throws
+    // and the owner falls back to setRefundStatus once they've refunded
+    // however that order was actually paid (cash/EFT).
+    refundOrder: publicQuery
+      .input(z.object({ token: adminToken, id: z.string() }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        const order = await findOrder(input.id);
+        if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+        if (!paymentsEnabled()) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PAYMENTS_NOT_CONFIGURED" });
+        }
+        if (!order.paymentRef || order.paymentStatus !== "paid") {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "NOT_A_YOCO_PAYMENT — refund this one manually (setRefundStatus) once you've refunded however it was actually paid.",
+          });
+        }
+        const { refunded, status } = await refundYocoCheckout(order.paymentRef, Math.round(order.total * 100));
+        if (!refunded) {
+          throw new TRPCError({ code: "BAD_GATEWAY", message: `Yoco did not accept the refund (status: ${status})` });
+        }
+        const updated = await setRefundStatus(order.id, "refunded");
+        return updated;
       }),
     listNotifications: publicQuery.input(z.object({ token: adminToken })).query(({ input }) => {
       assertAdminToken(input.token);

@@ -1,4 +1,4 @@
-import { eq, desc, sql, and, lt } from "drizzle-orm";
+import { eq, desc, sql, and, lt, gte, lte } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { getDb } from "./connection";
 import { products, orders, notifications } from "@db/schema";
@@ -15,6 +15,10 @@ import type {
   RefundStatus,
   OwnerNotification,
   NotificationType,
+  Category,
+  SalesReport,
+  ReportProductRow,
+  ReportCategoryRow,
 } from "@contracts/types";
 
 /** Server-side delivery fees (ZAR) — the ONLY source of truth. */
@@ -93,7 +97,20 @@ export async function listProducts(): Promise<Product[]> {
   return rows.map(toProduct);
 }
 
-export async function upsertProduct(p: Omit<Product, "createdAt"> & { createdAt?: string }): Promise<void> {
+/** Signals the router uses to decide whether to fire a low-stock alert or an auto-draft Content Studio post. */
+export interface StockChangeSignal {
+  product: Product;
+  isNew: boolean;
+  restockedFromZero: boolean; // 0 -> positive: candidate for a "back in stock" auto-draft
+  crossedLowStockDown: boolean; // was above lowStockAt, now at/below it (or just sold out)
+}
+
+export async function upsertProduct(
+  p: Omit<Product, "createdAt"> & { createdAt?: string }
+): Promise<StockChangeSignal> {
+  const db = getDb();
+  const [existing] = await db.select().from(products).where(eq(products.id, p.id));
+
   const values = {
     id: p.id,
     name: p.name,
@@ -108,10 +125,21 @@ export async function upsertProduct(p: Omit<Product, "createdAt"> & { createdAt?
     backUntil: p.backUntil ? new Date(p.backUntil) : null,
     featured: !!p.featured,
   };
-  await getDb()
+  await db
     .insert(products)
     .values(values)
     .onDuplicateKeyUpdate({ set: { ...values, id: undefined } as never });
+
+  const [row] = await db.select().from(products).where(eq(products.id, p.id));
+  const product = toProduct(row);
+  const prevQty = existing?.quantity ?? 0;
+  return {
+    product,
+    isNew: !existing,
+    restockedFromZero: !!existing && prevQty === 0 && product.quantity > 0,
+    crossedLowStockDown:
+      !!existing && prevQty > existing.lowStockAt && product.quantity <= product.lowStockAt,
+  };
 }
 
 export async function deleteProduct(id: string): Promise<void> {
@@ -119,8 +147,10 @@ export async function deleteProduct(id: string): Promise<void> {
 }
 
 /** Adjust stock by delta (+restock / -correction). Auto-flips availability. */
-export async function adjustStock(id: string, delta: number): Promise<Product | null> {
+export async function adjustStock(id: string, delta: number): Promise<StockChangeSignal | null> {
   const db = getDb();
+  const [before] = await db.select().from(products).where(eq(products.id, id));
+  if (!before) return null;
   await db
     .update(products)
     .set({ quantity: sql`GREATEST(0, quantity + ${delta})` })
@@ -134,7 +164,31 @@ export async function adjustStock(id: string, delta: number): Promise<Product | 
     await db.update(products).set({ availability }).where(eq(products.id, id));
     row.availability = availability;
   }
-  return toProduct(row);
+  const product = toProduct(row);
+  return {
+    product,
+    isNew: false,
+    restockedFromZero: before.quantity === 0 && product.quantity > 0,
+    crossedLowStockDown: before.quantity > before.lowStockAt && product.quantity <= product.lowStockAt,
+  };
+}
+
+/** Bulk price change across a category — % (e.g. -20 for 20% off) or a flat Rand delta. Clamped to a minimum of R1. */
+export async function bulkAdjustPrice(
+  category: Product["category"],
+  mode: "percent" | "fixed",
+  value: number
+): Promise<{ count: number }> {
+  const db = getDb();
+  const expr =
+    mode === "percent"
+      ? sql`GREATEST(1, ROUND(price * (1 + ${value} / 100)))`
+      : sql`GREATEST(1, ROUND(price + ${value}))`;
+  const res = (await db
+    .update(products)
+    .set({ price: expr })
+    .where(eq(products.category, category))) as unknown as [{ affectedRows: number }];
+  return { count: res?.[0]?.affectedRows ?? 0 };
 }
 
 // ---- orders ----
@@ -413,4 +467,86 @@ export async function listNotifications(): Promise<OwnerNotification[]> {
 
 export async function markNotificationRead(id: string): Promise<void> {
   await getDb().update(notifications).set({ read: true }).where(eq(notifications.id, id));
+}
+
+// ---- reports ----
+
+const ALL_STATUSES: OrderStatus[] = ["pending", "processing", "shipped", "delivered", "cancelled"];
+
+/**
+ * Aggregates orders created in [from, to] (inclusive, server-local Date
+ * boundaries — pass day-start/day-end). Revenue excludes cancelled orders;
+ * paidRevenue is the subset actually marked paid. Product category comes
+ * from the CURRENT product row, not a historical snapshot — if a product's
+ * category changed since the order, older orders roll up under the new
+ * category. Fine for a boutique's own read of "how did we do," not written
+ * for audit-grade historical accuracy.
+ */
+export async function getSalesReport(from: Date, to: Date): Promise<SalesReport> {
+  const rows = await getDb()
+    .select()
+    .from(orders)
+    .where(and(gte(orders.createdAt, from), lte(orders.createdAt, to)));
+
+  const byStatus = Object.fromEntries(ALL_STATUSES.map((s) => [s, 0])) as Record<OrderStatus, number>;
+  let revenue = 0;
+  let paidRevenue = 0;
+  const productAgg = new Map<string, { name: string; qtySold: number; revenue: number }>();
+
+  for (const row of rows) {
+    const order = toOrder(row);
+    byStatus[order.status]++;
+    if (order.status !== "cancelled") {
+      revenue += order.total;
+      if (order.paymentStatus === "paid") paidRevenue += order.total;
+      for (const item of order.items) {
+        const agg = productAgg.get(item.productId) ?? { name: item.name, qtySold: 0, revenue: 0 };
+        agg.qtySold += item.qty;
+        agg.revenue += item.price * item.qty;
+        productAgg.set(item.productId, agg);
+      }
+    }
+  }
+
+  // Resolve current category for each product that actually sold, in one query.
+  const productIds = [...productAgg.keys()];
+  const categoryById = new Map<string, Category>();
+  if (productIds.length) {
+    const catalog = await getDb().select().from(products);
+    for (const p of catalog) categoryById.set(p.id, p.category);
+  }
+
+  const topProducts: ReportProductRow[] = [...productAgg.entries()]
+    .map(([productId, v]) => ({
+      productId,
+      name: v.name,
+      category: categoryById.get(productId) ?? "clothing",
+      qtySold: v.qtySold,
+      revenue: v.revenue,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  const byCategoryMap = new Map<Category, { qtySold: number; revenue: number }>();
+  for (const p of topProducts) {
+    const agg = byCategoryMap.get(p.category) ?? { qtySold: 0, revenue: 0 };
+    agg.qtySold += p.qtySold;
+    agg.revenue += p.revenue;
+    byCategoryMap.set(p.category, agg);
+  }
+  const byCategory: ReportCategoryRow[] = [...byCategoryMap.entries()]
+    .map(([category, v]) => ({ category, ...v }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  const orderCount = rows.length - byStatus.cancelled;
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+    orderCount,
+    revenue,
+    avgOrderValue: orderCount > 0 ? Math.round(revenue / orderCount) : 0,
+    paidRevenue,
+    byStatus,
+    topProducts,
+    byCategory,
+  };
 }
