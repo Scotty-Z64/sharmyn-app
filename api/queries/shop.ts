@@ -102,6 +102,11 @@ export async function listProducts(): Promise<Product[]> {
   return rows.map(toProduct);
 }
 
+export async function findProduct(id: string): Promise<Product | null> {
+  const [row] = await getDb().select().from(products).where(eq(products.id, id));
+  return row ? toProduct(row) : null;
+}
+
 /** Signals the router uses to decide whether to fire a low-stock alert or an auto-draft Content Studio post. */
 export interface StockChangeSignal {
   product: Product;

@@ -47,6 +47,22 @@ async function main() {
       console.log("• ref_number backfill (nothing to do — skipped)");
     }
 
+    await conn.query(`CREATE TABLE IF NOT EXISTS exchanges (
+      id varchar(40) PRIMARY KEY,
+      order_id varchar(16) NOT NULL,
+      qty int NOT NULL DEFAULT 1,
+      original_product_id varchar(32) NOT NULL,
+      original_name varchar(255) NOT NULL,
+      original_ref_number int NOT NULL,
+      new_product_id varchar(32) NOT NULL,
+      new_name varchar(255) NOT NULL,
+      new_ref_number int NOT NULL,
+      note text NOT NULL,
+      slip_sent_at timestamp NULL,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
+    console.log("✔ exchanges table");
+
     // Backfill tracking_set_at for any order that already has a tracking number
     // but no timestamp for it (best-effort: use the order's createdAt, since we
     // don't know exactly when it was actually set).
@@ -59,6 +75,8 @@ async function main() {
     console.table(await conn.query("SHOW COLUMNS FROM products").then((r) => r[0]));
     console.log("-- orders columns --");
     console.table(await conn.query("SHOW COLUMNS FROM orders").then((r) => r[0]));
+    console.log("-- exchanges columns --");
+    console.table(await conn.query("SHOW COLUMNS FROM exchanges").then((r) => r[0]));
   } finally {
     await conn.end();
   }

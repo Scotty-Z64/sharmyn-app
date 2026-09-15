@@ -27,6 +27,7 @@ import {
   markStockReceived,
   unmarkFulfilmentStage,
   markInvoiceSent,
+  findProduct,
 } from "./queries/shop";
 import { paymentsEnabled, createYocoCheckout, verifyYocoCheckout, refundYocoCheckout } from "./lib/payments";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
@@ -38,8 +39,9 @@ import {
   listStudioPosts,
   updateStudioPost,
 } from "./queries/studio";
+import { createExchange, listExchangesForOrder, markExchangeSlipSent } from "./queries/exchanges";
 import { adminConfigured, verifyAdminPassword, issueAdminToken, assertAdminToken, rateLimit, clientIp } from "./lib/admin";
-import { notifyOwner, notifyCustomer, notifyLowStock, sendInvoice } from "./lib/notify";
+import { notifyOwner, notifyCustomer, notifyLowStock, sendInvoice, sendExchangeSlip } from "./lib/notify";
 import type { Order } from "@contracts/types";
 
 /** Fire-and-forget the invoice PDF exactly once per order, guarded by invoiceSentAt. */
@@ -369,6 +371,65 @@ export const appRouter = createRouter({
       .mutation(async ({ input }) => {
         assertAdminToken(input.token);
         return unmarkFulfilmentStage(input.id, input.stage);
+      }),
+    // ---- exchanges: swap a product against an existing invoice ----
+    // Returned item goes back to stock, replacement comes off stock (never
+    // below 0), a slip PDF is emailed to the customer linking back to the
+    // original order. No money moves — this is a fulfilment record, not a
+    // refund/re-charge.
+    listExchanges: publicQuery
+      .input(z.object({ token: adminToken, orderId: z.string() }))
+      .query(({ input }) => {
+        assertAdminToken(input.token);
+        return listExchangesForOrder(input.orderId);
+      }),
+    recordExchange: publicQuery
+      .input(
+        z.object({
+          token: adminToken,
+          orderId: z.string(),
+          originalProductId: z.string(),
+          newProductId: z.string(),
+          qty: z.number().int().positive().max(99).default(1),
+          note: z.string().max(2000).default(""),
+        })
+      )
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        const order = await findOrder(input.orderId);
+        if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+        const [original, replacement] = await Promise.all([
+          findProduct(input.originalProductId),
+          findProduct(input.newProductId),
+        ]);
+        if (!original || !replacement) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "One of those products no longer exists" });
+        }
+
+        // Returned item back to stock; replacement off stock (clamped, auto-flips availability).
+        const returnedSignal = await adjustStock(input.originalProductId, input.qty);
+        const takenSignal = await adjustStock(input.newProductId, -input.qty);
+        if (takenSignal?.crossedLowStockDown) {
+          void notifyLowStock(takenSignal.product).catch((e) => console.error("[notify]", e));
+        }
+        void returnedSignal; // no notification needed for stock coming back in
+
+        const exchange = await createExchange({
+          orderId: order.id,
+          qty: input.qty,
+          originalProductId: original.id,
+          originalName: original.name,
+          originalRefNumber: original.refNumber,
+          newProductId: replacement.id,
+          newName: replacement.name,
+          newRefNumber: replacement.refNumber,
+          note: input.note,
+        });
+
+        void markExchangeSlipSent(exchange.id).catch((e) => console.error("[exchange] failed to flag sent:", e));
+        void sendExchangeSlip(order, exchange).catch((e) => console.error("[exchange] slip send failed:", e));
+
+        return exchange;
       }),
     // Admin cancel: restores stock; paid orders get refundStatus='pending'.
     // Cancels + restores stock, then — if this was actually paid through Yoco

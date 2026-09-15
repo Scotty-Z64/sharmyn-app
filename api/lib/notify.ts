@@ -1,6 +1,6 @@
 // Owner + customer notifications: in-app rows + optional email via Resend.
 // Email is fire-and-forget — failures are logged, never thrown.
-import type { Order, Product } from "@contracts/types";
+import type { Exchange, Order, Product } from "@contracts/types";
 import { insertNotification } from "../queries/shop";
 
 export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock";
@@ -145,5 +145,22 @@ export async function sendInvoice(order: Order): Promise<void> {
     `Sharmyn — invoice for order ${order.id}`,
     `Hi ${order.customer.name}, thanks for your payment! Your invoice for order ${order.id} is attached.`,
     { filename: `sharmyn-invoice-${order.id}.pdf`, content: pdf.toString("base64") }
+  );
+}
+
+/** Emails the exchange slip PDF to the customer, linked to the original order. */
+export async function sendExchangeSlip(order: Order, exchange: Exchange): Promise<void> {
+  const to = order.customer.email?.trim();
+  if (!to) return;
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return;
+  const { buildExchangeSlipPdf } = await import("./exchange-slip");
+  const pdf = await buildExchangeSlipPdf(order, exchange);
+  sendEmail(
+    apiKey,
+    [to],
+    `Sharmyn — exchange confirmed for order ${order.id}`,
+    `Hi ${order.customer.name}, we've processed your exchange for order ${order.id} — ${exchange.originalName} for ${exchange.newName}. The slip is attached; no additional charge.`,
+    { filename: `sharmyn-exchange-${order.id}.pdf`, content: pdf.toString("base64") }
   );
 }

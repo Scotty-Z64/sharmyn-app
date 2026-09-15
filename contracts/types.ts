@@ -131,6 +131,22 @@ export interface StudioPost {
   createdAt: string;
 }
 
+/** A recorded product swap against an existing invoice — e.g. wrong shoe size sent, customer wants a different item. */
+export interface Exchange {
+  id: string;
+  orderId: string;
+  qty: number;
+  originalProductId: string;
+  originalName: string;
+  originalRefNumber: number;
+  newProductId: string;
+  newName: string;
+  newRefNumber: number;
+  note: string;
+  slipSentAt: string | null;
+  createdAt: string;
+}
+
 export interface OwnerNotification {
   id: string;
   type: NotificationType;

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertTriangle, ChevronDown, MapPin, PackageCheck, PackageOpen, Pencil, Truck, XCircle } from 'lucide-react';
-import type { Order, OrderStatus } from '@/portal/lib/utils-shop';
+import { AlertTriangle, ChevronDown, MapPin, PackageCheck, PackageOpen, Pencil, Repeat, Truck, XCircle } from 'lucide-react';
+import type { Order, OrderStatus, Product } from '@/portal/lib/utils-shop';
 import { formatPrice } from '@/portal/lib/utils-shop';
 import { fulfilmentStage } from '@contracts/types';
-import type { FulfilmentStage } from '@contracts/types';
+import type { Exchange, FulfilmentStage } from '@contracts/types';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { ConfirmDialog, STATUS_STYLE, Thumb } from './bits';
@@ -147,6 +147,81 @@ function WaybillSection({ order }: { order: Order }) {
   );
 }
 
+/** Swap a purchased item for a different product, linked to this invoice — wrong size, changed their mind, etc. */
+function ExchangeModal({ order, products, onClose }: { order: Order; products: Product[]; onClose: () => void }) {
+  const { token, toast, refresh } = usePortal();
+  const recordMut = trpc.shop.recordExchange.useMutation();
+  const [originalProductId, setOriginalProductId] = useState(order.items[0]?.productId ?? '');
+  const [newProductId, setNewProductId] = useState('');
+  const [qty, setQty] = useState(1);
+  const [note, setNote] = useState('');
+
+  const submit = async () => {
+    if (!newProductId) { toast('Choose what they’re getting instead'); return; }
+    if (recordMut.isPending) return;
+    try {
+      await recordMut.mutateAsync({ token, orderId: order.id, originalProductId, newProductId, qty, note });
+      refresh();
+      toast('Exchange recorded — slip emailed to the customer');
+      onClose();
+    } catch {
+      toast('Could not record the exchange — try again');
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[80] bg-ink-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      onClick={onClose}>
+      <motion.div initial={{ y: 30, scale: 0.97, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }}
+        exit={{ y: 20, scale: 0.97, opacity: 0 }} transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 border-t-2 border-gold-400/60 max-h-[85vh] overflow-y-auto">
+        <h3 className="font-display text-xl font-semibold text-ink-900 flex items-center gap-2">
+          <Repeat size={18} className="text-gold-500" /> Record exchange
+        </h3>
+        <p className="mt-1 text-sm text-ink-500">Linked to invoice {order.id}. No charge — a slip is emailed to the customer.</p>
+
+        <label className="block mt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">They're returning</label>
+        <select value={originalProductId} onChange={(e) => setOriginalProductId(e.target.value)}
+          className="mt-1.5 w-full h-11 px-4 rounded-full border border-blush-100 bg-white text-sm">
+          {order.items.map((it) => (
+            <option key={it.productId} value={it.productId}>{it.name}</option>
+          ))}
+        </select>
+
+        <label className="block mt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">They're getting instead</label>
+        <select value={newProductId} onChange={(e) => setNewProductId(e.target.value)}
+          className="mt-1.5 w-full h-11 px-4 rounded-full border border-blush-100 bg-white text-sm">
+          <option value="">Choose a product…</option>
+          {products.map((p) => (
+            <option key={p.id} value={p.id}>#{p.refNumber} {p.name} — {formatPrice(p.price)}</option>
+          ))}
+        </select>
+
+        <label className="block mt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">Quantity</label>
+        <input type="number" min={1} max={99} value={qty} onChange={(e) => setQty(Math.max(1, Math.round(Number(e.target.value) || 1)))}
+          className="mt-1.5 w-full h-11 px-4 rounded-full border border-blush-100 bg-white text-sm" />
+
+        <label className="block mt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">Note (optional)</label>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="e.g. wrong size, sent a 6 instead of a 7"
+          className="mt-1.5 w-full px-4 py-2.5 rounded-2xl border border-blush-100 bg-white text-sm resize-none" />
+
+        <div className="mt-6 flex gap-3">
+          <button onClick={onClose}
+            className="flex-1 h-11 rounded-full border border-blush-100 text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-500 hover:bg-blush-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={() => void submit()} disabled={recordMut.isPending}
+            className="flex-1 h-11 rounded-full bg-gold-500 text-white text-[12px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50">
+            {recordMut.isPending ? 'Recording…' : 'Record & send slip'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function OrderCard({ order }: { order: Order }) {
   const { token, toast, products, refresh } = usePortal();
   const setStatusMut = trpc.shop.setOrderStatus.useMutation();
@@ -158,6 +233,8 @@ function OrderCard({ order }: { order: Order }) {
   const unmarkMut = trpc.shop.unmarkFulfilmentStage.useMutation();
   const [open, setOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [exchanging, setExchanging] = useState(false);
+  const exchangesQuery = trpc.shop.listExchanges.useQuery({ token, orderId: order.id }, { enabled: open && order.paymentStatus === 'paid' });
   const stepIdx = STEPS.indexOf(order.status);
 
   const setStatus = async (s: OrderStatus) => {
@@ -415,6 +492,34 @@ function OrderCard({ order }: { order: Order }) {
                 </div>
               )}
 
+              {/* exchanges */}
+              {order.paymentStatus === 'paid' && order.status !== 'cancelled' && (
+                <div className="rounded-xl border border-blush-100 bg-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500 flex items-center gap-1.5">
+                      <Repeat size={13} /> Exchanges
+                    </p>
+                    <button onClick={() => setExchanging(true)}
+                      className="h-8 px-3 rounded-full border border-gold-500 text-gold-500 text-[10px] font-semibold uppercase tracking-[0.08em] hover:bg-[#FBF3E2] transition-colors">
+                      Record exchange
+                    </button>
+                  </div>
+                  {exchangesQuery.data && exchangesQuery.data.length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                      {exchangesQuery.data.map((ex: Exchange) => (
+                        <div key={ex.id} className="text-[11px] text-ink-500 rounded-lg bg-blush-50 px-2.5 py-2">
+                          <span className="text-ink-900 font-medium">#{ex.originalRefNumber} {ex.originalName}</span>
+                          {' → '}
+                          <span className="text-ink-900 font-medium">#{ex.newRefNumber} {ex.newName}</span>
+                          {' · qty ' + ex.qty}
+                          {ex.note && <span className="italic"> — "{ex.note}"</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* cancel + refund actions */}
               {(order.status === 'pending' || order.status === 'processing') && (
                 <div>
@@ -479,6 +584,9 @@ function OrderCard({ order }: { order: Order }) {
                     onConfirm={() => void cancelOrder()}
                     onCancel={() => setConfirmCancel(false)}
                   />
+                )}
+                {exchanging && (
+                  <ExchangeModal order={order} products={products} onClose={() => setExchanging(false)} />
                 )}
               </AnimatePresence>
 

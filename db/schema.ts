@@ -60,6 +60,23 @@ export const studioPosts = mysqlTable("studio_posts", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const exchanges = mysqlTable("exchanges", {
+  id: varchar("id", { length: 40 }).primaryKey(),
+  orderId: varchar("order_id", { length: 16 }).notNull(), // the original invoice this exchange is linked to
+  qty: int("qty").notNull().default(1),
+  // Snapshotted at exchange time — a product can be renamed/deleted later
+  // without corrupting the historical slip.
+  originalProductId: varchar("original_product_id", { length: 32 }).notNull(),
+  originalName: varchar("original_name", { length: 255 }).notNull(),
+  originalRefNumber: int("original_ref_number").notNull(),
+  newProductId: varchar("new_product_id", { length: 32 }).notNull(),
+  newName: varchar("new_name", { length: 255 }).notNull(),
+  newRefNumber: int("new_ref_number").notNull(),
+  note: text("note").notNull().default(""),
+  slipSentAt: timestamp("slip_sent_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const notifications = mysqlTable("notifications", {
   id: varchar("id", { length: 40 }).primaryKey(),
   type: varchar("type", { length: 32 }).notNull(), // new_order | paid | cancel_request
