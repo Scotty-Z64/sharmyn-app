@@ -8,9 +8,9 @@ import { products } from "@db/schema";
 import type { Order } from "@contracts/types";
 import { BUSINESS } from "../../src/config/business";
 
-const INK = "#241B1E";
+const INK = "#1A1008";
 const GOLD = "#96721A";
-const SOFT = "#6B5D5F";
+const SOFT = "#7A6152";
 
 function addBusinessDays(from: Date, days: number): Date {
   const d = new Date(from);

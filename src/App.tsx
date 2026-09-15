@@ -27,7 +27,7 @@ function DocumentMeta() {
     const manifestLink = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
     const themeMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     if (manifestLink) manifestLink.href = isPortal ? '/manifest-portal.webmanifest' : '/manifest.webmanifest';
-    if (themeMeta) themeMeta.content = isPortal ? '#C29A3B' : '#E8799B';
+    if (themeMeta) themeMeta.content = isPortal ? '#96721A' : '#BB1E55';
   }, [isPortal]);
   return null;
 }

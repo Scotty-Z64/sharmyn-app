@@ -18,12 +18,12 @@ type TemplateKey = 'new-in' | 'sale' | 'restocked' | 'elegant';
 type Accent = 'gold' | 'rose';
 type Occasion = 'everyday' | 'weekend' | 'payday' | 'gift' | 'seasonal';
 
-const GOLD = '#C29A3B';
-const GOLD_LIGHT = '#D9B45B';
-const ROSE = '#D65C82';
-const ROSE_BG = '#F7DFE7';
-const IVORY = '#FDF6F7';
-const INK = '#2B1D23';
+const GOLD = '#96721A';
+const GOLD_LIGHT = '#E5B354';
+const ROSE = '#BB1E55';
+const ROSE_BG = '#FBE4EB';
+const IVORY = '#FBF3E4';
+const INK = '#1A1008';
 const SERIF = '"Cormorant Garamond", Georgia, serif';
 
 const TEMPLATES: { key: TemplateKey; label: string; blurb: string }[] = [

@@ -5,9 +5,9 @@ import PDFDocument from "pdfkit";
 import type { Exchange, Order } from "@contracts/types";
 import { BUSINESS } from "../../src/config/business";
 
-const INK = "#241B1E";
+const INK = "#1A1008";
 const GOLD = "#96721A";
-const SOFT = "#6B5D5F";
+const SOFT = "#7A6152";
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });

@@ -22,11 +22,11 @@ function loadImg(src: string): Promise<HTMLImageElement> {
 }
 
 function drawBackdrop(ctx: CanvasRenderingContext2D, size: number) {
-  // Ivory/blush studio gradient.
+  // Cream studio gradient.
   const g = ctx.createLinearGradient(0, 0, size, size);
-  g.addColorStop(0, '#FDF6F7');
-  g.addColorStop(0.55, '#FBEDEF');
-  g.addColorStop(1, '#F4DEE3');
+  g.addColorStop(0, '#FBF3E4');
+  g.addColorStop(0.55, '#F7E7D0');
+  g.addColorStop(1, '#F3E0C9');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
   // Soft rose vignette, top-left.

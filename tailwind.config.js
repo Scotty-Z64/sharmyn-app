@@ -5,10 +5,13 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        blush: { 50: '#FDF6F7', 100: '#FBEAED' },
-        rose: { 300: '#F3B8C6', 500: '#E8799B', 600: '#D65C82' },
-        gold: { 400: '#D9B45B', 500: '#C29A3B' },
-        ink: { 500: '#7A6670', 900: '#2B1D23' },
+        // Sampled from the client's actual logo (crown + SHARMYN wordmark),
+        // Sep 2026 rebrand — was a soft dusty-rose palette, now the real
+        // cream/gold/magenta from the artwork itself.
+        blush: { 50: '#FBF3E4', 100: '#F3E0C9' },
+        rose: { 300: '#F7A6B8', 500: '#BB1E55', 600: '#9E1747' },
+        gold: { 400: '#E5B354', 500: '#96721A' },
+        ink: { 500: '#7A6152', 900: '#1A1008' },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

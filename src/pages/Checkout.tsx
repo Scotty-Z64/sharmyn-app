@@ -56,7 +56,7 @@ function PetalBurst() {
           x: Math.cos(angle) * (90 + (i % 3) * 22),
           y: Math.sin(angle) * (90 + (i % 3) * 22),
           rotate: (i * 37) % 180,
-          color: i % 2 === 0 ? '#E8799B' : '#D9B45B',
+          color: i % 2 === 0 ? '#BB1E55' : '#E5B354',
         };
       }),
     []
