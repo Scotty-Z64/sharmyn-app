@@ -8,7 +8,7 @@ import { BUSINESS, waLink } from '@/config/business';
 import { WhatsAppIcon } from './WhatsAppFloat';
 
 export default function QuickView() {
-  const { quickView, setQuickView, setCartOpen, toast } = useShop();
+  const { quickView, setQuickView, setCartOpen, setSizeGuideOpen, toast } = useShop();
   const [qty, setQty] = useState(1);
 
   useEffect(() => { setQty(1); }, [quickView]);
@@ -71,7 +71,13 @@ export default function QuickView() {
                 </span>
                 <p className="text-sm text-ink-500 leading-relaxed">{p.description}</p>
                 {p.category === 'sneakers' && (
-                  <p className="text-sm text-ink-900"><span className="font-semibold">Available sizes:</span> 3–8</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm text-ink-900"><span className="font-semibold">Available sizes:</span> 3–8</p>
+                    <button type="button" onClick={() => setSizeGuideOpen(true)}
+                      className="text-[12px] font-semibold text-gold-500 underline underline-offset-2 hover:text-gold-600 transition-colors">
+                      Size guide
+                    </button>
+                  </div>
                 )}
                 {status === 'in-stock' && (
                   <div className="flex items-center gap-4 mt-1">

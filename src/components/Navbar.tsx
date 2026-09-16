@@ -24,7 +24,7 @@ export function Logo({ size = 34 }: { size?: number }) {
 }
 
 export default function Navbar() {
-  const { cart, setCartOpen, setSearchOpen, menuOpen, setMenuOpen } = useShop();
+  const { cart, setCartOpen, setSearchOpen, menuOpen, setMenuOpen, setSizeGuideOpen } = useShop();
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -126,6 +126,13 @@ export default function Navbar() {
                     </Link>
                   </motion.div>
                 ))}
+                <motion.div initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.04 * MENU_LINKS.length, duration: 0.3 }}>
+                  <button type="button" onClick={() => { setMenuOpen(false); setSizeGuideOpen(true); }}
+                    className="w-full flex items-center h-12 px-6 text-sm font-medium uppercase tracking-[0.12em] text-ink-900 hover:text-gold-500 hover:bg-[#FDF3E7]/60 transition-colors">
+                    Shoe Size Guide
+                  </button>
+                </motion.div>
               </nav>
               <div className="border-t border-gold-400/20 px-6 py-5 flex items-center gap-4">
                 <a href="https://facebook.com" target="_blank" rel="noreferrer" aria-label="Facebook"

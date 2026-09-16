@@ -39,7 +39,7 @@
   }
 
   body {
-    @apply bg-white text-ink-900 font-sans antialiased;
+    @apply bg-sand text-ink-900 font-sans antialiased;
     font-size: 15.5px;
     line-height: 1.6;
   }

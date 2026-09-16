@@ -40,7 +40,7 @@ function LoginGate({ onSuccess }: { onSuccess: (token: string) => void }) {
   };
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center px-4 py-10 bg-blush-50">
+    <div className="min-h-[100dvh] flex items-center justify-center px-4 py-10 bg-sand">
       <motion.div
         key={shake}
         initial={{ opacity: 0, scale: 0.96, y: 20 }}
@@ -146,7 +146,7 @@ function Dashboard() {
   ];
 
   return (
-    <div className="min-h-[100dvh] bg-blush-50">
+    <div className="min-h-[100dvh] bg-sand">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gold-400/30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-2">

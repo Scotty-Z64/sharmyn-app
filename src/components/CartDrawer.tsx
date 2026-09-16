@@ -5,12 +5,13 @@ import { useShop } from '@/lib/shop';
 import { formatPrice, removeFromCart, setCartQty } from '@/lib/store';
 
 export default function CartDrawer() {
-  const { cart, products, cartOpen, setCartOpen } = useShop();
+  const { cart, products, cartOpen, setCartOpen, setSizeGuideOpen } = useShop();
   const navigate = useNavigate();
   const lines = cart
     .map((c) => ({ ...c, product: products.find((p) => p.id === c.productId) }))
     .filter((l) => l.product);
   const subtotal = lines.reduce((s, l) => s + l.product!.price * l.qty, 0);
+  const hasSneakers = lines.some((l) => l.product!.category === 'sneakers');
 
   return (
     <AnimatePresence>
@@ -71,6 +72,13 @@ export default function CartDrawer() {
                   </AnimatePresence>
                 </div>
                 <div className="border-t border-gold-400/25 px-5 py-4 space-y-3">
+                  {hasSneakers && (
+                    <button type="button" onClick={() => setSizeGuideOpen(true)}
+                      className="w-full flex items-center justify-between gap-2 rounded-xl border border-gold-400/40 bg-blush-50 px-4 py-2.5 text-left">
+                      <span className="text-[13px] text-ink-900"><span className="font-semibold">Not sure of your size?</span> Check the size guide</span>
+                      <span className="text-[12px] font-semibold text-gold-500 underline underline-offset-2 shrink-0">View</span>
+                    </button>
+                  )}
                   <div className="flex justify-between items-baseline">
                     <span className="text-[12px] uppercase tracking-[0.14em] text-ink-500">Subtotal</span>
                     <motion.span key={subtotal} initial={{ scale: 1.1 }} animate={{ scale: 1 }}

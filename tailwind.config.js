@@ -9,6 +9,9 @@ module.exports = {
         // Sep 2026 rebrand — was a soft dusty-rose palette, now the real
         // cream/gold/magenta from the artwork itself.
         blush: { 50: '#FBF3E4', 100: '#F3E0C9' },
+        // Sand — the warm tan/caramel backdrop from the client's logo and
+        // size-guide artwork, used as the page-level background site-wide.
+        sand: { DEFAULT: '#CFA279', 600: '#B98A5E' },
         rose: { 300: '#F7A6B8', 500: '#BB1E55', 600: '#9E1747' },
         gold: { 400: '#E5B354', 500: '#96721A' },
         ink: { 500: '#7A6152', 900: '#1A1008' },

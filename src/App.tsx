@@ -67,7 +67,7 @@ function StoreRoutes() {
 
 function PortalFallback() {
   return (
-    <div className="min-h-[100dvh] grid place-items-center bg-blush-50">
+    <div className="min-h-[100dvh] grid place-items-center bg-sand">
       <div className="w-8 h-8 rounded-full border-2 border-gold-400 border-t-transparent animate-spin" />
     </div>
   );

@@ -14,6 +14,8 @@ interface ShopState {
   setCartOpen: (v: boolean) => void;
   quickView: Product | null;
   setQuickView: (p: Product | null) => void;
+  sizeGuideOpen: boolean;
+  setSizeGuideOpen: (v: boolean) => void;
   searchOpen: boolean;
   setSearchOpen: (v: boolean) => void;
   menuOpen: boolean;
@@ -33,6 +35,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   const cart = loadCart();
   const [cartOpen, setCartOpen] = useState(false);
   const [quickView, setQuickView] = useState<Product | null>(null);
+  const [sizeGuideOpen, setSizeGuideOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMsg[]>([]);
@@ -44,12 +47,13 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToasts((t) => t.filter((m) => m.id !== id)), 2500);
   }, []);
 
-  const overlayOpen = cartOpen || !!quickView || searchOpen || menuOpen;
+  const overlayOpen = cartOpen || !!quickView || sizeGuideOpen || searchOpen || menuOpen;
 
   return (
     <ShopContext.Provider value={{
       products, productsLoading: productsQuery.isLoading,
       cart, cartOpen, setCartOpen, quickView, setQuickView,
+      sizeGuideOpen, setSizeGuideOpen,
       searchOpen, setSearchOpen, menuOpen, setMenuOpen, toasts, toast, overlayOpen,
     }}>
       {children}
