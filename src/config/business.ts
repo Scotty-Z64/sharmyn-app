@@ -5,7 +5,7 @@ export const BUSINESS = {
   tagline: "Women's fashion boutique",
   whatsapp: '+27616455670',
   whatsappSupport: '+27616455670', // same as main WhatsApp unless a separate support line is given
-  email: 'hello@sharmyn.co.za', // TODO
+  email: 'info@sharmyn.co.za',
   instagram: 'https://www.instagram.com/sharmynfashion',
   facebook: 'https://www.facebook.com/share/1DiXX9TUHc/',
 };
