@@ -107,6 +107,8 @@ export default function ProductsTab() {
       name: draft.name.trim(),
       category: draft.category,
       price: Math.round(Number(draft.price)),
+      costPrice: Math.max(0, Math.round(Number(draft.costPrice) || 0)),
+      sizes: draft.category === 'sneakers' && draft.sizes.length ? draft.sizes : null,
       description: draft.description.trim(),
       image: draft.image.trim(),
       featured: draft.featured,
@@ -200,6 +202,12 @@ export default function ProductsTab() {
                       {catLabel(p.category)} · {p.quantity} in stock
                     </p>
                     <p className="font-display text-base font-semibold text-ink-900 mt-1">{formatPrice(p.price)}</p>
+                    {p.costPrice > 0 && (
+                      <p className="text-[11px] text-ink-500">
+                        Cost {formatPrice(p.costPrice)} · Margin <span className="font-semibold text-[#1F8A5B]">{formatPrice(p.price - p.costPrice)}</span>
+                        {p.price > 0 && <span> ({Math.round(((p.price - p.costPrice) / p.price) * 100)}%)</span>}
+                      </p>
+                    )}
                     <div className="mt-1.5"><AvailBadge status={a.status} backDate={p.backDate} /></div>
                   </div>
                   <div className="flex flex-col gap-2 shrink-0 items-end">

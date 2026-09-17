@@ -66,6 +66,7 @@ const adminToken = z.string().min(1);
 const orderItemInput = z.object({
   productId: z.string(),
   qty: z.number().int().positive().max(99),
+  size: z.string().max(16).nullish(),
 });
 
 const customer = z.object({
@@ -96,6 +97,8 @@ const productInput = z.object({
   name: z.string(),
   category: z.enum(["sneakers", "jewellery", "handbags", "clothing"]),
   price: z.number(),
+  costPrice: z.number().min(0).default(0),
+  sizes: z.array(z.string().max(16)).nullish(),
   description: z.string(),
   image: z.string(),
   availability: z.enum(["in-stock", "sold-out", "back-soon"]),

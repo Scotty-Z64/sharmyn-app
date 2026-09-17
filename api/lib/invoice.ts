@@ -7,10 +7,7 @@ import { getDb } from "../queries/connection";
 import { products } from "@db/schema";
 import type { Order } from "@contracts/types";
 import { BUSINESS } from "../../src/config/business";
-
-const INK = "#1A1008";
-const GOLD = "#96721A";
-const SOFT = "#7A6152";
+import { INK, GOLD, SOFT, drawLetterhead } from "./pdf-brand";
 
 function addBusinessDays(from: Date, days: number): Date {
   const d = new Date(from);
@@ -46,14 +43,8 @@ export async function buildInvoicePdf(order: Order): Promise<Buffer> {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    // Header
-    doc.fillColor(INK).fontSize(24).font("Helvetica-Bold").text(BUSINESS.name.toUpperCase(), 50, 50);
-    doc.fillColor(SOFT).fontSize(9).font("Helvetica").text(BUSINESS.tagline, 50, 78);
-    doc.fillColor(GOLD).fontSize(16).font("Helvetica-Bold").text("INVOICE", 400, 50, { width: 145, align: "right" });
-    doc.fillColor(INK).fontSize(10).font("Helvetica").text(`Invoice #: ${order.id}`, 400, 72, { width: 145, align: "right" });
-    doc.text(`Date: ${formatDate(paidOn)}`, 400, 86, { width: 145, align: "right" });
-
-    doc.moveTo(50, 115).lineTo(545, 115).strokeColor("#E8DCD5").lineWidth(1).stroke();
+    // Letterhead — sand band + logo + invoice number/date
+    drawLetterhead(doc, "INVOICE", [`Invoice #: ${order.id}`, `Date: ${formatDate(paidOn)}`]);
 
     // Bill to
     doc.fillColor(GOLD).fontSize(9).font("Helvetica-Bold").text("BILLED TO", 50, 130);
@@ -79,7 +70,7 @@ export async function buildInvoicePdf(order: Order): Promise<Buffer> {
     for (const item of order.items) {
       const ref = refById.get(item.productId);
       doc.text(ref ? `#${ref}` : "—", 50, rowY);
-      doc.text(item.name, 110, rowY, { width: 240 });
+      doc.text(item.size ? `${item.name} (Size ${item.size})` : item.name, 110, rowY, { width: 240 });
       doc.text(String(item.qty), 360, rowY, { width: 40, align: "right" });
       doc.text(`R${item.price}`, 410, rowY, { width: 60, align: "right" });
       doc.text(`R${item.price * item.qty}`, 475, rowY, { width: 70, align: "right" });

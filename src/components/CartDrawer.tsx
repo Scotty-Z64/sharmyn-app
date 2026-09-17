@@ -47,23 +47,26 @@ export default function CartDrawer() {
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
                   <AnimatePresence initial={false}>
                     {lines.map((l) => (
-                      <motion.div key={l.productId} layout exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                      <motion.div key={`${l.productId}-${l.size ?? ''}`} layout exit={{ opacity: 0, height: 0, marginBottom: 0 }}
                         transition={{ duration: 0.3 }} className="flex gap-3 overflow-hidden">
                         <img src={l.product!.image} alt={l.product!.name}
                           className="w-16 h-16 object-cover bg-[#FDF3E7] border border-gold-400/40 shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-ink-900 truncate">{l.product!.name}</p>
-                          <p className="text-xs text-ink-500">{formatPrice(l.product!.price)}</p>
+                          <p className="text-xs text-ink-500">
+                            {formatPrice(l.product!.price)}
+                            {l.size && <span className="ml-1.5 text-ink-900 font-medium">· Size {l.size}</span>}
+                          </p>
                           <div className="mt-2 flex items-center gap-3">
                             <div className="flex items-center border border-gold-400/40">
-                              <button aria-label="Decrease" onClick={() => setCartQty(l.productId, l.qty - 1)}
+                              <button aria-label="Decrease" onClick={() => setCartQty(l.productId, l.qty - 1, l.size)}
                                 className="w-9 h-9 grid place-items-center text-ink-900"><Minus size={14} /></button>
                               <span className="w-5 text-center text-sm font-medium">{l.qty}</span>
-                              <button aria-label="Increase" onClick={() => setCartQty(l.productId, Math.min(l.product!.quantity || l.qty, l.qty + 1))}
+                              <button aria-label="Increase" onClick={() => setCartQty(l.productId, Math.min(l.product!.quantity || l.qty, l.qty + 1), l.size)}
                                 className="w-9 h-9 grid place-items-center text-ink-900"><Plus size={14} /></button>
                             </div>
                             <span className="ml-auto font-display font-semibold text-ink-900">{formatPrice(l.product!.price * l.qty)}</span>
-                            <button aria-label="Remove" onClick={() => removeFromCart(l.productId)}
+                            <button aria-label="Remove" onClick={() => removeFromCart(l.productId, l.size)}
                               className="w-9 h-9 grid place-items-center text-ink-500 hover:text-rose-500"><Trash2 size={15} /></button>
                           </div>
                         </div>

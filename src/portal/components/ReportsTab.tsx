@@ -69,16 +69,17 @@ export default function ReportsTab() {
       ['Orders', report.orderCount],
       ['Revenue', report.revenue],
       ['Paid revenue', report.paidRevenue],
+      ['Paid profit', report.paidProfit],
       ['Average order value', report.avgOrderValue],
       [],
       ['By status'],
       ...Object.entries(report.byStatus).map(([s, n]) => [s, n]),
       [],
-      ['Top products', 'Qty sold', 'Revenue'],
-      ...report.topProducts.map((p) => [p.name, p.qtySold, p.revenue]),
+      ['Top products', 'Qty sold', 'Revenue', 'Profit'],
+      ...report.topProducts.map((p) => [p.name, p.qtySold, p.revenue, p.profit]),
       [],
-      ['Category', 'Qty sold', 'Revenue'],
-      ...report.byCategory.map((c) => [catLabel(c.category), c.qtySold, c.revenue]),
+      ['Category', 'Qty sold', 'Revenue', 'Profit'],
+      ...report.byCategory.map((c) => [catLabel(c.category), c.qtySold, c.revenue, c.profit]),
     ];
     downloadCsv(`sharmyn-report-${isoDateInput(from)}-to-${isoDateInput(to)}.csv`, toCsv(rows));
     toast('Report downloaded');
@@ -118,16 +119,17 @@ export default function ReportsTab() {
         <p className="mt-8 text-sm text-ink-500 text-center">Could not load the report — try again.</p>
       ) : (
         <>
-          <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="mt-4 grid grid-cols-2 lg:grid-cols-5 gap-3">
             {[
               { label: 'Orders', value: report.orderCount },
               { label: 'Revenue', value: formatPrice(report.revenue) },
               { label: 'Paid so far', value: formatPrice(report.paidRevenue) },
+              { label: 'Paid profit', value: formatPrice(report.paidProfit), accent: true },
               { label: 'Avg order', value: formatPrice(report.avgOrderValue) },
             ].map((s) => (
               <div key={s.label} className="bg-white rounded-2xl p-4 shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">{s.label}</p>
-                <p className="font-display text-2xl font-semibold text-ink-900 mt-1">{s.value}</p>
+                <p className={`font-display text-2xl font-semibold mt-1 ${s.accent ? 'text-[#1F8A5B]' : 'text-ink-900'}`}>{s.value}</p>
               </div>
             ))}
           </div>
@@ -146,7 +148,10 @@ export default function ReportsTab() {
                       <span className="w-6 text-center text-[11px] font-semibold text-ink-500">{i + 1}</span>
                       <span className="flex-1 min-w-0 text-sm text-ink-900 truncate">{p.name}</span>
                       <span className="text-[11px] text-ink-500 shrink-0">{p.qtySold} sold</span>
-                      <span className="font-display text-sm font-semibold text-ink-900 shrink-0 w-20 text-right">{formatPrice(p.revenue)}</span>
+                      <span className="text-right shrink-0 w-20">
+                        <span className="block font-display text-sm font-semibold text-ink-900">{formatPrice(p.revenue)}</span>
+                        <span className="block text-[10px] text-[#1F8A5B] font-medium">+{formatPrice(p.profit)}</span>
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -165,7 +170,9 @@ export default function ReportsTab() {
                       <div key={c.category}>
                         <div className="flex items-center justify-between text-sm mb-1">
                           <span className="text-ink-900">{catLabel(c.category)}</span>
-                          <span className="text-ink-500 text-[11px]">{formatPrice(c.revenue)} · {pct}%</span>
+                          <span className="text-ink-500 text-[11px]">
+                            {formatPrice(c.revenue)} · {pct}% · <span className="text-[#1F8A5B] font-medium">+{formatPrice(c.profit)}</span>
+                          </span>
                         </div>
                         <div className="h-2 rounded-full bg-blush-100 overflow-hidden">
                           <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }}

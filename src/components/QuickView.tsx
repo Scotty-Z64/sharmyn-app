@@ -10,8 +10,10 @@ import { WhatsAppIcon } from './WhatsAppFloat';
 export default function QuickView() {
   const { quickView, setQuickView, setCartOpen, setSizeGuideOpen, toast } = useShop();
   const [qty, setQty] = useState(1);
+  const [size, setSize] = useState<string | null>(null);
+  const [sizeError, setSizeError] = useState(false);
 
-  useEffect(() => { setQty(1); }, [quickView]);
+  useEffect(() => { setQty(1); setSize(null); setSizeError(false); }, [quickView]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setQuickView(null); };
     window.addEventListener('keydown', onKey);
@@ -21,12 +23,14 @@ export default function QuickView() {
   const p = quickView;
   const resolved = p ? resolveAvailability(p) : null;
   const status = p && resolved && p.quantity === 0 && resolved.status === 'in-stock' ? 'sold-out' : resolved?.status;
+  const needsSize = !!p && p.category === 'sneakers' && !!p.sizes?.length;
 
   const add = () => {
     if (!p || !resolved || !status) return;
     if (status === 'sold-out') return;
     if (status === 'back-soon') { toast("We'll let you know when it's back 💕"); return; }
-    addToCart(p.id, qty, p.quantity);
+    if (needsSize && !size) { setSizeError(true); return; }
+    addToCart(p.id, qty, p.quantity, size);
     toast('Added to cart');
     setQuickView(null);
     setCartOpen(true);
@@ -71,12 +75,31 @@ export default function QuickView() {
                 </span>
                 <p className="text-sm text-ink-500 leading-relaxed">{p.description}</p>
                 {p.category === 'sneakers' && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm text-ink-900"><span className="font-semibold">Available sizes:</span> 3–8</p>
-                    <button type="button" onClick={() => setSizeGuideOpen(true)}
-                      className="text-[12px] font-semibold text-gold-500 underline underline-offset-2 hover:text-gold-600 transition-colors">
-                      Size guide
-                    </button>
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] uppercase tracking-[0.14em] text-ink-500">
+                        {needsSize ? 'Select size' : 'Sizes'}
+                      </span>
+                      <button type="button" onClick={() => setSizeGuideOpen(true)}
+                        className="text-[12px] font-semibold text-gold-500 underline underline-offset-2 hover:text-gold-600 transition-colors">
+                        Size guide
+                      </button>
+                    </div>
+                    {needsSize ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {p.sizes!.map((s) => (
+                          <button key={s} type="button"
+                            onClick={() => { setSize(s); setSizeError(false); }}
+                            className={`h-10 min-w-[44px] px-3 rounded-full border text-sm font-medium transition-colors ${
+                              size === s ? 'bg-gold-400 border-gold-400 text-white' : 'border-gold-400/50 text-ink-900 hover:border-gold-400'}`}>
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-sm text-ink-900">Available sizes: 3–8</p>
+                    )}
+                    {sizeError && <p className="mt-1.5 text-[12px] text-rose-500">Please pick a size</p>}
                   </div>
                 )}
                 {status === 'in-stock' && (

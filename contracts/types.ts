@@ -11,7 +11,9 @@ export interface Product {
   id: string;
   name: string;
   category: Category;
-  price: number; // ZAR
+  price: number; // ZAR — what the customer pays
+  costPrice: number; // ZAR — what it cost the business (owner-only; drives profit reporting)
+  sizes?: string[] | null; // selectable sizes for sneakers, e.g. ["3","4","5.5"]
   description: string;
   image: string;
   availability: Availability;
@@ -28,13 +30,16 @@ export interface OrderItem {
   productId: string;
   name: string;
   price: number;
+  costPrice: number; // ZAR — snapshotted at order time, drives profit reporting
   qty: number;
+  size?: string | null; // selected shoe size, if applicable
 }
 
 /** What the client sends when placing an order — NO prices (server computes). */
 export interface OrderInputItem {
   productId: string;
   qty: number;
+  size?: string | null;
 }
 
 export interface PudoLockerRef {
@@ -100,7 +105,7 @@ export function fulfilmentStage(o: Pick<Order, "paymentStatus" | "supplierOrdere
 /** POPIA-safe public projection — NO street address, phone or customer email. */
 export interface PublicOrder {
   id: string;
-  items: { name: string; qty: number; price: number }[];
+  items: { name: string; qty: number; price: number; size?: string | null }[];
   delivery: { method: DeliveryMethod; locker?: PudoLockerRef; fee: number } | null;
   trackingNumber: string | null;
   total: number;
@@ -164,12 +169,14 @@ export interface ReportProductRow {
   category: Category;
   qtySold: number;
   revenue: number;
+  profit: number; // revenue - (costPrice * qtySold), snapshotted at order time
 }
 
 export interface ReportCategoryRow {
   category: Category;
   qtySold: number;
   revenue: number;
+  profit: number;
 }
 
 export interface SalesReport {
@@ -179,6 +186,7 @@ export interface SalesReport {
   revenue: number; // sum of non-cancelled order totals
   avgOrderValue: number;
   paidRevenue: number; // sum where paymentStatus = 'paid'
+  paidProfit: number; // sum of (price - costPrice) * qty where paymentStatus = 'paid'
   byStatus: Record<OrderStatus, number>;
   topProducts: ReportProductRow[]; // sorted desc by revenue
   byCategory: ReportCategoryRow[];

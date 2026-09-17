@@ -7,6 +7,7 @@ import type { LucideIcon } from 'lucide-react';
 import { formatPrice } from '@/lib/store';
 import type { PublicOrder, OrderStatus } from '@/lib/store';
 import { trpc } from '@/providers/trpc';
+import BackButton from '@/components/BackButton';
 
 const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number];
 
@@ -260,6 +261,9 @@ export default function Track() {
     <div>
       {/* Hero band */}
       <section className="bg-blush-100 py-14 border-b border-gold-400/30">
+        <div className="max-w-md mx-auto px-4">
+          <BackButton />
+        </div>
         <div className="max-w-md mx-auto px-4 text-center">
           <motion.img
             src="/logo-crown.svg"
@@ -431,7 +435,7 @@ export default function Track() {
                       <li key={`${item.name}-${i}`} className="flex items-center justify-between py-2.5">
                         <div className="min-w-0">
                           <p className="text-[14px] font-medium text-ink-900 truncate">{item.name}</p>
-                          <p className="text-[12px] text-ink-500">Qty {item.qty}</p>
+                          <p className="text-[12px] text-ink-500">Qty {item.qty}{item.size && <span> · Size {item.size}</span>}</p>
                         </div>
                         <p className="text-[14px] font-semibold text-ink-900 shrink-0">{formatPrice(item.price * item.qty)}</p>
                       </li>

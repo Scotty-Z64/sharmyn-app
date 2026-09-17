@@ -91,6 +91,26 @@ app.post("/api/cron/backup", async (c) => {
   }
 });
 
+// Invoice PDF — shared with customers via WhatsApp/email link. The order id
+// is an unguessable 8-char random code (33^8 combinations), the same trust
+// level already used for the payment-result redirect; only paid orders have
+// an invoice, so unpaid/pending orders 404 here.
+app.get("/api/invoice/:orderId", async (c) => {
+  const orderId = c.req.param("orderId");
+  const { findOrder } = await import("./queries/shop");
+  const order = await findOrder(orderId);
+  if (!order || order.paymentStatus !== "paid") return c.json({ error: "Not Found" }, 404);
+  const { buildInvoicePdf } = await import("./lib/invoice");
+  const pdf = await buildInvoicePdf(order);
+  return new Response(pdf, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="sharmyn-invoice-${order.id}.pdf"`,
+      "Cache-Control": "private, max-age=3600",
+    },
+  });
+});
+
 app.use("/api/trpc/*", async (c) => {
   return fetchRequestHandler({
     endpoint: "/api/trpc",

@@ -8,7 +8,7 @@ import type { Exchange, FulfilmentStage } from '@contracts/types';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { ConfirmDialog, STATUS_STYLE, Thumb } from './bits';
-import { waLink } from '@/config/business';
+import { waLink, toIntlPhoneZA } from '@/config/business';
 
 const MISSED_AFTER_DAYS = 3;
 
@@ -351,7 +351,7 @@ function OrderCard({ order }: { order: Order }) {
             {order.customer.phone && (
               <a
                 href={waLink(
-                  order.customer.phone,
+                  toIntlPhoneZA(order.customer.phone),
                   `Hi ${order.customer.name}, your Sharmyn order ${order.id} is currently ${STEP_LABEL[order.status].toLowerCase()}.${order.trackingNumber ? ` Your waybill number is ${order.trackingNumber}.` : ''}`,
                 )}
                 target="_blank"
@@ -468,6 +468,23 @@ function OrderCard({ order }: { order: Order }) {
 
               {/* waybill */}
               <WaybillSection order={order} />
+
+              {/* send invoice + tracking to the customer's WhatsApp — one click, no typing */}
+              {order.paymentStatus === 'paid' && order.customer.phone && (
+                <a
+                  href={waLink(
+                    toIntlPhoneZA(order.customer.phone),
+                    order.trackingNumber
+                      ? `Hi ${order.customer.name}! Your Sharmyn order ${order.id} is on its way 📦\nTracking number: ${order.trackingNumber}\nYour invoice: ${window.location.origin}/api/invoice/${order.id}`
+                      : `Hi ${order.customer.name}! Thanks for your order ${order.id} 💛\nYour invoice: ${window.location.origin}/api/invoice/${order.id}`
+                  )}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full h-11 rounded-full bg-[#25D366] text-white text-[11px] font-semibold uppercase tracking-[0.1em] flex items-center justify-center gap-1.5 hover:bg-[#1FBE5B] transition-colors"
+                >
+                  <WhatsAppIcon size={14} /> Send invoice{order.trackingNumber ? ' + tracking' : ''} via WhatsApp
+                </a>
+              )}
 
               {/* pipeline */}
               {order.status !== 'cancelled' && (

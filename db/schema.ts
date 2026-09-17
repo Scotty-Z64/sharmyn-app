@@ -13,7 +13,9 @@ export const products = mysqlTable("products", {
   id: varchar("id", { length: 32 }).primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   category: mysqlEnum("category", ["sneakers", "jewellery", "handbags", "clothing"]).notNull(),
-  price: int("price").notNull(), // ZAR
+  price: int("price").notNull(), // ZAR — what the customer pays
+  costPrice: int("cost_price").notNull().default(0), // ZAR — what it cost the business, owner-only, drives profit reporting
+  sizes: json("sizes"), // string[] | null — selectable sizes (sneakers), e.g. ["3","4","5.5"]
   description: text("description").notNull(),
   image: text("image").notNull(), // MEDIUMTEXT in prod (see scripts/migrate-hardening.ts)
   availability: mysqlEnum("availability", ["in-stock", "sold-out", "back-soon"]).notNull().default("in-stock"),

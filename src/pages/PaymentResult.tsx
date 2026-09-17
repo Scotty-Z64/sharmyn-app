@@ -7,6 +7,7 @@ import { formatPrice } from '@/lib/store';
 import type { PublicOrder } from '@/lib/store';
 import { BUSINESS, waLink } from '@/config/business';
 import { WhatsAppIcon } from '@/components/WhatsAppFloat';
+import BackButton from '@/components/BackButton';
 
 const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number];
 
@@ -66,6 +67,9 @@ export default function PaymentResult() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-16 md:py-24 text-center">
+      <div className="text-left mb-4">
+        <BackButton fallback="/" />
+      </div>
       {phase === 'confirming' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, ease: EASE }}>
           <Loader2 className="h-10 w-10 mx-auto text-gold-500 animate-spin" />

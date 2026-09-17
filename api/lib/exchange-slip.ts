@@ -4,10 +4,7 @@
 import PDFDocument from "pdfkit";
 import type { Exchange, Order } from "@contracts/types";
 import { BUSINESS } from "../../src/config/business";
-
-const INK = "#1A1008";
-const GOLD = "#96721A";
-const SOFT = "#7A6152";
+import { INK, GOLD, SOFT, drawLetterhead } from "./pdf-brand";
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
@@ -21,14 +18,8 @@ export async function buildExchangeSlipPdf(order: Order, exchange: Exchange): Pr
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    // Header
-    doc.fillColor(INK).fontSize(24).font("Helvetica-Bold").text(BUSINESS.name.toUpperCase(), 50, 50);
-    doc.fillColor(SOFT).fontSize(9).font("Helvetica").text(BUSINESS.tagline, 50, 78);
-    doc.fillColor(GOLD).fontSize(16).font("Helvetica-Bold").text("EXCHANGE SLIP", 350, 50, { width: 195, align: "right" });
-    doc.fillColor(INK).fontSize(10).font("Helvetica").text(`Linked to invoice: ${order.id}`, 350, 72, { width: 195, align: "right" });
-    doc.text(`Date: ${formatDate(new Date(exchange.createdAt))}`, 350, 86, { width: 195, align: "right" });
-
-    doc.moveTo(50, 115).lineTo(545, 115).strokeColor("#E8DCD5").lineWidth(1).stroke();
+    // Letterhead — sand band + logo + slip number/date
+    drawLetterhead(doc, "EXCHANGE SLIP", [`Linked to invoice: ${order.id}`, `Date: ${formatDate(new Date(exchange.createdAt))}`]);
 
     doc.fillColor(GOLD).fontSize(9).font("Helvetica-Bold").text("CUSTOMER", 50, 130);
     doc.fillColor(INK).fontSize(11).font("Helvetica-Bold").text(order.customer.name, 50, 145);

@@ -23,6 +23,7 @@ export type {
 export interface CartItem {
   productId: string;
   qty: number;
+  size?: string | null;
 }
 
 const K_CART = 'sharmyn_cart';
@@ -98,24 +99,32 @@ export function formatPrice(n: number): string {
 // ---- cart ----
 export function loadCart(): CartItem[] { return read<CartItem[]>(K_CART, []); }
 export function saveCart(items: CartItem[]): void { write(K_CART, items); }
-export function addToCart(productId: string, qty = 1, max?: number): void {
+/** Two lines match iff productId AND size are equal (null/undefined size both mean "no size"). */
+function sameLine(a: { productId: string; size?: string | null }, b: { productId: string; size?: string | null }): boolean {
+  return a.productId === b.productId && (a.size ?? null) === (b.size ?? null);
+}
+
+export function addToCart(productId: string, qty = 1, max?: number, size?: string | null): void {
   const cart = loadCart();
-  const found = cart.find((c) => c.productId === productId);
-  if (found) found.qty += qty; else cart.push({ productId, qty });
+  const key = { productId, size };
+  const found = cart.find((c) => sameLine(c, key));
+  if (found) found.qty += qty; else cart.push({ productId, qty, size: size ?? null });
   if (max != null) {
-    const item = cart.find((c) => c.productId === productId);
+    const item = cart.find((c) => sameLine(c, key));
     if (item && item.qty > max) item.qty = Math.max(1, max);
   }
   saveCart(cart);
 }
-export function setCartQty(productId: string, qty: number): void {
+export function setCartQty(productId: string, qty: number, size?: string | null): void {
   let cart = loadCart();
-  if (qty <= 0) cart = cart.filter((c) => c.productId !== productId);
-  else cart = cart.map((c) => (c.productId === productId ? { ...c, qty } : c));
+  const key = { productId, size };
+  if (qty <= 0) cart = cart.filter((c) => !sameLine(c, key));
+  else cart = cart.map((c) => (sameLine(c, key) ? { ...c, qty } : c));
   saveCart(cart);
 }
-export function removeFromCart(productId: string): void {
-  saveCart(loadCart().filter((c) => c.productId !== productId));
+export function removeFromCart(productId: string, size?: string | null): void {
+  const key = { productId, size };
+  saveCart(loadCart().filter((c) => !sameLine(c, key)));
 }
 export function clearCart(): void { saveCart([]); }
 export function cartCount(): number { return loadCart().reduce((s, c) => s + c.qty, 0); }

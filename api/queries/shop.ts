@@ -36,6 +36,8 @@ function toProduct(row: typeof products.$inferSelect): Product {
     name: row.name,
     category: row.category,
     price: row.price,
+    costPrice: row.costPrice,
+    sizes: (row.sizes as string[] | null) ?? null,
     description: row.description,
     image: row.image,
     availability: row.availability,
@@ -74,7 +76,7 @@ function toOrder(row: typeof orders.$inferSelect): Order {
 export function toPublicOrder(order: Order): PublicOrder {
   return {
     id: order.id,
-    items: order.items.map((i) => ({ name: i.name, qty: i.qty, price: i.price })),
+    items: order.items.map((i) => ({ name: i.name, qty: i.qty, price: i.price, size: i.size ?? null })),
     delivery: order.delivery
       ? { method: order.delivery.method, locker: order.delivery.locker, fee: order.delivery.fee }
       : null,
@@ -134,6 +136,8 @@ export async function upsertProduct(
     name: p.name,
     category: p.category,
     price: Math.round(p.price),
+    costPrice: Math.max(0, Math.round(p.costPrice ?? 0)),
+    sizes: p.sizes && p.sizes.length ? p.sizes : null,
     description: p.description,
     image: p.image,
     availability: p.availability,
@@ -272,6 +276,12 @@ export async function placeOrderTx(
           if (!row || row.availability !== "in-stock") {
             throw new Error("OUT_OF_STOCK:" + input.productId);
           }
+          const allowedSizes = (row.sizes as string[] | null) ?? null;
+          if (allowedSizes && allowedSizes.length) {
+            if (!input.size || !allowedSizes.includes(input.size)) {
+              throw new Error("SIZE_REQUIRED:" + input.productId);
+            }
+          }
           // Atomic conditional decrement — affectedRows 0 means insufficient stock.
           const res = (await tx.execute(
             sql`UPDATE products SET quantity = quantity - ${input.qty} WHERE id = ${input.productId} AND quantity >= ${input.qty}`
@@ -282,7 +292,14 @@ export async function placeOrderTx(
           await tx.execute(
             sql`UPDATE products SET availability = 'sold-out' WHERE id = ${input.productId} AND quantity <= 0 AND availability = 'in-stock'`
           );
-          items.push({ productId: row.id, name: row.name, price: row.price, qty: input.qty });
+          items.push({
+            productId: row.id,
+            name: row.name,
+            price: row.price,
+            costPrice: row.costPrice,
+            qty: input.qty,
+            size: input.size ?? null,
+          });
         }
 
         const total = items.reduce((s, i) => s + i.price * i.qty, 0) + delivery.fee;
@@ -550,7 +567,8 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
   const byStatus = Object.fromEntries(ALL_STATUSES.map((s) => [s, 0])) as Record<OrderStatus, number>;
   let revenue = 0;
   let paidRevenue = 0;
-  const productAgg = new Map<string, { name: string; qtySold: number; revenue: number }>();
+  let paidProfit = 0;
+  const productAgg = new Map<string, { name: string; qtySold: number; revenue: number; profit: number }>();
 
   for (const row of rows) {
     const order = toOrder(row);
@@ -559,9 +577,12 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
       revenue += order.total;
       if (order.paymentStatus === "paid") paidRevenue += order.total;
       for (const item of order.items) {
-        const agg = productAgg.get(item.productId) ?? { name: item.name, qtySold: 0, revenue: 0 };
+        const itemProfit = (item.price - (item.costPrice ?? 0)) * item.qty;
+        if (order.paymentStatus === "paid") paidProfit += itemProfit;
+        const agg = productAgg.get(item.productId) ?? { name: item.name, qtySold: 0, revenue: 0, profit: 0 };
         agg.qtySold += item.qty;
         agg.revenue += item.price * item.qty;
+        agg.profit += itemProfit;
         productAgg.set(item.productId, agg);
       }
     }
@@ -582,14 +603,16 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
       category: categoryById.get(productId) ?? "clothing",
       qtySold: v.qtySold,
       revenue: v.revenue,
+      profit: v.profit,
     }))
     .sort((a, b) => b.revenue - a.revenue);
 
-  const byCategoryMap = new Map<Category, { qtySold: number; revenue: number }>();
+  const byCategoryMap = new Map<Category, { qtySold: number; revenue: number; profit: number }>();
   for (const p of topProducts) {
-    const agg = byCategoryMap.get(p.category) ?? { qtySold: 0, revenue: 0 };
+    const agg = byCategoryMap.get(p.category) ?? { qtySold: 0, revenue: 0, profit: 0 };
     agg.qtySold += p.qtySold;
     agg.revenue += p.revenue;
+    agg.profit += p.profit;
     byCategoryMap.set(p.category, agg);
   }
   const byCategory: ReportCategoryRow[] = [...byCategoryMap.entries()]
@@ -604,6 +627,7 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
     revenue,
     avgOrderValue: orderCount > 0 ? Math.round(revenue / orderCount) : 0,
     paidRevenue,
+    paidProfit,
     byStatus,
     topProducts,
     byCategory,

@@ -21,21 +21,24 @@ function loadImg(src: string): Promise<HTMLImageElement> {
   });
 }
 
-function drawBackdrop(ctx: CanvasRenderingContext2D, size: number) {
-  // Cream studio gradient.
+function drawBackdrop(ctx: CanvasRenderingContext2D, size: number, template: HTMLImageElement | null) {
+  if (template) {
+    // The client's real product-photo backdrop — satin sand/gold, stretched to fill the square canvas.
+    ctx.drawImage(template, 0, 0, size, size);
+    return;
+  }
+  // Fallback cream studio gradient (template failed to load).
   const g = ctx.createLinearGradient(0, 0, size, size);
   g.addColorStop(0, '#FBF3E4');
   g.addColorStop(0.55, '#F7E7D0');
   g.addColorStop(1, '#F3E0C9');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
-  // Soft rose vignette, top-left.
   const r = ctx.createRadialGradient(size * 0.3, size * 0.2, 40, size * 0.3, size * 0.2, size * 0.9);
   r.addColorStop(0, 'rgba(255,255,255,0.35)');
   r.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = r;
   ctx.fillRect(0, 0, size, size);
-  // Faint gold corner accent.
   ctx.strokeStyle = 'rgba(198,154,74,0.35)';
   ctx.lineWidth = 3;
   const L = 54;
@@ -63,11 +66,13 @@ async function compositeStudio(src: string, cutout: boolean): Promise<string> {
   const img = await loadImg(src);
   let mark: HTMLImageElement | null = null;
   try { mark = await loadImg('/sharmyn-mark.png'); } catch { mark = null; }
+  let template: HTMLImageElement | null = null;
+  try { template = await loadImg('/product-template.jpg'); } catch { template = null; }
   const canvas = document.createElement('canvas');
   canvas.width = SIZE; canvas.height = SIZE;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('no-canvas');
-  drawBackdrop(ctx, SIZE);
+  drawBackdrop(ctx, SIZE, template);
 
   if (cutout) {
     // Product at ~80% of canvas height, centered.
@@ -136,10 +141,14 @@ async function compositeStudio(src: string, cutout: boolean): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 
+export const SNEAKER_SIZES = ['3', '3.5', '4', '4.5', '5', '5.5', '6', '6.5', '7', '7.5', '8', '8.5'];
+
 export interface Draft {
   name: string;
   category: Category;
   price: string;
+  costPrice: string;
+  sizes: string[];
   description: string;
   image: string;
   featured: boolean;
@@ -155,6 +164,8 @@ export function draftFrom(p?: Product): Draft {
     name: p?.name ?? '',
     category: p?.category ?? 'sneakers',
     price: p ? String(p.price) : '',
+    costPrice: p?.costPrice ? String(p.costPrice) : '',
+    sizes: p?.sizes ?? [],
     description: p?.description ?? '',
     image: p?.image ?? '',
     featured: p?.featured ?? false,
@@ -374,7 +385,7 @@ export default function ProductFormModal({
               </select>
             </div>
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">Price *</label>
+              <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">Selling Price *</label>
               <div className="mt-2 relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-ink-500">R</span>
                 <input type="number" min={0} inputMode="numeric" value={d.price}
@@ -383,6 +394,47 @@ export default function ProductFormModal({
               </div>
             </div>
           </div>
+
+          <div>
+            <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
+              Cost Price <span className="text-ink-500/60 normal-case font-normal">(what it costs you — only you see this)</span>
+            </label>
+            <div className="mt-2 relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-ink-500">R</span>
+              <input type="number" min={0} inputMode="numeric" value={d.costPrice}
+                onChange={(e) => set('costPrice', e.target.value)} placeholder="0"
+                className={`${input} pl-8`} />
+            </div>
+            {d.price && d.costPrice && !isNaN(Number(d.price)) && !isNaN(Number(d.costPrice)) && (
+              <p className="mt-1.5 text-xs text-ink-500">
+                Margin: <span className="font-semibold text-ink-900">{formatPrice(Number(d.price) - Number(d.costPrice))}</span>
+                {Number(d.price) > 0 && (
+                  <span> ({Math.round(((Number(d.price) - Number(d.costPrice)) / Number(d.price)) * 100)}%)</span>
+                )}
+              </p>
+            )}
+          </div>
+
+          {d.category === 'sneakers' && (
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
+                Available Sizes <span className="text-ink-500/60 normal-case font-normal">(tap to toggle — leave empty to hide size selection)</span>
+              </label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {SNEAKER_SIZES.map((s) => {
+                  const active = d.sizes.includes(s);
+                  return (
+                    <button key={s} type="button"
+                      onClick={() => set('sizes', active ? d.sizes.filter((x) => x !== s) : [...d.sizes, s])}
+                      className={`h-9 min-w-[40px] px-2.5 rounded-full border text-sm font-medium transition-colors ${
+                        active ? 'bg-gold-400 border-gold-400 text-white' : 'border-blush-100 text-ink-500 hover:border-gold-400'}`}>
+                      {s}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>

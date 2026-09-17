@@ -138,7 +138,7 @@ export default function Checkout() {
     }
     setPlacing(true);
     // Slim payload — prices and the delivery fee are recomputed server-side.
-    const items = lines.map((l) => ({ productId: l.product.id, qty: l.qty }));
+    const items = lines.map((l) => ({ productId: l.product.id, qty: l.qty, size: l.size ?? null }));
     const methodLabel =
       delivery === 'pudo' ? 'Pudo Locker Pickup R60'
       : delivery === 'collect' ? 'Collect in Joburg (Free)'
@@ -208,6 +208,10 @@ export default function Checkout() {
             const name = lines.find((l) => l.productId === productId)?.product.name ?? 'An item';
             toast(`Sorry, ${name} just sold out`);
             utils.shop.products.invalidate();
+          } else if (msg.includes('SIZE_REQUIRED:')) {
+            const productId = msg.split('SIZE_REQUIRED:')[1]?.split(/[\s"']/)[0];
+            const name = lines.find((l) => l.productId === productId)?.product.name ?? 'An item';
+            toast(`Please pick a size for ${name} before checking out`);
           } else {
             toast('Something went wrong — please try again');
           }
@@ -325,13 +329,13 @@ export default function Checkout() {
     <>
       <ul className="divide-y divide-blush-100">
         {lines.map((l) => (
-          <li key={l.productId} className="flex items-center gap-3 py-3">
+          <li key={`${l.productId}-${l.size ?? ''}`} className="flex items-center gap-3 py-3">
             <img src={l.product.image} alt={l.product.name} className="h-14 w-14 rounded-xl object-cover bg-blush-100" />
             <div className="flex-1 min-w-0">
               <p className="text-[14px] font-medium text-ink-900 truncate">
                 <span className="text-ink-500">#{l.product.refNumber}</span> {l.product.name}
               </p>
-              <p className="text-[12px] text-ink-500">Qty {l.qty}</p>
+              <p className="text-[12px] text-ink-500">Qty {l.qty}{l.size && <span> · Size {l.size}</span>}</p>
             </div>
             <p className="text-[14px] font-semibold text-ink-900">{formatPrice(l.product.price * l.qty)}</p>
           </li>

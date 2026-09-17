@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Bell, Eye, EyeOff, Loader2, LogOut } from 'lucide-react';
+import { ArrowLeft, Bell, Eye, EyeOff, Loader2, LogOut } from 'lucide-react';
 import { trpc } from '@/providers/trpc';
 import { PortalProvider, clearPortalToken, readPortalToken, storePortalToken, usePortal } from '@/portal/lib/portal';
 import OverviewTab, { useStats } from '@/portal/components/OverviewTab';
@@ -151,6 +151,12 @@ function Dashboard() {
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gold-400/30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-2">
           <span className="flex items-center gap-2 min-w-0">
+            {tab !== 'overview' && (
+              <button onClick={() => setTab('overview')} aria-label="Back to overview"
+                className="w-9 h-9 -ml-1 grid place-items-center rounded-full text-ink-500 hover:text-gold-500 hover:bg-blush-50 transition shrink-0">
+                <ArrowLeft size={18} />
+              </button>
+            )}
             <img src="/sharmyn-mark.png" alt="" className="w-8 h-8 rounded-full" />
             <span className="font-display italic text-lg font-semibold text-ink-900 truncate">Sharmyn · Owner Portal</span>
           </span>

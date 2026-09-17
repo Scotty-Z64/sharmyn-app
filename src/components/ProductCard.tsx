@@ -31,11 +31,18 @@ export default function ProductCard({ product, index = 0 }: { product: Product; 
   const resolved = resolveAvailability(product);
   const status = product.quantity === 0 && resolved.status === 'in-stock' ? 'sold-out' : resolved.status;
 
+  const needsSize = product.category === 'sneakers' && !!product.sizes?.length;
+
   const onAdd = (e: ReactMouseEvent) => {
     e.stopPropagation();
     if (status === 'sold-out') return;
     if (status === 'back-soon') {
       toast("We'll let you know when it's back 💕");
+      return;
+    }
+    if (needsSize) {
+      // Sizes must be picked — route to Quick View instead of adding directly.
+      setQuickView(product);
       return;
     }
     addToCart(product.id, 1, product.quantity);
@@ -80,7 +87,7 @@ export default function ProductCard({ product, index = 0 }: { product: Product; 
                 ? 'bg-[#FBF3E2] text-[#B07A1E] hover:bg-[#F5E8CC]'
                 : 'bg-gold-400 text-white hover:bg-gold-500 active:bg-gold-500'
           }`}>
-          {status === 'sold-out' ? 'Sold Out' : status === 'back-soon' ? 'Notify Me' : 'Add to Cart'}
+          {status === 'sold-out' ? 'Sold Out' : status === 'back-soon' ? 'Notify Me' : needsSize ? 'Select Size' : 'Add to Cart'}
         </button>
       </div>
     </motion.article>
