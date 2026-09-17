@@ -14,7 +14,7 @@ const SHOP_LINKS = [
 export default function Footer() {
   return (
     <footer id="contact" className="bg-white border-t border-gold-400/50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-2 gap-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-2 sm:grid-cols-3 gap-8">
         <div>
           <h4 className="text-[11px] uppercase tracking-[0.2em] text-gold-500 font-semibold mb-4">Shop</h4>
           <ul className="space-y-2.5">
@@ -43,6 +43,14 @@ export default function Footer() {
                 {BUSINESS.email}
               </a>
             </li>
+          </ul>
+        </div>
+        <div className="col-span-2 sm:col-span-1">
+          <h4 className="text-[11px] uppercase tracking-[0.2em] text-gold-500 font-semibold mb-4">Legal</h4>
+          <ul className="space-y-2.5">
+            <li><Link to="/terms" className="text-sm text-ink-900 hover:text-rose-500 transition-colors">Terms of Sale</Link></li>
+            <li><Link to="/returns" className="text-sm text-ink-900 hover:text-rose-500 transition-colors">Returns & Exchanges</Link></li>
+            <li><Link to="/privacy" className="text-sm text-ink-900 hover:text-rose-500 transition-colors">Privacy Policy</Link></li>
           </ul>
         </div>
       </div>

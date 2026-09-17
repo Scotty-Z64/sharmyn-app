@@ -388,6 +388,12 @@ export default function Checkout() {
           ? 'Secure card / instant EFT payment. Your order is confirmed as soon as payment clears.'
           : 'Pay via EFT, SnapScan or card on delivery. We\u2019ll confirm your order shortly.'}
       </p>
+      <p className="mt-2 text-[11px] text-ink-500 text-center">
+        By placing this order, you agree to our{' '}
+        <Link to="/terms" className="underline hover:text-gold-500">Terms of Sale</Link>,{' '}
+        <Link to="/returns" className="underline hover:text-gold-500">Returns Policy</Link>, and{' '}
+        <Link to="/privacy" className="underline hover:text-gold-500">Privacy Policy</Link>.
+      </p>
     </>
   );
 

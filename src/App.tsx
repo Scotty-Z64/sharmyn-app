@@ -7,6 +7,9 @@ import Home from '@/pages/Home';
 import Checkout from '@/pages/Checkout';
 import Track from '@/pages/Track';
 import PaymentResult from '@/pages/PaymentResult';
+import Privacy from '@/pages/Privacy';
+import Terms from '@/pages/Terms';
+import Returns from '@/pages/Returns';
 
 // Owner portal — lazy chunk so store visitors never download portal code.
 const PortalAdmin = lazy(() => import('@/portal/Admin'));
@@ -60,6 +63,9 @@ function StoreRoutes() {
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/track" element={<Track />} />
         <Route path="/payment/result" element={<PaymentResult />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/returns" element={<Returns />} />
       </Routes>
     </Layout>
   );
