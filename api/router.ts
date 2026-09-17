@@ -18,6 +18,7 @@ import {
   setOrderStatus,
   setTrackingNumber,
   setOrderPaymentRef,
+  setOrderPaymentGateway,
   markOrderPaid,
   markOrderPaymentFailed,
   listNotifications,
@@ -29,7 +30,15 @@ import {
   markInvoiceSent,
   findProduct,
 } from "./queries/shop";
-import { paymentsEnabled, createYocoCheckout, verifyYocoCheckout, refundYocoCheckout } from "./lib/payments";
+import {
+  paymentsEnabled,
+  activeGateway,
+  yocoEnabled,
+  createYocoCheckout,
+  verifyYocoCheckout,
+  refundYocoCheckout,
+  buildPayfastRedirect,
+} from "./lib/payments";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
 import { publishToInstagram } from "./lib/meta";
 import {
@@ -181,7 +190,7 @@ export const appRouter = createRouter({
         }
       }),
 
-    // ---- online payments (Yoco) ----
+    // ---- online payments (Yoco / Payfast) ----
     paymentConfig: publicQuery.query(() => ({ enabled: paymentsEnabled() })),
     createPayment: publicQuery
       .input(z.object({ orderId: z.string() }))
@@ -189,27 +198,49 @@ export const appRouter = createRouter({
         const order = await findOrder(input.orderId);
         if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
         if (order.paymentStatus === "paid") return { alreadyPaid: true as const, redirectUrl: null };
-        if (!paymentsEnabled()) {
+        const gateway = activeGateway();
+        if (!gateway) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PAYMENTS_NOT_CONFIGURED" });
+        }
+        await setOrderPaymentGateway(order.id, gateway);
+        if (gateway === "payfast") {
+          const { redirectUrl } = await buildPayfastRedirect(order, requestOrigin(ctx.req));
+          return { alreadyPaid: false as const, redirectUrl };
         }
         const { checkoutId, redirectUrl } = await createYocoCheckout(order, requestOrigin(ctx.req));
         await setOrderPaymentRef(order.id, checkoutId);
         return { alreadyPaid: false as const, redirectUrl };
       }),
 
-    // Fallback confirmation (the webhook at POST /api/webhooks/yoco is primary).
-    // Cross-checks the checkout's amount + metadata.orderId against the order
-    // before marking it paid. Idempotent: safe when the webhook already ran.
+    // Fallback confirmation for when the customer lands back on /payment/result
+    // before the webhook has landed. For Yoco this actively re-verifies the
+    // checkout via their API (cross-checking amount + metadata.orderId). Payfast
+    // has no equivalent "verify by id" endpoint for a standard merchant account —
+    // its ITN webhook (POST /api/webhooks/payfast) is authoritative, so this just
+    // briefly polls the DB for it to land (it's typically near-instant, often
+    // arriving before or around the same time as this browser redirect).
     confirmPayment: publicQuery
       .input(z.object({ orderId: z.string() }))
       .mutation(async ({ input }) => {
-        const order = await findOrder(input.orderId);
+        let order = await findOrder(input.orderId);
         if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
         if (order.paymentStatus === "paid") {
           return { paymentStatus: order.paymentStatus, order: toPublicOrder(order) };
         }
         if (!paymentsEnabled()) return { paymentStatus: order.paymentStatus, order: null }; // no-op when disabled
-        if (!order.paymentRef) return { paymentStatus: order.paymentStatus, order: null };
+
+        if (order.paymentGateway === "payfast") {
+          for (let attempt = 0; attempt < 5 && order.paymentStatus !== "paid"; attempt++) {
+            if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
+            order = (await findOrder(input.orderId)) ?? order;
+          }
+          if (order.paymentStatus === "paid") {
+            return { paymentStatus: order.paymentStatus, order: toPublicOrder(order) };
+          }
+          return { paymentStatus: order.paymentStatus, order: null };
+        }
+
+        if (!yocoEnabled() || !order.paymentRef) return { paymentStatus: order.paymentStatus, order: null };
         const { paid, status, amount, orderId } = await verifyYocoCheckout(order.paymentRef);
         if (paid) {
           // Never mark paid on a mismatched checkout.
@@ -219,7 +250,7 @@ export const appRouter = createRouter({
             );
             return { paymentStatus: order.paymentStatus, order: null };
           }
-          const updated = await markOrderPaid(order.id, order.paymentRef);
+          const updated = await markOrderPaid(order.id, order.paymentRef, "yoco");
           if (updated) {
             void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
             sendInvoiceOnce(updated);
@@ -450,7 +481,7 @@ export const appRouter = createRouter({
         if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
         void notifyCustomer("order_cancelled", order).catch((e) => console.error("[notify]", e));
 
-        if (order.refundStatus === "pending" && order.paymentRef && paymentsEnabled()) {
+        if (order.refundStatus === "pending" && order.paymentGateway === "yoco" && order.paymentRef && yocoEnabled()) {
           try {
             const { refunded } = await refundYocoCheckout(order.paymentRef, Math.round(order.total * 100));
             if (refunded) {
@@ -486,13 +517,13 @@ export const appRouter = createRouter({
         assertAdminToken(input.token);
         const order = await findOrder(input.id);
         if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
-        if (!paymentsEnabled()) {
+        if (!yocoEnabled()) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PAYMENTS_NOT_CONFIGURED" });
         }
-        if (!order.paymentRef || order.paymentStatus !== "paid") {
+        if (order.paymentGateway !== "yoco" || !order.paymentRef || order.paymentStatus !== "paid") {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: "NOT_A_YOCO_PAYMENT — refund this one manually (setRefundStatus) once you've refunded however it was actually paid.",
+            message: "NOT_A_YOCO_PAYMENT — refund this one manually (via the Payfast dashboard, or setRefundStatus once refunded however it was actually paid).",
           });
         }
         const { refunded, status } = await refundYocoCheckout(order.paymentRef, Math.round(order.total * 100));

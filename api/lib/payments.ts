@@ -1,12 +1,29 @@
-// Gateway-agnostic online payments. Currently backed by Yoco checkouts;
-// a different gateway (e.g. Payfast) can replace the internals without
-// changing the tRPC surface.
-import type { Order } from "@contracts/types";
+// Gateway-agnostic online payments. Two gateways are wired in: Yoco (hosted
+// checkout API) and Payfast (signed-redirect + ITN webhook). Whichever is
+// configured becomes the active gateway for new checkouts; Payfast wins if
+// both are set. Each PAID order remembers which gateway it went through
+// (Order.paymentGateway) so refunds/verification route to the right place.
+import type { Order, PaymentGateway } from "@contracts/types";
 
 const YOCO_API = "https://payments.yoco.com/api/checkouts";
 
-export function paymentsEnabled(): boolean {
+export function yocoEnabled(): boolean {
   return !!process.env.YOCO_SECRET_KEY;
+}
+
+export function payfastEnabled(): boolean {
+  return !!(process.env.PAYFAST_MERCHANT_ID && process.env.PAYFAST_MERCHANT_KEY);
+}
+
+export function paymentsEnabled(): boolean {
+  return payfastEnabled() || yocoEnabled();
+}
+
+/** Which gateway a NEW checkout should use. Payfast takes priority when both are configured. */
+export function activeGateway(): PaymentGateway | null {
+  if (payfastEnabled()) return "payfast";
+  if (yocoEnabled()) return "yoco";
+  return null;
 }
 
 function key(): string {
@@ -102,5 +119,123 @@ export async function verifyYocoCheckout(checkoutId: string): Promise<{
     status,
     amount: typeof data.amount === "number" ? data.amount : null,
     orderId: data.metadata?.orderId ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------
+// Payfast — signed-redirect checkout + ITN (Instant Transaction
+// Notification) webhook. Unlike Yoco there is no "create a session" API
+// call: the customer's browser is redirected straight to Payfast with a
+// signed query string, Payfast redirects back to return_url/cancel_url,
+// and — independently and authoritatively — POSTs the transaction to
+// notify_url. https://developers.payfast.co.za/docs
+// ---------------------------------------------------------------------
+
+function payfastHost(): string {
+  return process.env.PAYFAST_SANDBOX === "true" ? "https://sandbox.payfast.co.za" : "https://www.payfast.co.za";
+}
+
+function payfastCreds(): { merchantId: string; merchantKey: string; passphrase: string | null } {
+  const merchantId = process.env.PAYFAST_MERCHANT_ID;
+  const merchantKey = process.env.PAYFAST_MERCHANT_KEY;
+  if (!merchantId || !merchantKey) throw new Error("PAYMENTS_NOT_CONFIGURED");
+  return { merchantId, merchantKey, passphrase: process.env.PAYFAST_PASSPHRASE || null };
+}
+
+/**
+ * Percent-encode exactly like PHP's urlencode() (spaces as '+', and a
+ * handful of characters JS's encodeURIComponent leaves unescaped) — Payfast's
+ * reference implementation is PHP and their signature check is byte-exact.
+ */
+function pfEncode(value: string): string {
+  return encodeURIComponent(value)
+    .replace(/%20/g, "+")
+    .replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+}
+
+/** Builds the urlencoded `key=value&key2=value2...` string Payfast signs, in insertion order, skipping blanks. */
+function pfParamString(fields: Record<string, string | undefined>, passphrase: string | null): string {
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === undefined || v === "") continue;
+    parts.push(`${k}=${pfEncode(v.trim())}`);
+  }
+  if (passphrase) parts.push(`passphrase=${pfEncode(passphrase)}`);
+  return parts.join("&");
+}
+
+async function pfSignature(fields: Record<string, string | undefined>, passphrase: string | null): Promise<string> {
+  const { createHash } = await import("node:crypto");
+  return createHash("md5").update(pfParamString(fields, passphrase)).digest("hex");
+}
+
+export interface PayfastRedirect {
+  redirectUrl: string;
+}
+
+/** Builds the signed Payfast redirect URL for an order. m_payment_id = order.id, so the ITN can find it back. */
+export async function buildPayfastRedirect(order: Order, origin: string): Promise<PayfastRedirect> {
+  const { merchantId, merchantKey, passphrase } = payfastCreds();
+  const base = origin.replace(/\/$/, "");
+  const itemName = order.items.length === 1 ? order.items[0].name : `Sharmyn order ${order.id}`;
+
+  // Field order matters for the signature — Payfast's own examples use this order.
+  const fields: Record<string, string | undefined> = {
+    merchant_id: merchantId,
+    merchant_key: merchantKey,
+    return_url: `${base}/payment/result?orderId=${encodeURIComponent(order.id)}&status=success`,
+    cancel_url: `${base}/payment/result?orderId=${encodeURIComponent(order.id)}&status=cancelled`,
+    notify_url: `${base}/api/webhooks/payfast`,
+    name_first: order.customer.name.split(" ")[0] || order.customer.name,
+    email_address: order.customer.email || undefined,
+    m_payment_id: order.id,
+    amount: order.total.toFixed(2),
+    item_name: itemName.slice(0, 100),
+  };
+  const signature = await pfSignature(fields, passphrase);
+  const query = pfParamString(fields, null) + `&signature=${signature}`;
+  return { redirectUrl: `${payfastHost()}/eng/process?${query}` };
+}
+
+export interface PayfastItn {
+  mPaymentId: string;
+  pfPaymentId: string;
+  paymentStatus: string; // "COMPLETE" when paid
+  amountGross: number; // Rand
+  signatureValid: boolean;
+}
+
+/**
+ * Verifies an incoming ITN POST: recomputes the signature over the fields AS
+ * PAYFAST SENT THEM (their order, not ours) and cross-checks with Payfast's
+ * own validate endpoint (server-to-server confirmation that this really came
+ * from Payfast, not a spoofed request) — https://developers.payfast.co.za/docs#step_3_confirm_payment
+ */
+export async function verifyPayfastItn(fields: Record<string, string>): Promise<PayfastItn> {
+  const { passphrase } = payfastCreds();
+  const { signature, ...rest } = fields;
+  const expected = await pfSignature(rest, passphrase);
+  const signatureValid = !!signature && signature.toLowerCase() === expected.toLowerCase();
+
+  let serverConfirmed = false;
+  try {
+    const body = pfParamString(rest, null);
+    const res = await fetch(`${payfastHost()}/eng/query/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    const text = (await res.text()).trim();
+    serverConfirmed = text === "VALID";
+  } catch (e) {
+    console.error("[payfast] server validate call failed:", e);
+  }
+
+  return {
+    mPaymentId: fields.m_payment_id ?? "",
+    pfPaymentId: fields.pf_payment_id ?? "",
+    paymentStatus: fields.payment_status ?? "",
+    amountGross: parseFloat(fields.amount_gross ?? "0"),
+    signatureValid: signatureValid && serverConfirmed,
   };
 }

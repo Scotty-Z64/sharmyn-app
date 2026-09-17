@@ -279,9 +279,10 @@ function OrderCard({ order }: { order: Order }) {
 
   // One-click: calls Yoco directly and flips refundStatus in the same step —
   // no trip to the Yoco dashboard. Only works for orders actually paid
-  // through Yoco (has a paymentRef); otherwise falls back to markRefunded
-  // once the owner has refunded however it was actually paid (cash/EFT).
-  const canRefundViaYoco = !!order.paymentRef;
+  // through Yoco; Payfast refunds aren't API-driven on a standard merchant
+  // account, so those (and cash/EFT) fall back to markRefunded once the
+  // owner has refunded however it was actually paid.
+  const canRefundViaYoco = order.paymentGateway === 'yoco' && !!order.paymentRef;
   const refundViaYoco = async () => {
     if (refundYocoMut.isPending) return;
     try {
@@ -557,6 +558,9 @@ function OrderCard({ order }: { order: Order }) {
                   <p className="mt-1">Stock was restored automatically.</p>
                   {order.refundStatus === 'pending' && (
                     <div className="mt-2 space-y-1.5">
+                      {order.paymentGateway === 'payfast' && (
+                        <p className="text-[11px] text-ink-500">Refund this one from your Payfast dashboard, then mark it refunded below.</p>
+                      )}
                       {canRefundViaYoco && (
                         <button onClick={() => void refundViaYoco()} disabled={refundYocoMut.isPending}
                           className="w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50">
@@ -575,6 +579,9 @@ function OrderCard({ order }: { order: Order }) {
               )}
               {order.status !== 'cancelled' && order.refundStatus === 'pending' && (
                 <div className="space-y-1.5">
+                  {order.paymentGateway === 'payfast' && (
+                    <p className="text-[11px] text-ink-500">Refund this one from your Payfast dashboard, then mark it refunded below.</p>
+                  )}
                   {canRefundViaYoco && (
                     <button onClick={() => void refundViaYoco()} disabled={refundYocoMut.isPending}
                       className="w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50">
@@ -595,7 +602,9 @@ function OrderCard({ order }: { order: Order }) {
                   <ConfirmDialog
                     title={`Cancel order ${order.id}?`}
                     body={order.paymentStatus === 'paid'
-                      ? "Stock will be restored, and we'll try to refund it via Yoco automatically. If that doesn't go through, it'll be flagged \"Refund due\" for a one-click retry."
+                      ? order.paymentGateway === 'yoco'
+                        ? "Stock will be restored, and we'll try to refund it via Yoco automatically. If that doesn't go through, it'll be flagged \"Refund due\" for a one-click retry."
+                        : "Stock will be restored. It'll be flagged \"Refund due\" so you don't forget to refund it (via Payfast or however it was paid)."
                       : 'Stock will be restored and the order marked as cancelled.'}
                     confirmLabel="Cancel order"
                     onConfirm={() => void cancelOrder()}

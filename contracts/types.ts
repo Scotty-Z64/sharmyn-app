@@ -4,6 +4,7 @@ export type Category = "sneakers" | "jewellery" | "handbags" | "clothing";
 export type Availability = "in-stock" | "sold-out" | "back-soon";
 export type OrderStatus = "pending" | "processing" | "shipped" | "delivered" | "cancelled";
 export type PaymentStatus = "unpaid" | "paid" | "failed";
+export type PaymentGateway = "yoco" | "payfast";
 export type RefundStatus = "none" | "pending" | "refunded";
 export type DeliveryMethod = "pudo" | "door" | "collect";
 
@@ -84,6 +85,7 @@ export interface Order {
   paymentStatus: PaymentStatus;
   refundStatus: RefundStatus;
   paymentRef?: string | null; // gateway checkout/payment id
+  paymentGateway?: PaymentGateway | null;
   supplierOrderedAt?: string | null;
   stockReceivedAt?: string | null;
   invoiceSentAt?: string | null;

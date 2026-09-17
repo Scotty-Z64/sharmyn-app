@@ -385,7 +385,7 @@ export default function Checkout() {
       <p className="mt-3 flex items-start gap-1.5 text-[12px] text-ink-500">
         <Crown className="h-3.5 w-3.5 mt-0.5 shrink-0 text-gold-500" />
         {wantsOnlinePay
-          ? 'Secure card / instant EFT payment via Yoco. Your order is confirmed as soon as payment clears.'
+          ? 'Secure card / instant EFT payment. Your order is confirmed as soon as payment clears.'
           : 'Pay via EFT, SnapScan or card on delivery. We\u2019ll confirm your order shortly.'}
       </p>
     </>
@@ -564,7 +564,7 @@ export default function Checkout() {
                 <CreditCard className="h-5 w-5 text-rose-500 shrink-0" />
                 <span className="flex-1">
                   <span className="block text-[14px] font-semibold text-ink-900">Pay online now — card / instant EFT</span>
-                  <span className="block text-[12px] text-ink-500">Secure payment via Yoco · you&rsquo;ll be redirected after placing your order</span>
+                  <span className="block text-[12px] text-ink-500">Secure payment · you&rsquo;ll be redirected after placing your order</span>
                 </span>
               </label>
               <label

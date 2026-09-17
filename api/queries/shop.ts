@@ -64,6 +64,7 @@ function toOrder(row: typeof orders.$inferSelect): Order {
     paymentStatus: (row.paymentStatus as Order["paymentStatus"]) ?? "unpaid",
     refundStatus: (row.refundStatus as RefundStatus) ?? "none",
     paymentRef: row.paymentRef ?? null,
+    paymentGateway: (row.paymentGateway as Order["paymentGateway"]) ?? null,
     supplierOrderedAt: row.supplierOrderedAt ? row.supplierOrderedAt.toISOString() : null,
     stockReceivedAt: row.stockReceivedAt ? row.stockReceivedAt.toISOString() : null,
     invoiceSentAt: row.invoiceSentAt ? row.invoiceSentAt.toISOString() : null,
@@ -481,11 +482,23 @@ export async function setOrderPaymentRef(id: string, paymentRef: string): Promis
   return { ...existing, paymentRef };
 }
 
+/** Records which gateway a checkout was started with, before payment completes. */
+export async function setOrderPaymentGateway(id: string, paymentGateway: Order["paymentGateway"]): Promise<Order | null> {
+  const existing = await findOrder(id);
+  if (!existing) return null;
+  await getDb().update(orders).set({ paymentGateway }).where(eq(orders.id, id));
+  return { ...existing, paymentGateway };
+}
+
 /**
  * Mark an order paid and advance it to "processing" (payment confirms the order),
  * appending to statusHistory. Idempotent: if already paid, returns the order as-is.
  */
-export async function markOrderPaid(id: string, paymentRef: string | null): Promise<Order | null> {
+export async function markOrderPaid(
+  id: string,
+  paymentRef: string | null,
+  paymentGateway?: Order["paymentGateway"]
+): Promise<Order | null> {
   const existing = await findOrder(id);
   if (!existing) return null;
   if (existing.paymentStatus === "paid") return existing;
@@ -494,11 +507,12 @@ export async function markOrderPaid(id: string, paymentRef: string | null): Prom
       ? [...existing.statusHistory, { status: "processing" as OrderStatus, at: new Date().toISOString() }]
       : existing.statusHistory;
   const status = existing.status === "pending" ? ("processing" as OrderStatus) : existing.status;
+  const gateway = paymentGateway ?? existing.paymentGateway ?? null;
   await getDb()
     .update(orders)
-    .set({ paymentStatus: "paid", paymentRef: paymentRef ?? existing.paymentRef ?? null, status, statusHistory })
+    .set({ paymentStatus: "paid", paymentRef: paymentRef ?? existing.paymentRef ?? null, paymentGateway: gateway, status, statusHistory })
     .where(eq(orders.id, id));
-  return { ...existing, paymentStatus: "paid", paymentRef: paymentRef ?? existing.paymentRef ?? null, status, statusHistory };
+  return { ...existing, paymentStatus: "paid", paymentRef: paymentRef ?? existing.paymentRef ?? null, paymentGateway: gateway, status, statusHistory };
 }
 
 /** Mark an order payment failed (keeps statusHistory untouched). */

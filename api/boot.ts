@@ -45,7 +45,7 @@ app.post("/api/webhooks/yoco", async (c) => {
       );
       return c.json({ ok: true });
     }
-    const updated = await markOrderPaid(order.id, payload.id);
+    const updated = await markOrderPaid(order.id, payload.id, "yoco");
     if (updated) {
       void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
       if (!updated.invoiceSentAt) {
@@ -55,6 +55,53 @@ app.post("/api/webhooks/yoco", async (c) => {
     }
   } catch (e) {
     console.error("[yoco-webhook] error:", e);
+  }
+  return c.json({ ok: true });
+});
+
+// Payfast ITN (Instant Transaction Notification) — the authoritative payment
+// confirmation path for Payfast, independent of the customer's browser
+// redirect. Always answers 200 fast (Payfast retries aggressively on
+// anything else); failures are logged, never surfaced to the gateway.
+app.post("/api/webhooks/payfast", async (c) => {
+  try {
+    const parsed = await c.req.parseBody();
+    const fields: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === "string") fields[k] = v;
+    }
+    const mPaymentId = fields.m_payment_id;
+    if (!mPaymentId) return c.json({ ok: true });
+
+    const { findOrder, markOrderPaid, markInvoiceSent } = await import("./queries/shop");
+    const { verifyPayfastItn } = await import("./lib/payments");
+    const { notifyOwner, sendInvoice } = await import("./lib/notify");
+
+    const order = await findOrder(mPaymentId);
+    if (!order) {
+      console.error(`[payfast-itn] unknown order ${mPaymentId}`);
+      return c.json({ ok: true });
+    }
+    if (order.paymentStatus === "paid") return c.json({ ok: true }); // idempotent
+
+    const v = await verifyPayfastItn(fields);
+    const amountOk = Math.abs(v.amountGross - order.total) < 0.01; // Rand, allow sub-cent float noise
+    if (!v.signatureValid || v.mPaymentId !== order.id || v.paymentStatus !== "COMPLETE" || !amountOk) {
+      console.error(
+        `[payfast-itn] rejected for ${order.id}: sigValid=${v.signatureValid} status=${v.paymentStatus} amount=${v.amountGross} expected=${order.total}`
+      );
+      return c.json({ ok: true });
+    }
+    const updated = await markOrderPaid(order.id, v.pfPaymentId, "payfast");
+    if (updated) {
+      void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
+      if (!updated.invoiceSentAt) {
+        void markInvoiceSent(updated.id).catch((e) => console.error("[invoice] failed to flag sent:", e));
+        void sendInvoice(updated).catch((e) => console.error("[invoice] send failed:", e));
+      }
+    }
+  } catch (e) {
+    console.error("[payfast-itn] error:", e);
   }
   return c.json({ ok: true });
 });
