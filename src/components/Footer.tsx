@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { Facebook, Instagram } from 'lucide-react';
 import { BUSINESS, waLink } from '@/config/business';
 import { WhatsAppIcon } from './WhatsAppFloat';
 
@@ -45,10 +46,20 @@ export default function Footer() {
         </div>
       </div>
       <div className="border-t border-gold-400/25">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-ink-500 text-center">
             © 2025 Sharmyn Boutique · Style That Defines You · South Africa
           </p>
+          <div className="flex items-center gap-3">
+            <a href={BUSINESS.facebook} target="_blank" rel="noreferrer" aria-label="Facebook"
+              className="w-9 h-9 grid place-items-center rounded-full border border-gold-400/40 text-gold-500 hover:bg-gold-400 hover:text-white transition-colors">
+              <Facebook size={15} />
+            </a>
+            <a href={BUSINESS.instagram} target="_blank" rel="noreferrer" aria-label="Instagram"
+              className="w-9 h-9 grid place-items-center rounded-full border border-gold-400/40 text-gold-500 hover:bg-gold-400 hover:text-white transition-colors">
+              <Instagram size={15} />
+            </a>
+          </div>
         </div>
       </div>
     </footer>

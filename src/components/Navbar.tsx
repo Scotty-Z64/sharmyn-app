@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Facebook, Instagram, Menu, Search, ShoppingBag, X } from 'lucide-react';
 import { useShop } from '@/lib/shop';
+import { BUSINESS } from '@/config/business';
 
 export const MENU_LINKS = [
   { label: 'Sneakers', to: '/#sneakers' },
@@ -135,11 +136,11 @@ export default function Navbar() {
                 </motion.div>
               </nav>
               <div className="border-t border-gold-400/20 px-6 py-5 flex items-center gap-4">
-                <a href="https://facebook.com" target="_blank" rel="noreferrer" aria-label="Facebook"
+                <a href={BUSINESS.facebook} target="_blank" rel="noreferrer" aria-label="Facebook"
                   className="w-11 h-11 grid place-items-center rounded-full border border-gold-400/40 text-gold-500 hover:bg-gold-400 hover:text-white transition-colors">
                   <Facebook size={18} />
                 </a>
-                <a href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="Instagram"
+                <a href={BUSINESS.instagram} target="_blank" rel="noreferrer" aria-label="Instagram"
                   className="w-11 h-11 grid place-items-center rounded-full border border-gold-400/40 text-gold-500 hover:bg-gold-400 hover:text-white transition-colors">
                   <Instagram size={18} />
                 </a>
