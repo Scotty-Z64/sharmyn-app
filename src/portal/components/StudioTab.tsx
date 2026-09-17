@@ -17,6 +17,13 @@ import type { StudioPost } from '@contracts/types';
 type TemplateKey = 'new-in' | 'sale' | 'restocked' | 'elegant';
 type Accent = 'gold' | 'rose';
 type Occasion = 'everyday' | 'weekend' | 'payday' | 'gift' | 'seasonal';
+type FormatKey = 'square' | 'story' | 'landscape';
+
+const FORMATS: { key: FormatKey; label: string; ratio: string; w: number; h: number }[] = [
+  { key: 'square', label: 'Instagram / Facebook Post', ratio: '1:1', w: 1080, h: 1080 },
+  { key: 'story', label: 'Story / WhatsApp Status', ratio: '9:16', w: 1080, h: 1920 },
+  { key: 'landscape', label: 'Facebook Feed (wide)', ratio: '1.91:1', w: 1200, h: 630 },
+];
 
 const GOLD = '#96721A';
 const GOLD_LIGHT = '#E5B354';
@@ -86,6 +93,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 
 interface RenderOpts {
   template: TemplateKey;
+  format: FormatKey;
   photo: HTMLImageElement | null;
   logo: HTMLImageElement | null;
   headline: string;
@@ -132,11 +140,19 @@ function drawLogo(ctx: CanvasRenderingContext2D, logo: HTMLImageElement | null, 
   }
 }
 
-/** Render the selected template onto a 1080x1080 canvas. */
+/**
+ * Render the selected template onto a canvas sized for the chosen format
+ * (square/story/landscape). All layout math is expressed as fractions of
+ * canvas width/height (tuned against a 1080x1080 reference), not fixed
+ * pixels, so the same template composes sensibly at any of the 3 aspect
+ * ratios instead of only the original Instagram square.
+ */
 export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
-  const S = 1080;
-  canvas.width = S;
-  canvas.height = S;
+  const fmt = FORMATS.find((f) => f.key === o.format) ?? FORMATS[0];
+  const W = fmt.w, H = fmt.h;
+  const M = Math.min(W, H); // for things that should stay "square-ish" regardless of format
+  canvas.width = W;
+  canvas.height = H;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const accent = o.accent === 'gold' ? GOLD : ROSE;
@@ -147,51 +163,53 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
 
   if (o.template === 'elegant') {
     // Full-bleed photo + subtle gradient + logo watermark + caption bar.
-    drawPhoto(ctx, o.photo, 0, 0, S, S);
-    const grad = ctx.createLinearGradient(0, S * 0.55, 0, S);
+    drawPhoto(ctx, o.photo, 0, 0, W, H);
+    const grad = ctx.createLinearGradient(0, H * 0.55, 0, H);
     grad.addColorStop(0, 'rgba(43,29,35,0)');
     grad.addColorStop(1, 'rgba(43,29,35,0.72)');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, S, S);
+    ctx.fillRect(0, 0, W, H);
     ctx.globalAlpha = 0.9;
-    drawLogo(ctx, o.logo, S / 2, 48, 96);
+    drawLogo(ctx, o.logo, W / 2, H * 0.044, H * 0.089);
     ctx.globalAlpha = 1;
     ctx.textAlign = 'center';
     if (headline) {
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = `600 74px ${SERIF}`;
-      ctx.fillText(headline, S / 2, S - 190);
+      ctx.font = `600 ${Math.round(H * 0.0685)}px ${SERIF}`;
+      ctx.fillText(headline, W / 2, H - H * 0.176, W * 0.9);
     }
     if (subtext) {
       ctx.fillStyle = 'rgba(255,255,255,0.92)';
-      ctx.font = `italic 500 40px ${SERIF}`;
-      ctx.fillText(subtext, S / 2, S - 128);
+      ctx.font = `italic 500 ${Math.round(H * 0.037)}px ${SERIF}`;
+      ctx.fillText(subtext, W / 2, H - H * 0.1185, W * 0.9);
     }
     if (price) {
       ctx.fillStyle = GOLD_LIGHT;
-      ctx.font = `700 46px ${SERIF}`;
-      ctx.fillText(price, S / 2, S - 66);
+      ctx.font = `700 ${Math.round(H * 0.0426)}px ${SERIF}`;
+      ctx.fillText(price, W / 2, H - H * 0.0611);
     }
     return;
   }
 
   // Shared background
   ctx.fillStyle = o.template === 'sale' ? ROSE_BG : IVORY;
-  ctx.fillRect(0, 0, S, S);
+  ctx.fillRect(0, 0, W, H);
 
   if (o.template === 'new-in') {
-    drawLogo(ctx, o.logo, S / 2, 44, 88);
+    drawLogo(ctx, o.logo, W / 2, H * 0.0407, H * 0.0815);
     ctx.textAlign = 'center';
     ctx.fillStyle = accent;
-    ctx.font = `700 68px ${SERIF}`;
-    ctx.fillText(headline || 'NEW IN STORE', S / 2, 208);
+    ctx.font = `700 ${Math.round(H * 0.063)}px ${SERIF}`;
+    ctx.fillText(headline || 'NEW IN STORE', W / 2, H * 0.1926, W * 0.9);
     if (subtext) {
       ctx.fillStyle = INK;
-      ctx.font = `italic 500 36px ${SERIF}`;
-      ctx.fillText(subtext, S / 2, 258);
+      ctx.font = `italic 500 ${Math.round(H * 0.0333)}px ${SERIF}`;
+      ctx.fillText(subtext, W / 2, H * 0.2389, W * 0.9);
     }
-    // Elegant frame: gold border + white mat
-    const fx = 170, fy = 300, fs = 740;
+    // Elegant frame: gold border + white mat — kept square via M, sized down for wide/landscape.
+    const fs = M * (fmt.key === 'landscape' ? 0.52 : 0.6852);
+    const fx = (W - fs) / 2;
+    const fy = H * (fmt.key === 'landscape' ? 0.22 : 0.2778);
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(fx - 16, fy - 16, fs + 32, fs + 32);
     ctx.strokeStyle = accent;
@@ -200,80 +218,85 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
     drawPhoto(ctx, o.photo, fx, fy, fs, fs);
     if (price) {
       ctx.fillStyle = INK;
-      ctx.font = `700 52px ${SERIF}`;
-      ctx.fillText(price, S / 2, S - 24);
+      ctx.font = `700 ${Math.round(H * 0.0481)}px ${SERIF}`;
+      ctx.fillText(price, W / 2, H - H * 0.0222);
     }
     return;
   }
 
   if (o.template === 'sale') {
-    drawLogo(ctx, o.logo, S / 2, 40, 80);
+    drawLogo(ctx, o.logo, W / 2, H * 0.037, H * 0.074);
     // Gold % OFF badge
-    const bx = S / 2, by = 300, br = 150;
+    const bx = W / 2, by = H * 0.2778, br = M * 0.1389;
     ctx.beginPath();
     ctx.arc(bx, by, br, 0, Math.PI * 2);
     ctx.fillStyle = accent;
     ctx.fill();
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
-    ctx.font = `700 84px ${SERIF}`;
-    ctx.fillText((o.salePct || '20') + '%', bx, by - 4);
-    ctx.font = `700 44px ${SERIF}`;
-    ctx.fillText('OFF', bx, by + 52);
+    ctx.font = `700 ${Math.round(br * 0.56)}px ${SERIF}`;
+    ctx.fillText((o.salePct || '20') + '%', bx, by - br * 0.027);
+    ctx.font = `700 ${Math.round(br * 0.293)}px ${SERIF}`;
+    ctx.fillText('OFF', bx, by + br * 0.347);
     ctx.fillStyle = INK;
-    ctx.font = `700 64px ${SERIF}`;
-    ctx.fillText(headline || 'SALE', S / 2, 520);
+    ctx.font = `700 ${Math.round(H * 0.0593)}px ${SERIF}`;
+    ctx.fillText(headline || 'SALE', W / 2, H * 0.4815, W * 0.9);
     if (subtext) {
-      ctx.font = `italic 500 36px ${SERIF}`;
-      ctx.fillText(subtext, S / 2, 570);
+      ctx.font = `italic 500 ${Math.round(H * 0.0333)}px ${SERIF}`;
+      ctx.fillText(subtext, W / 2, H * 0.5278, W * 0.9);
     }
-    drawPhoto(ctx, o.photo, 220, 610, 640, 360);
+    const photoW = W * 0.6, photoH = H * (fmt.key === 'landscape' ? 0.22 : 0.3333);
+    drawPhoto(ctx, o.photo, (W - photoW) / 2, H * 0.5648, photoW, photoH);
     if (price) {
       if (oldPrice) {
-        ctx.font = `500 44px ${SERIF}`;
+        ctx.font = `500 ${Math.round(H * 0.0407)}px ${SERIF}`;
         const oldW = ctx.measureText(oldPrice).width;
-        const px = S / 2 - oldW - 24;
+        const px = W / 2 - oldW - 24;
         ctx.fillStyle = '#8A7A80';
         ctx.textAlign = 'left';
-        ctx.fillText(oldPrice, px, S - 30);
+        ctx.fillText(oldPrice, px, H - H * 0.0278);
         ctx.strokeStyle = ROSE;
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(px - 6, S - 46);
-        ctx.lineTo(px + oldW + 6, S - 46);
+        ctx.moveTo(px - 6, H - H * 0.0426);
+        ctx.lineTo(px + oldW + 6, H - H * 0.0426);
         ctx.stroke();
         ctx.fillStyle = ROSE;
-        ctx.font = `700 54px ${SERIF}`;
-        ctx.fillText(price, px + oldW + 32, S - 30);
+        ctx.font = `700 ${Math.round(H * 0.05)}px ${SERIF}`;
+        ctx.fillText(price, px + oldW + 32, H - H * 0.0278);
       } else {
         ctx.textAlign = 'center';
         ctx.fillStyle = ROSE;
-        ctx.font = `700 54px ${SERIF}`;
-        ctx.fillText(price, S / 2, S - 30);
+        ctx.font = `700 ${Math.round(H * 0.05)}px ${SERIF}`;
+        ctx.fillText(price, W / 2, H - H * 0.0278);
       }
     }
     return;
   }
 
   // restocked
-  drawLogo(ctx, o.logo, S / 2, 44, 88);
+  drawLogo(ctx, o.logo, W / 2, H * 0.0407, H * 0.0815);
   // Banner
+  const bannerY = H * 0.1759, bannerH = H * 0.1019;
   ctx.fillStyle = accent;
-  ctx.fillRect(0, 190, S, 110);
+  ctx.fillRect(0, bannerY, W, bannerH);
   ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'center';
-  ctx.font = `700 58px ${SERIF}`;
-  ctx.fillText(headline || 'BACK IN STOCK', S / 2, 264);
+  ctx.font = `700 ${Math.round(H * 0.0537)}px ${SERIF}`;
+  ctx.fillText(headline || 'BACK IN STOCK', W / 2, bannerY + bannerH * 0.667, W * 0.9);
   if (subtext) {
     ctx.fillStyle = INK;
-    ctx.font = `italic 500 36px ${SERIF}`;
-    ctx.fillText(subtext, S / 2, 356);
+    ctx.font = `italic 500 ${Math.round(H * 0.0333)}px ${SERIF}`;
+    ctx.fillText(subtext, W / 2, H * 0.3296, W * 0.9);
   }
-  drawPhoto(ctx, o.photo, 190, 400, 700, 560);
+  const photoY = bannerY + bannerH + H * 0.037;
+  const photoH = H - photoY - H * 0.09;
+  const photoW = Math.min(W * 0.65, photoH * (fmt.key === 'landscape' ? 1.4 : 1.25));
+  drawPhoto(ctx, o.photo, (W - photoW) / 2, photoY, photoW, photoH);
   if (price) {
     ctx.fillStyle = INK;
-    ctx.font = `700 52px ${SERIF}`;
-    ctx.fillText(price, S / 2, S - 24);
+    ctx.font = `700 ${Math.round(H * 0.0481)}px ${SERIF}`;
+    ctx.fillText(price, W / 2, H - H * 0.0222);
   }
 }
 
@@ -571,6 +594,7 @@ export default function StudioTab() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Template state
+  const [format, setFormat] = useState<FormatKey>('square');
   const [template, setTemplate] = useState<TemplateKey>('new-in');
   const [headline, setHeadline] = useState('');
   const [subtext, setSubtext] = useState('');
@@ -610,12 +634,17 @@ export default function StudioTab() {
     const c = canvasRef.current;
     if (!c) return;
     renderPost(c, {
-      template, photo: photoImg.current, logo: logoImg.current,
+      template, format, photo: photoImg.current, logo: logoImg.current,
       headline, subtext, price, showPrice, accent, salePct, oldPrice,
     });
-  }, [template, headline, subtext, price, showPrice, accent, salePct, oldPrice]);
+  }, [template, format, headline, subtext, price, showPrice, accent, salePct, oldPrice]);
 
   useEffect(() => { redraw(); }, [redraw]);
+  // The canvas only mounts once step reaches 2; if the photo/logo finished
+  // loading earlier (while it didn't exist yet), redraw() no-ops on a null
+  // ref and nothing repaints it until some other state change fires redraw
+  // again. Re-trigger explicitly the moment the canvas appears.
+  useEffect(() => { if (step >= 2) redraw(); }, [step, redraw]);
 
   const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -681,7 +710,7 @@ export default function StudioTab() {
   const downloadPng = (dataUrl: string) => {
     const a = document.createElement('a');
     a.href = dataUrl;
-    a.download = `sharmyn-${template}-${Date.now()}.png`;
+    a.download = `sharmyn-${template}-${format}-${Date.now()}.png`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -788,7 +817,21 @@ export default function StudioTab() {
         <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
           className="mt-4 bg-white rounded-2xl border border-blush-100 p-5">
           <StepHeader n={2} title="Pick a design" hint="Tap a style, then edit the words" />
-          <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+
+          <p className={`mt-4 ${labelCls}`}>Where will you post it?</p>
+          <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {FORMATS.map((f) => (
+              <button key={f.key} onClick={() => setFormat(f.key)}
+                className={`h-14 px-3 rounded-xl border text-left transition ${
+                  format === f.key ? 'border-rose-500 bg-blush-100 ring-1 ring-rose-300' : 'border-blush-100 hover:border-rose-300'}`}>
+                <span className={`block text-[11px] font-semibold ${format === f.key ? 'text-ink-900' : 'text-ink-500'}`}>{f.label}</span>
+                <span className="block text-[10px] text-ink-500">{f.ratio}</span>
+              </button>
+            ))}
+          </div>
+
+          <p className={`mt-4 ${labelCls}`}>Choose a style</p>
+          <div className="mt-1.5 grid grid-cols-2 sm:grid-cols-4 gap-2">
             {TEMPLATES.map((t) => (
               <button key={t.key} onClick={() => setTemplate(t.key)}
                 className={`h-14 rounded-xl border text-[11px] font-semibold uppercase tracking-[0.08em] transition ${
