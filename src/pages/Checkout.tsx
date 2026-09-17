@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Copy, CreditCard, Crown, Loader2, Lock, PackageOpen, ShoppingBag, Truck, Store } from 'lucide-react';
+import { ArrowLeft, Copy, CreditCard, Crown, Loader2, Lock, PackageOpen, ShoppingBag, Store } from 'lucide-react';
 import { useShop } from '@/lib/shop';
 import { trpc } from '@/providers/trpc';
 import { clearCart, formatPrice, formatAddress } from '@/lib/store';
@@ -529,32 +529,6 @@ export default function Checkout() {
                 )}
               </div>
             )}
-            <label
-              className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition min-h-[44px] ${
-                delivery === 'door' ? 'border-rose-500 bg-blush-100/60 ring-2 ring-rose-500/20' : 'border-rose-300/50 bg-white'
-              }`}
-            >
-              <input type="radio" name="delivery" value="door" checked={delivery === 'door'} onChange={() => selectDelivery('door')} className="accent-rose-600 h-4 w-4" />
-              <Truck className="h-5 w-5 text-rose-500 shrink-0" />
-              <span className="flex-1">
-                <span className="block text-[14px] font-semibold text-ink-900">
-                  Door Delivery — R80
-                </span>
-                <span className="block text-[12px] text-ink-500">3–5 working days · flat rate, anywhere in SA</span>
-              </span>
-            </label>
-            <label
-              className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition min-h-[44px] ${
-                delivery === 'collect' ? 'border-rose-500 bg-blush-100/60 ring-2 ring-rose-500/20' : 'border-rose-300/50 bg-white'
-              }`}
-            >
-              <input type="radio" name="delivery" value="collect" checked={delivery === 'collect'} onChange={() => selectDelivery('collect')} className="accent-rose-600 h-4 w-4" />
-              <Store className="h-5 w-5 text-rose-500 shrink-0" />
-              <span className="flex-1">
-                <span className="block text-[14px] font-semibold text-ink-900">Collect in Joburg — Free</span>
-                <span className="block text-[12px] text-ink-500">We&rsquo;ll let you know when it&rsquo;s ready</span>
-              </span>
-            </label>
           </div>
 
           {/* Payment method */}

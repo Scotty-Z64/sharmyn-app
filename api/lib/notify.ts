@@ -5,13 +5,57 @@ import { insertNotification } from "../queries/shop";
 
 export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock";
 
+const DELIVERY_LABEL: Record<string, string> = {
+  pudo: "Pudo Locker Pickup",
+  door: "Door Delivery",
+  collect: "Collect in Joburg",
+};
+
+/** Where-and-who-to-send-it fulfilment block — the part of the email that actually
+ * matters for packing/dispatch, kept separate so it's easy to scan at a glance. */
+function deliveryInstructions(order: Order): string {
+  const d = order.delivery;
+  if (!d) return "Delivery: not set";
+  const label = DELIVERY_LABEL[d.method] ?? d.method;
+  if (d.method === "pudo" && d.locker) {
+    return [
+      `Delivery method: ${label} (fee R${d.fee})`,
+      `  Send to locker: ${d.locker.name}`,
+      `  Locker address: ${d.locker.address}, ${d.locker.city}, ${d.locker.province}`,
+    ].join("\n");
+  }
+  if (d.method === "door") {
+    return [
+      `Delivery method: ${label} (fee R${d.fee})`,
+      `  Deliver to: ${order.customer.address}, ${order.customer.city}`,
+    ].join("\n");
+  }
+  return `Delivery method: ${label} (fee R${d.fee})`;
+}
+
 function summarise(order: Order): string {
-  const lines = order.items.map((i) => `  - ${i.name} x${i.qty} @ R${i.price}`).join("\n");
+  const lines = order.items
+    .map((i) => `  - ${i.name}${i.size ? ` (Size ${i.size})` : ""} x${i.qty} @ R${i.price}`)
+    .join("\n");
+  const customerBlock = [
+    "CUSTOMER",
+    `  Name: ${order.customer.name}`,
+    `  Phone: ${order.customer.phone || "—"}`,
+    `  Email: ${order.customer.email || "—"}`,
+  ];
+  if (order.customer.notes) customerBlock.push(`  Notes from customer: ${order.customer.notes}`);
+
   return [
-    `Order ${order.id}`,
-    `Customer: ${order.customer.name} (${order.customer.email || order.customer.phone})`,
-    `Items:\n${lines}`,
-    `Delivery: ${order.delivery?.method ?? "n/a"} (fee R${order.delivery?.fee ?? 0})`,
+    `ORDER ${order.id}`,
+    "",
+    customerBlock.join("\n"),
+    "",
+    "ITEMS",
+    lines,
+    "",
+    "DELIVERY — where & who to send this to",
+    deliveryInstructions(order),
+    "",
     `Total: R${order.total}`,
     `Status: ${order.status} / payment: ${order.paymentStatus}`,
   ].join("\n");
