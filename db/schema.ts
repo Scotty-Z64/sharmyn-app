@@ -12,10 +12,13 @@ import {
 export const products = mysqlTable("products", {
   id: varchar("id", { length: 32 }).primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
-  category: mysqlEnum("category", ["sneakers", "jewellery", "handbags", "clothing"]).notNull(),
+  // varchar, not enum — categories/brands grow over time (see migrate-shoe-categories.ts,
+  // which widened this from a fixed enum so adding "shoes" didn't need a column rebuild).
+  category: varchar("category", { length: 20 }).notNull(),
+  brand: varchar("brand", { length: 30 }), // sneakers/shoes only, e.g. "Nike", "Adidas Samba" — null for other categories
   price: int("price").notNull(), // ZAR — what the customer pays
   costPrice: int("cost_price").notNull().default(0), // ZAR — what it cost the business, owner-only, drives profit reporting
-  sizes: json("sizes"), // string[] | null — selectable sizes (sneakers), e.g. ["3","4","5.5"]
+  sizes: json("sizes"), // Record<string, number> | null — per-size stock, e.g. {"3": 6, "4.5": 2} — sneakers/shoes only
   description: text("description").notNull(),
   image: text("image").notNull(), // MEDIUMTEXT in prod (see scripts/migrate-hardening.ts)
   availability: mysqlEnum("availability", ["in-stock", "sold-out", "back-soon"]).notNull().default("in-stock"),

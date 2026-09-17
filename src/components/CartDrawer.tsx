@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Minus, Plus, Trash2, X } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useShop } from '@/lib/shop';
-import { formatPrice, removeFromCart, setCartQty } from '@/lib/store';
+import { formatPrice, removeFromCart, setCartQty, isSizedCategory } from '@/lib/store';
 
 export default function CartDrawer() {
   const { cart, products, cartOpen, setCartOpen, setSizeGuideOpen } = useShop();
@@ -11,7 +11,7 @@ export default function CartDrawer() {
     .map((c) => ({ ...c, product: products.find((p) => p.id === c.productId) }))
     .filter((l) => l.product);
   const subtotal = lines.reduce((s, l) => s + l.product!.price * l.qty, 0);
-  const hasSneakers = lines.some((l) => l.product!.category === 'sneakers');
+  const hasSneakers = lines.some((l) => isSizedCategory(l.product!.category));
 
   return (
     <AnimatePresence>

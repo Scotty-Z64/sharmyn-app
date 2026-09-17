@@ -134,7 +134,7 @@ function detectColumn(header: string): ColField {
   return 'ignore';
 }
 
-const VALID_CATS: Category[] = ['sneakers', 'jewellery', 'handbags', 'clothing'];
+const VALID_CATS: Category[] = ['sneakers', 'shoes', 'jewellery', 'handbags', 'clothing'];
 
 function rowsFromTable(_headers: string[], data: string[][], mapping: ColField[]): Row[] {
   const idx = (f: ColField) => mapping.findIndex((m) => m === f);

@@ -1,7 +1,7 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { motion } from 'framer-motion';
 import type { Product } from '@/lib/store';
-import { addToCart, formatPrice, resolveAvailability } from '@/lib/store';
+import { addToCart, formatPrice, resolveAvailability, isSizedCategory } from '@/lib/store';
 import { useShop } from '@/lib/shop';
 
 export function AvailabilityBadge({ product }: { product: Product }) {
@@ -31,7 +31,7 @@ export default function ProductCard({ product, index = 0 }: { product: Product; 
   const resolved = resolveAvailability(product);
   const status = product.quantity === 0 && resolved.status === 'in-stock' ? 'sold-out' : resolved.status;
 
-  const needsSize = product.category === 'sneakers' && !!product.sizes?.length;
+  const needsSize = isSizedCategory(product.category) && !!product.sizes && Object.keys(product.sizes).length > 0;
 
   const onAdd = (e: ReactMouseEvent) => {
     e.stopPropagation();
@@ -75,6 +75,9 @@ export default function ProductCard({ product, index = 0 }: { product: Product; 
         </div>
       </button>
       <div className="pt-2.5 flex flex-col gap-0.5 flex-1">
+        {product.brand && (
+          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-500">{product.brand}</span>
+        )}
         <h3 className="text-[13px] sm:text-[15px] font-medium text-ink-900 leading-snug">
           {product.name} <span className="text-ink-500 font-normal">#{product.refNumber}</span>
         </h3>

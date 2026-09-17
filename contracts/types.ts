@@ -1,6 +1,17 @@
 // Shared types between api/ and src/ (import via @contracts/)
 
-export type Category = "sneakers" | "jewellery" | "handbags" | "clothing";
+export type Category = "sneakers" | "shoes" | "jewellery" | "handbags" | "clothing";
+/** Sneaker/shoe brand or style, customer-facing filter — flat list (Adidas sub-styles included). */
+export const SHOE_BRANDS = [
+  "Nike", "Puma", "New Balance", "Converse", "Adidas",
+  "Adidas Samba", "Adidas Spezial", "Adidas Sneaker", "Adidas Gazelle",
+] as const;
+export type ShoeBrand = (typeof SHOE_BRANDS)[number];
+/** Categories that track per-size stock and show a size picker at checkout. */
+export const SIZED_CATEGORIES: Category[] = ["sneakers", "shoes"];
+export function isSizedCategory(category: Category): boolean {
+  return SIZED_CATEGORIES.includes(category);
+}
 export type Availability = "in-stock" | "sold-out" | "back-soon";
 export type OrderStatus = "pending" | "processing" | "shipped" | "delivered" | "cancelled";
 export type PaymentStatus = "unpaid" | "paid" | "failed";
@@ -12,9 +23,10 @@ export interface Product {
   id: string;
   name: string;
   category: Category;
+  brand?: string | null; // sneakers/shoes only, e.g. "Nike", "Adidas Samba"
   price: number; // ZAR — what the customer pays
   costPrice: number; // ZAR — what it cost the business (owner-only; drives profit reporting)
-  sizes?: string[] | null; // selectable sizes for sneakers, e.g. ["3","4","5.5"]
+  sizes?: Record<string, number> | null; // per-size stock for sneakers/shoes, e.g. {"3": 6, "4.5": 2}
   description: string;
   image: string;
   availability: Availability;

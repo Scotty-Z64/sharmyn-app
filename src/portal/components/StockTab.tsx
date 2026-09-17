@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, Check, Minus, PackagePlus, Plus } from 'lucide-react';
 import type { Availability, Product } from '@/portal/lib/utils-shop';
 import { formatPrice, formatShortDate, resolveAvailability } from '@/portal/lib/utils-shop';
+import { isSizedCategory } from '@contracts/types';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { AvailBadge, Thumb } from './bits';
@@ -25,6 +26,7 @@ function StockRow({ p }: { p: Product }) {
   const a = resolveAvailability(p);
   const mode = modeOf(p);
   const busy = adjust.isPending || upsert.isPending;
+  const sized = isSizedCategory(p.category) && !!p.sizes && Object.keys(p.sizes).length > 0;
 
   const ok = (message: string) => {
     refresh();
@@ -105,29 +107,51 @@ function StockRow({ p }: { p: Product }) {
         </div>
       </div>
 
-      {/* quantity stepper */}
-      <div className="mt-3 flex items-center gap-2">
-        <button onClick={() => void bump(-1)} disabled={busy || p.quantity === 0} aria-label={`Remove one unit of ${p.name}`}
-          className="w-11 h-11 grid place-items-center rounded-full border border-blush-100 text-ink-900 hover:bg-blush-50 active:scale-95 transition disabled:opacity-40">
-          <Minus size={16} />
-        </button>
-        <div className="flex-1 text-center">
-          <span className={`font-display text-2xl font-semibold ${p.quantity === 0 ? 'text-rose-600' : p.quantity <= p.lowStockAt ? 'text-[#B07A1E]' : 'text-ink-900'}`}>
-            {p.quantity}
-          </span>
-          <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-500">
-            {p.quantity === 0 ? 'Sold out' : 'units in stock'}
-          </span>
+      {/* quantity stepper — sized products (sneakers/shoes) show a per-size breakdown
+          instead, since the pooled total is derived from the size counts and editing
+          it here directly would desync the two. Edit sizes in the Products tab. */}
+      {sized ? (
+        <div className="mt-3 rounded-xl border border-blush-100 p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-500">Stock by size</span>
+            <span className={`font-display text-lg font-semibold ${p.quantity === 0 ? 'text-rose-600' : p.quantity <= p.lowStockAt ? 'text-[#B07A1E]' : 'text-ink-900'}`}>
+              {p.quantity} total
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {Object.entries(p.sizes as Record<string, number>).sort(([a], [b]) => Number(a) - Number(b)).map(([size, qty]) => (
+              <span key={size} className={`h-8 px-2.5 rounded-full text-[11px] font-medium grid place-items-center ${
+                qty === 0 ? 'bg-[#F1ECEE] text-[#8A7A80]' : 'bg-blush-50 text-ink-900'}`}>
+                {size}: {qty}
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-ink-500">Edit sizes and counts in the Products tab.</p>
         </div>
-        <button onClick={() => void bump(1)} disabled={busy} aria-label={`Add one unit of ${p.name}`}
-          className="w-11 h-11 grid place-items-center rounded-full border border-blush-100 text-ink-900 hover:bg-blush-50 active:scale-95 transition disabled:opacity-40">
-          <Plus size={16} />
-        </button>
-        <button onClick={restock} disabled={busy}
-          className="h-11 px-4 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.08em] flex items-center gap-1.5 hover:bg-gold-400 active:scale-[0.97] transition disabled:opacity-40">
-          <PackagePlus size={15} /> Restock
-        </button>
-      </div>
+      ) : (
+        <div className="mt-3 flex items-center gap-2">
+          <button onClick={() => void bump(-1)} disabled={busy || p.quantity === 0} aria-label={`Remove one unit of ${p.name}`}
+            className="w-11 h-11 grid place-items-center rounded-full border border-blush-100 text-ink-900 hover:bg-blush-50 active:scale-95 transition disabled:opacity-40">
+            <Minus size={16} />
+          </button>
+          <div className="flex-1 text-center">
+            <span className={`font-display text-2xl font-semibold ${p.quantity === 0 ? 'text-rose-600' : p.quantity <= p.lowStockAt ? 'text-[#B07A1E]' : 'text-ink-900'}`}>
+              {p.quantity}
+            </span>
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-500">
+              {p.quantity === 0 ? 'Sold out' : 'units in stock'}
+            </span>
+          </div>
+          <button onClick={() => void bump(1)} disabled={busy} aria-label={`Add one unit of ${p.name}`}
+            className="w-11 h-11 grid place-items-center rounded-full border border-blush-100 text-ink-900 hover:bg-blush-50 active:scale-95 transition disabled:opacity-40">
+            <Plus size={16} />
+          </button>
+          <button onClick={restock} disabled={busy}
+            className="h-11 px-4 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.08em] flex items-center gap-1.5 hover:bg-gold-400 active:scale-[0.97] transition disabled:opacity-40">
+            <PackagePlus size={15} /> Restock
+          </button>
+        </div>
+      )}
 
       {/* low-stock threshold */}
       <div className="mt-3 flex items-center gap-2">

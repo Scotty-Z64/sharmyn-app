@@ -92,6 +92,7 @@ export async function deleteStudioPost(id: string): Promise<void> {
 
 const CATEGORY_HASHTAGS: Record<Product["category"], string> = {
   sneakers: "#SharmynSneakers #SAsneakerhead #WomensSneakers",
+  shoes: "#SharmynShoes #LadiesFootwear #SAshoes",
   jewellery: "#SharmynJewellery #CustomJewellery #HandmadeSA",
   handbags: "#SharmynBags #SABoutique #HandbagLove",
   clothing: "#SharmynStyle #WomensFashionSA #OOTD",

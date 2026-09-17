@@ -2,6 +2,7 @@ import { eq, desc, sql, and, lt, gte, lte } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { getDb } from "./connection";
 import { products, orders, notifications } from "@db/schema";
+import { isSizedCategory } from "@contracts/types";
 import type {
   Product,
   Order,
@@ -34,10 +35,11 @@ function toProduct(row: typeof products.$inferSelect): Product {
   return {
     id: row.id,
     name: row.name,
-    category: row.category,
+    category: row.category as Category,
+    brand: row.brand ?? null,
     price: row.price,
     costPrice: row.costPrice,
-    sizes: (row.sizes as string[] | null) ?? null,
+    sizes: (row.sizes as Record<string, number> | null) ?? null,
     description: row.description,
     image: row.image,
     availability: row.availability,
@@ -132,17 +134,27 @@ export async function upsertProduct(
     refNumber = (maxRow?.m ?? 0) + 1;
   }
 
+  // Sized categories (sneakers/shoes) track stock per size; the pooled `quantity`
+  // is derived from it so every existing low-stock/report/availability check
+  // (which all key off `quantity`) keeps working unchanged.
+  const sized = isSizedCategory(p.category) && p.sizes && Object.keys(p.sizes).length > 0;
+  const sizesValue = sized ? p.sizes : null;
+  const quantityValue = sized
+    ? Object.values(p.sizes as Record<string, number>).reduce((s, n) => s + Math.max(0, Math.round(n)), 0)
+    : Math.max(0, Math.round(p.quantity));
+
   const values = {
     id: p.id,
     name: p.name,
     category: p.category,
+    brand: p.brand?.trim() || null,
     price: Math.round(p.price),
     costPrice: Math.max(0, Math.round(p.costPrice ?? 0)),
-    sizes: p.sizes && p.sizes.length ? p.sizes : null,
+    sizes: sizesValue,
     description: p.description,
     image: p.image,
     availability: p.availability,
-    quantity: Math.max(0, Math.round(p.quantity)),
+    quantity: quantityValue,
     lowStockAt: Math.max(0, Math.round(p.lowStockAt ?? 3)),
     refNumber,
     backDate: p.backDate ? new Date(p.backDate) : null,
@@ -277,16 +289,28 @@ export async function placeOrderTx(
           if (!row || row.availability !== "in-stock") {
             throw new Error("OUT_OF_STOCK:" + input.productId);
           }
-          const allowedSizes = (row.sizes as string[] | null) ?? null;
-          if (allowedSizes && allowedSizes.length) {
-            if (!input.size || !allowedSizes.includes(input.size)) {
-              throw new Error("SIZE_REQUIRED:" + input.productId);
-            }
+          const allowedSizes = (row.sizes as Record<string, number> | null) ?? null;
+          const isSized = !!allowedSizes && Object.keys(allowedSizes).length > 0;
+          if (isSized && (!input.size || !(input.size in (allowedSizes as Record<string, number>)))) {
+            throw new Error("SIZE_REQUIRED:" + input.productId);
           }
+
           // Atomic conditional decrement — affectedRows 0 means insufficient stock.
-          const res = (await tx.execute(
-            sql`UPDATE products SET quantity = quantity - ${input.qty} WHERE id = ${input.productId} AND quantity >= ${input.qty}`
-          )) as unknown as [{ affectedRows: number }];
+          // Sized products decrement both the pooled total AND that size's own
+          // count in the same statement, guarded by both floors so a race
+          // between two orders can never oversell a single size.
+          const res = isSized
+            ? ((await tx.execute(
+                sql`UPDATE products
+                    SET quantity = quantity - ${input.qty},
+                        sizes = JSON_SET(sizes, ${"$.\"" + input.size + "\""}, JSON_EXTRACT(sizes, ${"$.\"" + input.size + "\""}) - ${input.qty})
+                    WHERE id = ${input.productId}
+                      AND quantity >= ${input.qty}
+                      AND JSON_EXTRACT(sizes, ${"$.\"" + input.size + "\""}) >= ${input.qty}`
+              )) as unknown as [{ affectedRows: number }])
+            : ((await tx.execute(
+                sql`UPDATE products SET quantity = quantity - ${input.qty} WHERE id = ${input.productId} AND quantity >= ${input.qty}`
+              )) as unknown as [{ affectedRows: number }]);
           const affected = res?.[0]?.affectedRows ?? 0;
           if (affected === 0) throw new Error("OUT_OF_STOCK:" + input.productId);
           // Auto-flip availability when stock hits zero.
@@ -607,7 +631,7 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
   const categoryById = new Map<string, Category>();
   if (productIds.length) {
     const catalog = await getDb().select().from(products);
-    for (const p of catalog) categoryById.set(p.id, p.category);
+    for (const p of catalog) categoryById.set(p.id, p.category as Category);
   }
 
   const topProducts: ReportProductRow[] = [...productAgg.entries()]

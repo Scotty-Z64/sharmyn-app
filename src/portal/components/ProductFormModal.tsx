@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ImagePlus, Loader2, Sparkles, X } from 'lucide-react';
 import type { Availability, Category, Product } from '@/portal/lib/utils-shop';
-import { CATEGORIES, formatPrice } from '@/portal/lib/utils-shop';
+import { CATEGORIES, SHOE_BRANDS, isSizedCategory, formatPrice } from '@/portal/lib/utils-shop';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { Thumb } from './bits';
@@ -146,9 +146,10 @@ export const SNEAKER_SIZES = ['3', '3.5', '4', '4.5', '5', '5.5', '6', '6.5', '7
 export interface Draft {
   name: string;
   category: Category;
+  brand: string; // '' = none — sneakers/shoes only
   price: string;
   costPrice: string;
-  sizes: string[];
+  sizes: Record<string, string>; // size -> qty, as raw input text; only entries > 0 are saved
   description: string;
   image: string;
   featured: boolean;
@@ -163,9 +164,10 @@ export function draftFrom(p?: Product): Draft {
   return {
     name: p?.name ?? '',
     category: p?.category ?? 'sneakers',
+    brand: p?.brand ?? '',
     price: p ? String(p.price) : '',
     costPrice: p?.costPrice ? String(p.costPrice) : '',
-    sizes: p?.sizes ?? [],
+    sizes: Object.fromEntries(SNEAKER_SIZES.map((s) => [s, p?.sizes?.[s] ? String(p.sizes[s]) : ''])),
     description: p?.description ?? '',
     image: p?.image ?? '',
     featured: p?.featured ?? false,
@@ -401,6 +403,18 @@ export default function ProductFormModal({
             </div>
           </div>
 
+          {isSizedCategory(d.category) && (
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
+                Brand <span className="text-ink-500/60 normal-case font-normal">(optional — lets customers filter by type)</span>
+              </label>
+              <select value={d.brand} onChange={(e) => set('brand', e.target.value)} className={`mt-2 ${input}`}>
+                <option value="">No brand / unbranded</option>
+                {SHOE_BRANDS.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
               Cost Price <span className="text-ink-500/60 normal-case font-normal">(what it costs you — only you see this)</span>
@@ -421,41 +435,55 @@ export default function ProductFormModal({
             )}
           </div>
 
-          {d.category === 'sneakers' && (
+          {isSizedCategory(d.category) ? (
             <div>
               <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
-                Available Sizes <span className="text-ink-500/60 normal-case font-normal">(tap to toggle — leave empty to hide size selection)</span>
+                Stock by size * <span className="text-ink-500/60 normal-case font-normal">(how many of each size you have — leave a size at 0 to hide it from customers)</span>
               </label>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2">
                 {SNEAKER_SIZES.map((s) => {
-                  const active = d.sizes.includes(s);
+                  const qty = d.sizes[s] ?? '';
+                  const hasStock = Number(qty) > 0;
                   return (
-                    <button key={s} type="button"
-                      onClick={() => set('sizes', active ? d.sizes.filter((x) => x !== s) : [...d.sizes, s])}
-                      className={`h-9 min-w-[40px] px-2.5 rounded-full border text-sm font-medium transition-colors ${
-                        active ? 'bg-gold-400 border-gold-400 text-white' : 'border-blush-100 text-ink-500 hover:border-gold-400'}`}>
-                      {s}
-                    </button>
+                    <div key={s} className={`rounded-xl border px-2.5 py-2 transition-colors ${
+                      hasStock ? 'border-gold-400 bg-[#FBF3E2]' : 'border-blush-100'}`}>
+                      <label className="block text-[11px] font-semibold text-ink-900 text-center">Size {s}</label>
+                      <input type="number" min={0} step={1} inputMode="numeric" value={qty}
+                        onChange={(e) => set('sizes', { ...d.sizes, [s]: e.target.value.replace(/\D/g, '') })}
+                        placeholder="0"
+                        className="mt-1 w-full h-9 px-2 rounded-lg border border-blush-100 bg-white text-sm text-center focus:outline-none focus:border-rose-300" />
+                    </div>
                   );
                 })}
               </div>
+              <p className="mt-2 text-xs text-ink-500">
+                Total stock: <span className="font-semibold text-ink-900">{Object.values(d.sizes).reduce((s, v) => s + (Number(v) || 0), 0)}</span>
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">Stock quantity *</label>
+                <input type="number" min={0} step={1} inputMode="numeric" value={d.quantity}
+                  onChange={(e) => set('quantity', e.target.value)} placeholder="0"
+                  className={`mt-2 ${input}`} />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">Low-stock alert at</label>
+                <input type="number" min={0} step={1} inputMode="numeric" value={d.lowStockAt}
+                  onChange={(e) => set('lowStockAt', e.target.value)} placeholder="2"
+                  className={`mt-2 ${input}`} />
+              </div>
             </div>
           )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">Stock quantity *</label>
-              <input type="number" min={0} step={1} inputMode="numeric" value={d.quantity}
-                onChange={(e) => set('quantity', e.target.value)} placeholder="0"
-                className={`mt-2 ${input}`} />
-            </div>
+          {isSizedCategory(d.category) && (
             <div>
               <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">Low-stock alert at</label>
               <input type="number" min={0} step={1} inputMode="numeric" value={d.lowStockAt}
                 onChange={(e) => set('lowStockAt', e.target.value)} placeholder="2"
-                className={`mt-2 ${input}`} />
+                className={`mt-2 ${input} max-w-[140px]`} />
             </div>
-          </div>
+          )}
 
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">Description</label>            <textarea value={d.description} onChange={(e) => set('description', e.target.value)} rows={3}

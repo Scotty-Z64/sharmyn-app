@@ -104,10 +104,11 @@ const deliveryInput = z.object({
 const productInput = z.object({
   id: z.string(),
   name: z.string(),
-  category: z.enum(["sneakers", "jewellery", "handbags", "clothing"]),
+  category: z.enum(["sneakers", "shoes", "jewellery", "handbags", "clothing"]),
+  brand: z.string().max(30).nullish(),
   price: z.number(),
   costPrice: z.number().min(0).default(0),
-  sizes: z.array(z.string().max(16)).nullish(),
+  sizes: z.record(z.string().max(16), z.number().int().min(0)).nullish(),
   description: z.string(),
   image: z.string(),
   availability: z.enum(["in-stock", "sold-out", "back-soon"]),
@@ -347,7 +348,7 @@ export const appRouter = createRouter({
       .input(
         z.object({
           token: adminToken,
-          category: z.enum(["sneakers", "jewellery", "handbags", "clothing"]),
+          category: z.enum(["sneakers", "shoes", "jewellery", "handbags", "clothing"]),
           mode: z.enum(["percent", "fixed"]),
           value: z.number().finite(),
         })

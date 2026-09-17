@@ -19,6 +19,7 @@ export type {
   OrderItem,
   PudoLockerRef,
 } from '@contracts/types';
+export { SHOE_BRANDS, isSizedCategory } from '@contracts/types';
 
 export interface CartItem {
   productId: string;
@@ -137,6 +138,7 @@ export function cartSubtotal(products: Product[]): number {
 
 export const CATEGORIES: { key: Category; label: string; tagline: string }[] = [
   { key: 'sneakers', label: 'Sneakers', tagline: 'Street-soft soles' },
+  { key: 'shoes', label: 'Shoes', tagline: 'Ladies footwear for every occasion' },
   { key: 'jewellery', label: 'Jewellery', tagline: 'Made-to-shine custom pieces' },
   { key: 'handbags', label: 'Handbags', tagline: 'Carry the moment' },
   { key: 'clothing', label: 'Clothing', tagline: 'Everyday elegance' },

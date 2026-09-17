@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Minus, Plus, X } from 'lucide-react';
 import { useShop } from '@/lib/shop';
-import { addToCart, formatPrice, resolveAvailability } from '@/lib/store';
+import { addToCart, formatPrice, resolveAvailability, isSizedCategory } from '@/lib/store';
 import { AvailabilityBadge, LowStockBadge } from './ProductCard';
 import { BUSINESS, waLink } from '@/config/business';
 import { WhatsAppIcon } from './WhatsAppFloat';
@@ -23,14 +23,18 @@ export default function QuickView() {
   const p = quickView;
   const resolved = p ? resolveAvailability(p) : null;
   const status = p && resolved && p.quantity === 0 && resolved.status === 'in-stock' ? 'sold-out' : resolved?.status;
-  const needsSize = !!p && p.category === 'sneakers' && !!p.sizes?.length;
+  const sizeEntries = p?.sizes ? Object.entries(p.sizes).sort(([a], [b]) => Number(a) - Number(b)) : [];
+  const needsSize = !!p && isSizedCategory(p.category) && sizeEntries.length > 0;
+  const stockForSize = size ? (p?.sizes?.[size] ?? 0) : p?.quantity ?? 0;
+  const addMax = needsSize ? stockForSize : (p?.quantity ?? 1);
 
   const add = () => {
     if (!p || !resolved || !status) return;
     if (status === 'sold-out') return;
     if (status === 'back-soon') { toast("We'll let you know when it's back 💕"); return; }
     if (needsSize && !size) { setSizeError(true); return; }
-    addToCart(p.id, qty, p.quantity, size);
+    if (needsSize && stockForSize <= 0) { setSizeError(true); return; }
+    addToCart(p.id, qty, addMax, size);
     toast('Added to cart');
     setQuickView(null);
     setCartOpen(true);
@@ -74,7 +78,12 @@ export default function QuickView() {
                   <span className="text-gold-500">{formatPrice(p.price)}</span>
                 </span>
                 <p className="text-sm text-ink-500 leading-relaxed">{p.description}</p>
-                {p.category === 'sneakers' && (
+                {p.brand && (
+                  <span className="inline-flex items-center w-fit px-2.5 py-1 rounded-full bg-blush-100 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-900">
+                    {p.brand}
+                  </span>
+                )}
+                {isSizedCategory(p.category) && (
                   <div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[11px] uppercase tracking-[0.14em] text-ink-500">
@@ -87,28 +96,29 @@ export default function QuickView() {
                     </div>
                     {needsSize ? (
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {p.sizes!.map((s) => (
-                          <button key={s} type="button"
-                            onClick={() => { setSize(s); setSizeError(false); }}
+                        {sizeEntries.map(([s, stock]) => (
+                          <button key={s} type="button" disabled={stock <= 0}
+                            onClick={() => { setSize(s); setSizeError(false); setQty(1); }}
                             className={`h-10 min-w-[44px] px-3 rounded-full border text-sm font-medium transition-colors ${
-                              size === s ? 'bg-gold-400 border-gold-400 text-white' : 'border-gold-400/50 text-ink-900 hover:border-gold-400'}`}>
+                              stock <= 0 ? 'border-blush-100 text-ink-500/40 line-through cursor-not-allowed'
+                              : size === s ? 'bg-gold-400 border-gold-400 text-white' : 'border-gold-400/50 text-ink-900 hover:border-gold-400'}`}>
                             {s}
                           </button>
                         ))}
                       </div>
                     ) : (
-                      <p className="mt-1 text-sm text-ink-900">Available sizes: 3–8</p>
+                      <p className="mt-1 text-sm text-ink-900">Sizes coming soon — check back shortly.</p>
                     )}
-                    {sizeError && <p className="mt-1.5 text-[12px] text-rose-500">Please pick a size</p>}
+                    {sizeError && <p className="mt-1.5 text-[12px] text-rose-500">Please pick a size that's in stock</p>}
                   </div>
                 )}
-                {status === 'in-stock' && (
+                {status === 'in-stock' && (!needsSize || size) && (
                   <div className="flex items-center gap-4 mt-1">
                     <span className="text-[11px] uppercase tracking-[0.14em] text-ink-500">Qty</span>
                     <div className="flex items-center border border-gold-400/50">
                       <button aria-label="Decrease" onClick={() => setQty(Math.max(1, qty - 1))} className="w-11 h-11 grid place-items-center"><Minus size={15} /></button>
                       <span className="w-6 text-center font-medium">{qty}</span>
-                      <button aria-label="Increase" onClick={() => setQty(Math.min(p.quantity || 1, qty + 1))} className="w-11 h-11 grid place-items-center"><Plus size={15} /></button>
+                      <button aria-label="Increase" onClick={() => setQty(Math.min(addMax || 1, qty + 1))} className="w-11 h-11 grid place-items-center"><Plus size={15} /></button>
                     </div>
                   </div>
                 )}

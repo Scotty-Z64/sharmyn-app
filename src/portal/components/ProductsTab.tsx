@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Pencil, Percent, Plus, Search, Star, Trash2, Upload } from 'lucide-react';
 import type { Product } from '@/portal/lib/utils-shop';
-import { CATEGORIES, formatPrice, resolveAvailability } from '@/portal/lib/utils-shop';
+import { CATEGORIES, isSizedCategory, formatPrice, resolveAvailability } from '@/portal/lib/utils-shop';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import ProductFormModal from './ProductFormModal';
@@ -102,17 +102,25 @@ export default function ProductsTab() {
   }, [products, query]);
 
   const save = async (draft: Draft) => {
+    const sized = isSizedCategory(draft.category);
+    const sizeEntries = Object.entries(draft.sizes)
+      .map(([size, qty]) => [size, Math.max(0, Math.round(Number(qty) || 0))] as const)
+      .filter(([, qty]) => qty > 0);
+    const sizesPayload = sized && sizeEntries.length ? Object.fromEntries(sizeEntries) : null;
     const product = {
       id: editing?.id ?? 'p-' + Date.now().toString(36),
       name: draft.name.trim(),
       category: draft.category,
+      brand: sized && draft.brand ? draft.brand : null,
       price: Math.round(Number(draft.price)),
       costPrice: Math.max(0, Math.round(Number(draft.costPrice) || 0)),
-      sizes: draft.category === 'sneakers' && draft.sizes.length ? draft.sizes : null,
+      sizes: sizesPayload,
       description: draft.description.trim(),
       image: draft.image.trim(),
       featured: draft.featured,
       availability: draft.availability,
+      // For sized products the server derives quantity from sizesPayload — this
+      // value is only actually used for non-sized categories.
       quantity: Math.max(0, Math.round(Number(draft.quantity) || 0)),
       lowStockAt: Math.max(0, Math.round(Number(draft.lowStockAt) || 0)),
       backDate: draft.backDate ? new Date(draft.backDate + 'T00:00:00').toISOString() : null,
@@ -199,7 +207,7 @@ export default function ProductsTab() {
                       <span className="font-mono text-ink-500">#{p.refNumber}</span> {p.name}
                     </p>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500 mt-0.5">
-                      {catLabel(p.category)} · {p.quantity} in stock
+                      {catLabel(p.category)}{p.brand ? ` · ${p.brand}` : ''} · {p.quantity} in stock
                     </p>
                     <p className="font-display text-base font-semibold text-ink-900 mt-1">{formatPrice(p.price)}</p>
                     {p.costPrice > 0 && (

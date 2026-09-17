@@ -42,7 +42,7 @@ const OCCASIONS: { key: Occasion; label: string }[] = [
 ];
 
 const CAT_LABEL: Record<Category, string> = {
-  sneakers: 'Sneakers', handbags: 'Handbags', jewellery: 'Jewellery', clothing: 'Clothing',
+  sneakers: 'Sneakers', shoes: 'Shoes', handbags: 'Handbags', jewellery: 'Jewellery', clothing: 'Clothing',
 };
 
 /* ================= image compression (mirrors ProductFormModal) ================= */
@@ -281,6 +281,7 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
 
 const HASHTAG_BANK: Record<Category, string[]> = {
   sneakers: ['#sneakerheadsa', '#sneakersza', '#kicksoftheday', '#sneakeraddict', '#streetstylesa', '#freshkicks', '#sneakerlove', '#solesociety'],
+  shoes: ['#shoesza', '#shoeaddict', '#ladiesfootwear', '#shoelover', '#stepoutinstyle', '#shoeoftheday', '#southafricanshoes', '#footwearfashion'],
   handbags: ['#handbaglover', '#bagaddict', '#bagsza', '#armcandy', '#handbagstyle', '#purselove', '#bagsoftheday', '#carryinstyle'],
   jewellery: ['#jewelleryza', '#jewellerylover', '#handmadejewellery', '#sparkleeveryday', '#jewelleryaddict', '#madeinsouthafrica', '#shinebright', '#customjewellery'],
   clothing: ['#fashionza', '#womensfashionsa', '#ootdsouthafrica', '#localfashion', '#styleinspo', '#boutiquestyle', '#sadesign', '#everydayelegance'],
@@ -467,8 +468,6 @@ export default function StudioTab() {
   const { token, products, toast } = usePortal();
   const utils = trpc.useUtils();
   const createMut = trpc.shop.studioCreate.useMutation({ onSuccess: () => void utils.shop.studioList.invalidate() });
-  const publishMut = trpc.shop.publishToMeta.useMutation();
-
   // Step state
   const [step, setStep] = useState(1);
   const [photoSrc, setPhotoSrc] = useState('');
@@ -493,7 +492,6 @@ export default function StudioTab() {
   const [captionFb, setCaptionFb] = useState('');
   const [hashtags, setHashtags] = useState('');
 
-  const [metaMsg, setMetaMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -644,31 +642,6 @@ export default function StudioTab() {
         bgColor: template === 'sale' ? 'rose' : template === 'elegant' ? 'photo' : 'ivory',
       },
     }, { onSuccess: () => toast('Saved to your grid ✓') });
-  };
-
-  const autoPost = () => {
-    setMetaMsg('');
-    // Auto-post needs a saved post — save first, then attempt publish.
-    const c = canvasRef.current;
-    if (!c) return;
-    redraw();
-    const imageData = c.toDataURL('image/jpeg', 0.88);
-    createMut.mutateAsync({
-      token,
-      post: {
-        imageData, template,
-        headline: headline || TEMPLATES.find((t) => t.key === template)?.label || '',
-        captionIg, captionFb, hashtags,
-        bgColor: template === 'sale' ? 'rose' : template === 'elegant' ? 'photo' : 'ivory',
-      },
-    }).then((post) => publishMut.mutateAsync({ token, postId: post.id }))
-      .then(() => { setMetaMsg('Posted to Instagram ✓'); toast('Posted to Instagram ✓'); })
-      .catch((e) => {
-        const code = (e as { data?: { code?: string } } | null)?.data?.code;
-        setMetaMsg(code === 'PRECONDITION_FAILED'
-          ? 'Auto-posting unlocks after Meta approval — your developer will activate this.'
-          : 'Auto-post failed — please use Share instead.');
-      });
   };
 
   const stepDone = (n: number) => step > n;
@@ -870,16 +843,12 @@ export default function StudioTab() {
               Download not working? Open image to save manually
             </button>
 
-            {/* Auto-post (Phase B scaffold) */}
-            <div className="rounded-2xl border border-gold-400/40 bg-blush-50/60 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gold-500">Auto-post (coming soon)</p>
-              <p className="mt-1 text-xs text-ink-500">Auto-posting unlocks after Meta approval — your developer will activate this.</p>
-              {metaMsg && <p className="mt-2 text-xs text-ink-900 flex items-start gap-1.5"><Info size={14} className="mt-0.5 shrink-0 text-gold-500" />{metaMsg}</p>}
-              <button onClick={autoPost} disabled={publishMut.isPending || createMut.isPending}
-                className="mt-3 w-full h-11 rounded-full border border-gold-400/60 text-gold-500 text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-white transition disabled:opacity-60 flex items-center justify-center gap-2">
-                {publishMut.isPending && <Loader2 size={14} className="animate-spin" />}
-                Try auto-post
-              </button>
+            {/* Reminder — auto-posting removed; share/save above is the workflow for now */}
+            <div className="rounded-2xl border border-gold-400/40 bg-blush-50/60 p-4 flex items-start gap-2.5">
+              <Info size={16} className="mt-0.5 shrink-0 text-gold-500" />
+              <p className="text-xs text-ink-500">
+                <span className="font-semibold text-ink-900">Don't forget to post it!</span> Share or save the image above, then post it yourself to Instagram and Facebook.
+              </p>
             </div>
           </div>
         </motion.section>

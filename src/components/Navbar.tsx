@@ -8,6 +8,7 @@ import { BUSINESS } from '@/config/business';
 
 export const MENU_LINKS = [
   { label: 'Sneakers', to: '/#sneakers' },
+  { label: 'Shoes', to: '/#shoes' },
   { label: 'Custom Jewellery', to: '/#jewellery' },
   { label: 'Handbags', to: '/#handbags' },
   { label: 'Clothing', to: '/#clothing' },

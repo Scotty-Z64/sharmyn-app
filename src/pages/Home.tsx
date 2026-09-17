@@ -1,12 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Search, X } from 'lucide-react';
 import { useShop } from '@/lib/shop';
-import { CATEGORIES, resolveAvailability, type Category, type Product } from '@/lib/store';
+import { CATEGORIES, SHOE_BRANDS, resolveAvailability, type Category, type Product } from '@/lib/store';
 import ProductCard from '@/components/ProductCard';
 import QuickView from '@/components/QuickView';
 import SearchOverlay from '@/components/SearchOverlay';
+
+const BRAND_CATEGORIES: Category[] = ['sneakers', 'shoes'];
 
 const COLLECTION_CIRCLES: { key: Category; label: string; img: string }[] = [
   { key: 'sneakers', label: 'Sneakers', img: '/collection-sneakers.png' },
@@ -101,6 +103,10 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
   const { products, productsLoading } = useShop();
   const [query, setQuery] = useState('');
   const [avail, setAvail] = useState<AvailFilter>('all');
+  const [brandFilter, setBrandFilter] = useState<string>('all');
+
+  const showBrandFilter = BRAND_CATEGORIES.includes(activeCat as Category);
+  useEffect(() => { if (!showBrandFilter) setBrandFilter('all'); }, [showBrandFilter]);
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -108,10 +114,11 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
       const r = resolveAvailability(p);
       const status = p.quantity === 0 && r.status === 'in-stock' ? 'sold-out' : r.status;
       if (avail !== 'all' && status !== avail) return false;
+      if (showBrandFilter && brandFilter !== 'all' && p.brand !== brandFilter) return false;
       if (q && !(p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [products, query, avail]);
+  }, [products, query, avail, showBrandFilter, brandFilter]);
 
   const searching = query.trim().length > 0;
 
@@ -167,6 +174,18 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
               {matches.length} item{matches.length === 1 ? '' : 's'}
             </span>
           </div>
+          {showBrandFilter && (
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+              <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-500">Brand:</span>
+              {(['all', ...SHOE_BRANDS] as const).map((b) => (
+                <button key={b} onClick={() => setBrandFilter(b)}
+                  className={`shrink-0 h-9 px-3.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] rounded-full border transition-colors ${
+                    brandFilter === b ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-ink-900 border-blush-100 hover:border-rose-300'}`}>
+                  {b === 'all' ? 'All Brands' : b}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

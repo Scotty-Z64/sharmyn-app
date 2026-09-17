@@ -6,6 +6,7 @@ import { INK, GOLD, SOFT, drawLetterhead } from "./pdf-brand";
 
 const CATEGORY_LABEL: Record<Category, string> = {
   sneakers: "Sneakers",
+  shoes: "Shoes",
   jewellery: "Jewellery",
   handbags: "Handbags",
   clothing: "Clothing",
