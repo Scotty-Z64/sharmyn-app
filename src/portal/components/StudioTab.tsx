@@ -552,42 +552,78 @@ export default function StudioTab() {
     }
   };
 
-  /** Render current design to a PNG blob. */
-  const toPngBlob = (): Promise<Blob | null> =>
-    new Promise((resolve) => {
-      redraw();
-      canvasRef.current?.toBlob((b) => resolve(b), 'image/png');
-    });
+  /**
+   * Render the current design to a PNG data URL — synchronously (canvas.toDataURL
+   * has no callback, unlike toBlob). This matters: iOS/Android only allow
+   * navigator.share() when it's called within the same tick as the user's tap.
+   * Any `await` (including the old canvas.toBlob() callback) in between loses
+   * that "user activation" and share() silently fails — this was the actual
+   * bug behind "can't save/share the image."
+   */
+  const toPngDataUrl = (): string | null => {
+    redraw();
+    return canvasRef.current?.toDataURL('image/png') ?? null;
+  };
 
-  const downloadPng = (blob: Blob) => {
-    const url = URL.createObjectURL(blob);
+  /** data: URL → File, without any async work (keeps the click gesture "fresh" for navigator.share). */
+  const dataUrlToFile = (dataUrl: string, filename: string): File => {
+    const [meta, b64] = dataUrl.split(',');
+    const mime = /data:(.*?);/.exec(meta)?.[1] || 'image/png';
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], filename, { type: mime });
+  };
+
+  /** Most reliable "save" path on phones, especially installed PWAs where programmatic
+   * downloads are unreliable: open the image in a new tab so the owner can long-press
+   * (mobile) or right-click (desktop) to save it — always works, no browser quirks. */
+  const openImageForSaving = (dataUrl: string) => {
+    const win = window.open('', '_blank');
+    if (!win) { toast('Please allow pop-ups, then try again.'); return; }
+    win.document.write(`<!doctype html><html><head><title>Sharmyn post</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;background:#1A1008;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${dataUrl}" alt="Sharmyn post" style="max-width:100%;height:auto;display:block;" /></body></html>`);
+    win.document.close();
+  };
+
+  const downloadPng = (dataUrl: string) => {
     const a = document.createElement('a');
-    a.href = url;
+    a.href = dataUrl;
     a.download = `sharmyn-${template}-${Date.now()}.png`;
+    document.body.appendChild(a);
     a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    a.remove();
   };
 
   const fullCaption = () => `${captionIg}\n\n${hashtags}`.trim();
 
-  const sharePost = async () => {
+  const sharePost = () => {
     setBusy(true);
     try {
-      const blob = await toPngBlob();
-      if (!blob) { toast('Could not create the image — try again.'); return; }
-      const file = new File([blob], 'sharmyn-post.png', { type: 'image/png' });
+      const dataUrl = toPngDataUrl();
+      if (!dataUrl) { toast('Could not create the image — try again.'); setBusy(false); return; }
+      const file = dataUrlToFile(dataUrl, 'sharmyn-post.png');
       const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
       if (navigator.share && nav.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], text: fullCaption() });
-        toast('Shared ✓');
+        navigator.share({ files: [file], text: fullCaption() })
+          .then(() => toast('Shared ✓'))
+          .catch((e) => {
+            if ((e as Error)?.name !== 'AbortError') {
+              // Share sheet itself failed (rare, but happens) — fall back to the
+              // always-reliable "open in a tab, long-press to save" path.
+              openImageForSaving(dataUrl);
+              void copyText(fullCaption(), 'Caption');
+              toast('Image opened — long-press to save, caption copied');
+            }
+          })
+          .finally(() => setBusy(false));
       } else {
-        downloadPng(blob);
-        await copyText(fullCaption(), 'Caption');
-        toast('Image saved & caption copied — paste it in Instagram');
+        openImageForSaving(dataUrl);
+        void copyText(fullCaption(), 'Caption');
+        toast('Image opened — long-press to save, caption copied');
+        setBusy(false);
       }
-    } catch (e) {
-      if ((e as Error)?.name !== 'AbortError') toast('Share cancelled or failed.');
-    } finally {
+    } catch {
+      toast('Something went wrong — please try again.');
       setBusy(false);
     }
   };
@@ -815,7 +851,7 @@ export default function StudioTab() {
           className="mt-4 bg-white rounded-2xl border border-blush-100 p-5">
           <StepHeader n={4} title="Share it" hint="One tap — we prepare everything for you" />
           <div className="mt-4 space-y-3">
-            <button onClick={() => void sharePost()} disabled={busy}
+            <button onClick={sharePost} disabled={busy}
               className={`w-full ${btnGold} !h-14 text-[13px]`}>
               {busy ? <Loader2 size={18} className="animate-spin" /> : <Share2 size={18} />}
               Share to Instagram / Facebook
@@ -825,9 +861,13 @@ export default function StudioTab() {
               {createMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <LayoutGrid size={16} />}
               Save to my grid
             </button>
-            <button onClick={async () => { const b = await toPngBlob(); if (b) { downloadPng(b); toast('Image downloaded ✓'); } }}
+            <button onClick={() => { const d = toPngDataUrl(); if (d) { downloadPng(d); toast('Image downloaded ✓'); } }}
               className={`w-full ${btnGhost}`}>
               <Download size={16} /> Download image
+            </button>
+            <button onClick={() => { const d = toPngDataUrl(); if (d) openImageForSaving(d); }}
+              className="w-full text-center text-[11px] text-ink-500 underline underline-offset-2 hover:text-ink-900 transition-colors">
+              Download not working? Open image to save manually
             </button>
 
             {/* Auto-post (Phase B scaffold) */}
