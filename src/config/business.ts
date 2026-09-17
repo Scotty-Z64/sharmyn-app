@@ -3,8 +3,8 @@
 export const BUSINESS = {
   name: 'Sharmyn',
   tagline: "Women's fashion boutique",
-  whatsapp: '+27000000000', // TODO: Ben's business WhatsApp
-  whatsappSupport: '+27000000000', // TODO: support line
+  whatsapp: '+27616455670',
+  whatsappSupport: '+27616455670', // same as main WhatsApp unless a separate support line is given
   email: 'hello@sharmyn.co.za', // TODO
   instagram: 'https://instagram.com/sharmyn', // TODO
   facebook: 'https://facebook.com/sharmyn', // TODO
