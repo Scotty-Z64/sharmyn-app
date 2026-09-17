@@ -6,8 +6,8 @@ export const BUSINESS = {
   whatsapp: '+27616455670',
   whatsappSupport: '+27616455670', // same as main WhatsApp unless a separate support line is given
   email: 'hello@sharmyn.co.za', // TODO
-  instagram: 'https://instagram.com/sharmyn', // TODO
-  facebook: 'https://facebook.com/sharmyn', // TODO
+  instagram: 'https://www.instagram.com/sharmynfashion',
+  facebook: 'https://www.facebook.com/share/1DiXX9TUHc/',
 };
 
 export const waLink = (phone: string, text: string) =>
