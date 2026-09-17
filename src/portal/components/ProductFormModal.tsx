@@ -195,8 +195,9 @@ export default function ProductFormModal({
   const [polishNote, setPolishNote] = useState('');
   const polishEnabled = !!polishCfg.data?.enabled;
 
-  const runPolish = async () => {
-    if (!d.image || polishing) return;
+  const runPolish = async (imageOverride?: string) => {
+    const src = imageOverride ?? d.image;
+    if (!src || polishing) return;
     setPolishNote('');
     if (!polishEnabled) {
       setPolishNote('Photo polish needs an image API key — ask your developer to activate it. (Studio frame below still works!)');
@@ -205,7 +206,7 @@ export default function ProductFormModal({
     setPolishing(true);
     setPolished(null);
     try {
-      const { imageData } = await polishMut.mutateAsync({ token, imageData: d.image });
+      const { imageData } = await polishMut.mutateAsync({ token, imageData: src });
       setPolished(await compositeStudio(imageData, true));
     } catch (e) {
       const msg = (e as { message?: string } | null)?.message ?? '';
@@ -248,9 +249,14 @@ export default function ProductFormModal({
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext('2d');
-        if (!ctx) { set('image', String(reader.result)); return; }
+        if (!ctx) { const raw = String(reader.result); set('image', raw); void runPolish(raw); return; }
         ctx.drawImage(img, 0, 0, w, h);
-        set('image', canvas.toDataURL('image/jpeg', 0.8));
+        const compressed = canvas.toDataURL('image/jpeg', 0.8);
+        set('image', compressed);
+        // Auto-composite onto the branded backdrop the moment a photo is chosen —
+        // no extra click needed. Falls back to showing the "needs API key" note
+        // if photo polish isn't configured yet.
+        void runPolish(compressed);
       };
       img.onerror = () => setImgErr('Could not read that image — try another file or paste a URL.');
       img.src = String(reader.result);
@@ -322,7 +328,7 @@ export default function ProductFormModal({
                 )}
                 {d.image && !polished && (
                   <div className="space-y-2 pt-1">
-                    <button type="button" onClick={runPolish} disabled={polishing}
+                    <button type="button" onClick={() => runPolish()} disabled={polishing}
                       title={polishEnabled ? 'Remove background & place on the Sharmyn studio backdrop'
                         : 'Photo polish needs an image API key — ask your developer to activate it.'}
                       className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-gold-400 text-gold-500 text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-blush-50 disabled:opacity-60">

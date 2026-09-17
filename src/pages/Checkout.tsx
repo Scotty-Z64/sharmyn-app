@@ -37,7 +37,8 @@ function validate(f: FormState, needsAddress: boolean): Partial<Record<keyof For
   if (f.name.trim().length < 2) errs.name = 'Please enter your full name.';
   const digits = f.phone.replace(/\D/g, '');
   if (digits.length < 10 || digits.length > 12) errs.phone = 'Enter a valid SA number (10+ digits).';
-  if (f.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) errs.email = 'That email doesn\u2019t look right.';
+  if (!f.email.trim()) errs.email = 'Please enter your email \u2014 we send your invoice and order updates there.';
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) errs.email = 'That email doesn\u2019t look right.';
   if (needsAddress) {
     if (f.address.trim().length < 5) errs.address = 'Please enter your delivery address.';
     if (!f.city.trim()) errs.city = 'Please enter your city.';
@@ -453,7 +454,7 @@ export default function Checkout() {
             </motion.div>
 
             <motion.div animate={errors.email ? { x: [0, -6, 6, -4, 4, 0] } : undefined} transition={{ duration: 0.3 }}>
-              <label htmlFor="co-email" className={labelCls}>Email <span className="text-ink-500 normal-case tracking-normal">(optional)</span></label>
+              <label htmlFor="co-email" className={labelCls}>Email *</label>
               <input id="co-email" type="email" value={form.email} onChange={(e) => setField('email')(e.target.value)} placeholder="you@example.com" className={inputCls(!!errors.email)} autoComplete="email" inputMode="email" />
               {errors.email && <p className={errCls}>{errors.email}</p>}
             </motion.div>

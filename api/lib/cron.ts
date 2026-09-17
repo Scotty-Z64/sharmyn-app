@@ -30,7 +30,7 @@ async function sendEmail(opts: {
   attachment?: { filename: string; content: string }; // content: base64
 }): Promise<void> {
   const body: Record<string, unknown> = {
-    from: "Sharmyn Store <orders@sharmyn.co.za>",
+    from: "Sharmyn Store <onboarding@resend.dev>",
     to: opts.to,
     subject: opts.subject,
     text: opts.text,

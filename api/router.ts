@@ -72,7 +72,7 @@ const orderItemInput = z.object({
 const customer = z.object({
   name: z.string(),
   phone: z.string(),
-  email: z.string(),
+  email: z.string().email(), // sole delivery channel for invoices/tracking — required
   address: z.string(),
   city: z.string(),
   notes: z.string(),

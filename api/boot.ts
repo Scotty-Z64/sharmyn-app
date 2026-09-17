@@ -111,6 +111,31 @@ app.get("/api/invoice/:orderId", async (c) => {
   });
 });
 
+// Sales report PDF — admin-only (same token as the tRPC admin procedures).
+app.get("/api/report.pdf", async (c) => {
+  const token = c.req.query("token") ?? "";
+  const { assertAdminToken } = await import("./lib/admin");
+  try {
+    assertAdminToken(token);
+  } catch {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const fromStr = c.req.query("from");
+  const toStr = c.req.query("to");
+  if (!fromStr || !toStr) return c.json({ error: "from/to required" }, 400);
+  const { getSalesReport } = await import("./queries/shop");
+  const { buildReportPdf } = await import("./lib/report-pdf");
+  const report = await getSalesReport(new Date(fromStr), new Date(toStr));
+  const pdf = await buildReportPdf(report);
+  return new Response(pdf, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="sharmyn-report-${fromStr.slice(0, 10)}-to-${toStr.slice(0, 10)}.pdf"`,
+      "Cache-Control": "private, no-store",
+    },
+  });
+});
+
 app.use("/api/trpc/*", async (c) => {
   return fetchRequestHandler({
     endpoint: "/api/trpc",

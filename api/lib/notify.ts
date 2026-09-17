@@ -43,7 +43,9 @@ function sendEmail(
   text: string,
   attachment?: { filename: string; content: string } // content: base64
 ): void {
-  const body: Record<string, unknown> = { from: "Sharmyn Store <orders@sharmyn.co.za>", to, subject, text };
+  // Resend's shared sandbox sender — works with no domain verification. Switch to a
+  // real @sharmyn.co.za address once that domain is verified in the Resend dashboard.
+  const body: Record<string, unknown> = { from: "Sharmyn Store <onboarding@resend.dev>", to, subject, text };
   if (attachment) body.attachments = [attachment];
   fetch("https://api.resend.com/emails", {
     method: "POST",

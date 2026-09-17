@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Download, TrendingUp } from 'lucide-react';
+import { Download, FileText, TrendingUp } from 'lucide-react';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { formatPrice, CATEGORIES } from '@/portal/lib/utils-shop';
@@ -49,7 +49,7 @@ function downloadCsv(filename: string, csv: string) {
 }
 
 export default function ReportsTab() {
-  const { token, toast } = usePortal();
+  const { token, orders, toast } = usePortal();
   const [rangeKey, setRangeKey] = useState<RangeKey>('30d');
   const [customFrom, setCustomFrom] = useState(isoDateInput(new Date(Date.now() - 29 * 86400000)));
   const [customTo, setCustomTo] = useState(isoDateInput(new Date()));
@@ -58,6 +58,22 @@ export default function ReportsTab() {
 
   const reportQuery = trpc.shop.salesReport.useQuery({ token, from: from.toISOString(), to: to.toISOString() });
   const report = reportQuery.data;
+
+  const invoices = useMemo(
+    () =>
+      orders
+        .filter((o) => o.paymentStatus === 'paid' && o.status !== 'cancelled')
+        .filter((o) => {
+          const t = new Date(o.createdAt).getTime();
+          return t >= from.getTime() && t <= to.getTime();
+        })
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [orders, from, to]
+  );
+
+  const downloadReportPdf = () => {
+    window.open(`/api/report.pdf?token=${encodeURIComponent(token)}&from=${from.toISOString()}&to=${to.toISOString()}`, '_blank');
+  };
 
   const exportCsv = () => {
     if (!report) return;
@@ -97,8 +113,12 @@ export default function ReportsTab() {
             </button>
           ))}
         </div>
-        <button onClick={exportCsv} disabled={!report}
+        <button onClick={downloadReportPdf} disabled={!report}
           className="ml-auto h-10 px-4 rounded-full border border-gold-500 text-gold-500 text-[11px] font-semibold uppercase tracking-[0.08em] flex items-center gap-1.5 hover:bg-[#FBF3E2] active:scale-[0.97] transition disabled:opacity-40">
+          <FileText size={14} /> Download PDF
+        </button>
+        <button onClick={exportCsv} disabled={!report}
+          className="h-10 px-4 rounded-full border border-gold-500 text-gold-500 text-[11px] font-semibold uppercase tracking-[0.08em] flex items-center gap-1.5 hover:bg-[#FBF3E2] active:scale-[0.97] transition disabled:opacity-40">
           <Download size={14} /> Export CSV
         </button>
       </div>
@@ -197,6 +217,34 @@ export default function ReportsTab() {
                 </span>
               ))}
             </div>
+          </div>
+
+          <div className="mt-4 bg-white rounded-2xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
+            <h3 className="font-display text-lg font-semibold text-ink-900 flex items-center gap-2">
+              <FileText size={17} className="text-gold-500" /> Invoices
+            </h3>
+            {invoices.length === 0 ? (
+              <p className="mt-3 text-sm text-ink-500">No paid orders in this range yet.</p>
+            ) : (
+              <div className="mt-3 divide-y divide-blush-100">
+                {invoices.map((o) => (
+                  <div key={o.id} className="py-2.5 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-ink-900 truncate">{o.id} · {o.customer.name}</p>
+                      <p className="text-[11px] text-ink-500">
+                        {new Date(o.createdAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {!o.invoiceSentAt && <span className="text-rose-500"> · not yet emailed</span>}
+                      </p>
+                    </div>
+                    <span className="font-display text-sm font-semibold text-ink-900 shrink-0">{formatPrice(o.total)}</span>
+                    <a href={`/api/invoice/${o.id}`} target="_blank" rel="noreferrer"
+                      className="h-9 px-3 rounded-full border border-gold-400 text-gold-500 text-[11px] font-semibold uppercase tracking-[0.06em] flex items-center gap-1.5 hover:bg-[#FBF3E2] transition-colors shrink-0">
+                      <Download size={12} /> PDF
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}
