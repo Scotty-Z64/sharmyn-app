@@ -29,6 +29,8 @@ import {
   unmarkFulfilmentStage,
   markInvoiceSent,
   findProduct,
+  getSiteSettings,
+  updateSiteSettings,
 } from "./queries/shop";
 import {
   paymentsEnabled,
@@ -569,6 +571,21 @@ export const appRouter = createRouter({
           }
           throw new TRPCError({ code: "BAD_GATEWAY", message: msg.split(":")[0] });
         }
+      }),
+
+    // ---- Storefront settings ----
+    siteSettings: publicQuery.query(() => getSiteSettings()),
+    updateSiteSettings: publicQuery
+      .input(
+        z.object({
+          token: adminToken,
+          heroImage: z.string().max(16 * 1024 * 1024).nullable().optional(),
+          heroCaption: z.string().max(80).nullable().optional(),
+        })
+      )
+      .mutation(({ input }) => {
+        assertAdminToken(input.token);
+        return updateSiteSettings({ heroImage: input.heroImage, heroCaption: input.heroCaption });
       }),
 
     // ---- Content Studio ----

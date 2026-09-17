@@ -205,3 +205,8 @@ export interface SalesReport {
   topProducts: ReportProductRow[]; // sorted desc by revenue
   byCategory: ReportCategoryRow[];
 }
+
+export interface SiteSettings {
+  heroImage: string | null; // data URL; null = use bundled default (/hero-main.png)
+  heroCaption: string | null; // null = default "New Season Collection"
+}

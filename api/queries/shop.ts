@@ -1,7 +1,7 @@
 import { eq, desc, sql, and, lt, gte, lte } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { getDb } from "./connection";
-import { products, orders, notifications } from "@db/schema";
+import { products, orders, notifications, siteSettings } from "@db/schema";
 import { isSizedCategory } from "@contracts/types";
 import type {
   Product,
@@ -20,6 +20,7 @@ import type {
   SalesReport,
   ReportProductRow,
   ReportCategoryRow,
+  SiteSettings,
 } from "@contracts/types";
 
 /** Server-side delivery fees (ZAR) — the ONLY source of truth. */
@@ -670,4 +671,28 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
     topProducts,
     byCategory,
   };
+}
+
+export async function getSiteSettings(): Promise<SiteSettings> {
+  const db = getDb();
+  const [row] = await db.select().from(siteSettings).where(eq(siteSettings.id, 1));
+  return { heroImage: row?.heroImage ?? null, heroCaption: row?.heroCaption ?? null };
+}
+
+export async function updateSiteSettings(patch: {
+  heroImage?: string | null;
+  heroCaption?: string | null;
+}): Promise<SiteSettings> {
+  const db = getDb();
+  const [existing] = await db.select().from(siteSettings).where(eq(siteSettings.id, 1));
+  const next = {
+    heroImage: patch.heroImage !== undefined ? patch.heroImage : (existing?.heroImage ?? null),
+    heroCaption: patch.heroCaption !== undefined ? patch.heroCaption : (existing?.heroCaption ?? null),
+  };
+  if (existing) {
+    await db.update(siteSettings).set({ ...next, updatedAt: new Date() }).where(eq(siteSettings.id, 1));
+  } else {
+    await db.insert(siteSettings).values({ id: 1, ...next });
+  }
+  return next;
 }

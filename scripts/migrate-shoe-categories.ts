@@ -42,10 +42,11 @@ async function main() {
     const [rows] = await conn.query(
       "SELECT id, sizes FROM products WHERE sizes IS NOT NULL AND JSON_TYPE(sizes) = 'ARRAY'"
     );
-    const arr = rows as { id: string; sizes: string }[];
+    const arr = rows as { id: string; sizes: string | string[] }[];
     if (arr.length) {
       for (const row of arr) {
-        const sizeList = JSON.parse(row.sizes) as string[];
+        // mysql2 auto-parses JSON columns into native JS values already.
+        const sizeList = typeof row.sizes === "string" ? (JSON.parse(row.sizes) as string[]) : row.sizes;
         const obj = Object.fromEntries(sizeList.map((s) => [s, 0]));
         await conn.query("UPDATE products SET sizes = ? WHERE id = ?", [JSON.stringify(obj), row.id]);
       }

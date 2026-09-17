@@ -83,6 +83,13 @@ export const exchanges = mysqlTable("exchanges", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const siteSettings = mysqlTable("site_settings", {
+  id: int("id").primaryKey(), // singleton row, always id=1
+  heroImage: text("hero_image"), // MEDIUMTEXT in prod — data URL; null = use bundled default (/hero-main.png)
+  heroCaption: varchar("hero_caption", { length: 80 }), // null = default "New Season Collection"
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const notifications = mysqlTable("notifications", {
   id: varchar("id", { length: 40 }).primaryKey(),
   type: varchar("type", { length: 32 }).notNull(), // new_order | paid | cancel_request

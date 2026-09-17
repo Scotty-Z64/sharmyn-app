@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Search, X } from 'lucide-react';
+import { trpc } from '@/providers/trpc';
 import { useShop } from '@/lib/shop';
 import { CATEGORIES, SHOE_BRANDS, resolveAvailability, type Category, type Product } from '@/lib/store';
 import ProductCard from '@/components/ProductCard';
@@ -24,6 +25,9 @@ function scrollToId(id: string) {
 /* ---------------- Hero: brand-led intro ---------------- */
 function Hero() {
   const reduceMotion = useReducedMotion();
+  const settingsQ = trpc.shop.siteSettings.useQuery();
+  const heroImage = settingsQ.data?.heroImage || '/hero-main.png';
+  const heroCaption = settingsQ.data?.heroCaption || 'New Season Collection';
   const fadeUp = (delay: number) =>
     reduceMotion
       ? {}
@@ -59,10 +63,10 @@ function Hero() {
       {/* Framed banner */}
       <motion.div {...fadeUp(0.34)} className="mt-8 border border-gold-500/70 p-1">
         <div className="relative border border-gold-400/50 overflow-hidden">
-          <img src="/hero-main.png" alt="Sharmyn boutique collection"
+          <img src={heroImage} alt="Sharmyn boutique collection"
             className="w-full aspect-[4/3] sm:aspect-[21/9] object-cover" />
           <p className="absolute bottom-2.5 left-3.5 font-display italic text-sm sm:text-base text-ink-900 bg-white/85 px-2.5 py-1">
-            New Season Collection
+            {heroCaption}
           </p>
         </div>
       </motion.div>

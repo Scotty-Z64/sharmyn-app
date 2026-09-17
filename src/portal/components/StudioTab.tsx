@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Copy,
-  Download, ImagePlus, Info, LayoutGrid, Loader2, Share2, Sparkles, Trash2,
+  Download, Image as ImageIcon, ImagePlus, Info, LayoutGrid, Loader2, RotateCcw, Share2, Sparkles, Trash2,
 } from 'lucide-react';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
@@ -345,6 +345,101 @@ function StepHeader({ n, title, hint }: { n: number; title: string; hint: string
   );
 }
 
+/* ================= Homepage banner ================= */
+
+function HeroBannerCard() {
+  const { token, toast } = usePortal();
+  const utils = trpc.useUtils();
+  const settingsQ = trpc.shop.siteSettings.useQuery();
+  const updateMut = trpc.shop.updateSiteSettings.useMutation({
+    onSuccess: () => { void utils.shop.siteSettings.invalidate(); toast('Homepage banner updated ✓'); },
+  });
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [caption, setCaption] = useState('');
+  const [captionTouched, setCaptionTouched] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    if (settingsQ.data && !captionTouched) setCaption(settingsQ.data.heroCaption ?? 'New Season Collection');
+  }, [settingsQ.data, captionTouched]);
+
+  const currentImage = pendingImage ?? settingsQ.data?.heroImage ?? '/hero-main.png';
+  const hasCustomSaved = !!(settingsQ.data?.heroImage || settingsQ.data?.heroCaption);
+  const hasChanges = pendingImage !== null || captionTouched;
+
+  const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setErr('');
+    try {
+      setPendingImage(await compressImageFile(f, 1600, 0.85));
+    } catch {
+      setErr('Could not read that photo — try another one.');
+    }
+  };
+
+  const save = () => {
+    updateMut.mutate(
+      { token, heroImage: pendingImage ?? undefined, heroCaption: captionTouched ? caption.trim() || null : undefined },
+      { onSuccess: () => { setPendingImage(null); setCaptionTouched(false); } }
+    );
+  };
+
+  const resetToDefault = () => {
+    updateMut.mutate({ token, heroImage: null, heroCaption: null }, {
+      onSuccess: () => { setPendingImage(null); setCaption('New Season Collection'); setCaptionTouched(false); },
+    });
+  };
+
+  return (
+    <section className="max-w-2xl mx-auto mb-6 bg-white rounded-2xl border border-blush-100 p-5">
+      <div className="flex items-center gap-3">
+        <span className="w-9 h-9 rounded-full bg-gold-500 text-white grid place-items-center shrink-0"><ImageIcon size={18} /></span>
+        <div>
+          <h3 className="font-display text-xl font-semibold text-ink-900 leading-tight">Homepage Banner</h3>
+          <p className="text-xs text-ink-500">The big photo customers see first on your website</p>
+        </div>
+      </div>
+
+      <div className="mt-4 relative rounded-2xl overflow-hidden border border-blush-100">
+        <img src={currentImage} alt="Homepage banner preview" className="w-full aspect-[21/9] object-cover" />
+        <p className="absolute bottom-2 left-3 font-display italic text-sm text-ink-900 bg-white/85 px-2.5 py-1 rounded">
+          {caption || 'New Season Collection'}
+        </p>
+      </div>
+
+      <div className="mt-3 grid sm:grid-cols-2 gap-2">
+        <button onClick={() => fileRef.current?.click()} className={btnGold}>
+          <ImagePlus size={16} /> {settingsQ.data?.heroImage || pendingImage ? 'Change photo' : 'Upload a photo'}
+        </button>
+        {hasCustomSaved && (
+          <button onClick={resetToDefault} disabled={updateMut.isPending} className={btnGhost}>
+            <RotateCcw size={15} /> Reset to default
+          </button>
+        )}
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void onFile(e)} />
+      {err && <p className="mt-2 text-xs text-rose-600">{err}</p>}
+
+      <div className="mt-4">
+        <label className={labelCls}>Caption on the banner</label>
+        <input value={caption} maxLength={80}
+          onChange={(e) => { setCaption(e.target.value); setCaptionTouched(true); }}
+          placeholder="New Season Collection" className={`mt-1.5 ${inputCls}`} />
+      </div>
+
+      <div className="mt-4 flex justify-end">
+        <button onClick={save} disabled={!hasChanges || updateMut.isPending} className={btnGold}>
+          {updateMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+          Save banner
+        </button>
+      </div>
+    </section>
+  );
+}
+
 /* ================= Grid planner ================= */
 
 function GridPlanner() {
@@ -648,6 +743,8 @@ export default function StudioTab() {
 
   return (
     <div className="max-w-2xl mx-auto">
+      <HeroBannerCard />
+
       <div className="text-center mb-6">
         <span className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-gold-500">
           <Sparkles size={14} /> Content Studio
