@@ -17,12 +17,14 @@ import type { StudioPost } from '@contracts/types';
 type TemplateKey = 'new-in' | 'sale' | 'restocked' | 'elegant';
 type Accent = 'gold' | 'rose';
 type Occasion = 'everyday' | 'weekend' | 'payday' | 'gift' | 'seasonal';
-type FormatKey = 'square' | 'story' | 'landscape';
+type FormatKey = 'ig-post' | 'ig-story' | 'fb-post' | 'fb-story' | 'whatsapp';
 
 const FORMATS: { key: FormatKey; label: string; ratio: string; w: number; h: number }[] = [
-  { key: 'square', label: 'Instagram / Facebook Post', ratio: '1:1', w: 1080, h: 1080 },
-  { key: 'story', label: 'Story / WhatsApp Status', ratio: '9:16', w: 1080, h: 1920 },
-  { key: 'landscape', label: 'Facebook Feed (wide)', ratio: '1.91:1', w: 1200, h: 630 },
+  { key: 'ig-post', label: 'Instagram Post', ratio: '1:1', w: 1080, h: 1080 },
+  { key: 'ig-story', label: 'Instagram Story', ratio: '9:16', w: 1080, h: 1920 },
+  { key: 'fb-post', label: 'Facebook Post', ratio: '1.91:1', w: 1200, h: 630 },
+  { key: 'fb-story', label: 'Facebook Story', ratio: '9:16', w: 1080, h: 1920 },
+  { key: 'whatsapp', label: 'WhatsApp Status', ratio: '9:16', w: 1080, h: 1920 },
 ];
 
 const GOLD = '#96721A';
@@ -141,16 +143,17 @@ function drawLogo(ctx: CanvasRenderingContext2D, logo: HTMLImageElement | null, 
 }
 
 /**
- * Render the selected template onto a canvas sized for the chosen format
- * (square/story/landscape). All layout math is expressed as fractions of
- * canvas width/height (tuned against a 1080x1080 reference), not fixed
- * pixels, so the same template composes sensibly at any of the 3 aspect
- * ratios instead of only the original Instagram square.
+ * Render the selected template onto a canvas sized for the chosen platform
+ * format (Instagram/Facebook post, Story, WhatsApp Status). All layout math
+ * is expressed as fractions of canvas width/height (tuned against a
+ * 1080x1080 reference), not fixed pixels, so the same template composes
+ * sensibly at any aspect ratio instead of only the original Instagram square.
  */
 export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
   const fmt = FORMATS.find((f) => f.key === o.format) ?? FORMATS[0];
   const W = fmt.w, H = fmt.h;
   const M = Math.min(W, H); // for things that should stay "square-ish" regardless of format
+  const isWide = W > H; // wide/landscape formats (e.g. Facebook Post) need shorter photo boxes
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
@@ -207,9 +210,9 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
       ctx.fillText(subtext, W / 2, H * 0.2389, W * 0.9);
     }
     // Elegant frame: gold border + white mat — kept square via M, sized down for wide/landscape.
-    const fs = M * (fmt.key === 'landscape' ? 0.52 : 0.6852);
+    const fs = M * (isWide ? 0.52 : 0.6852);
     const fx = (W - fs) / 2;
-    const fy = H * (fmt.key === 'landscape' ? 0.22 : 0.2778);
+    const fy = H * (isWide ? 0.22 : 0.2778);
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(fx - 16, fy - 16, fs + 32, fs + 32);
     ctx.strokeStyle = accent;
@@ -245,7 +248,7 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
       ctx.font = `italic 500 ${Math.round(H * 0.0333)}px ${SERIF}`;
       ctx.fillText(subtext, W / 2, H * 0.5278, W * 0.9);
     }
-    const photoW = W * 0.6, photoH = H * (fmt.key === 'landscape' ? 0.22 : 0.3333);
+    const photoW = W * 0.6, photoH = H * (isWide ? 0.22 : 0.3333);
     drawPhoto(ctx, o.photo, (W - photoW) / 2, H * 0.5648, photoW, photoH);
     if (price) {
       if (oldPrice) {
@@ -291,7 +294,7 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
   }
   const photoY = bannerY + bannerH + H * 0.037;
   const photoH = H - photoY - H * 0.09;
-  const photoW = Math.min(W * 0.65, photoH * (fmt.key === 'landscape' ? 1.4 : 1.25));
+  const photoW = Math.min(W * 0.65, photoH * (isWide ? 1.4 : 1.25));
   drawPhoto(ctx, o.photo, (W - photoW) / 2, photoY, photoW, photoH);
   if (price) {
     ctx.fillStyle = INK;
@@ -594,7 +597,7 @@ export default function StudioTab() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Template state
-  const [format, setFormat] = useState<FormatKey>('square');
+  const [format, setFormat] = useState<FormatKey>('ig-post');
   const [template, setTemplate] = useState<TemplateKey>('new-in');
   const [headline, setHeadline] = useState('');
   const [subtext, setSubtext] = useState('');
@@ -819,7 +822,7 @@ export default function StudioTab() {
           <StepHeader n={2} title="Pick a design" hint="Tap a style, then edit the words" />
 
           <p className={`mt-4 ${labelCls}`}>Where will you post it?</p>
-          <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="mt-1.5 grid grid-cols-2 sm:grid-cols-3 gap-2">
             {FORMATS.map((f) => (
               <button key={f.key} onClick={() => setFormat(f.key)}
                 className={`h-14 px-3 rounded-xl border text-left transition ${
