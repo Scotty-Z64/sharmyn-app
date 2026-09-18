@@ -6,6 +6,7 @@ import type { Availability, Category, Product } from '@/portal/lib/utils-shop';
 import { CATEGORIES, SHOE_BRANDS, isSizedCategory, formatPrice } from '@/portal/lib/utils-shop';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
+import { imageReadErrorMessage, MAX_UPLOAD_BYTES } from '@/lib/image-upload-errors';
 import { Thumb } from './bits';
 
 // ---------- AI Photo Polish — client-side compositing ----------
@@ -46,7 +47,7 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, size: number, template: HTM
   ctx.beginPath(); ctx.moveTo(size - 28 - L, size - 28); ctx.lineTo(size - 28, size - 28); ctx.lineTo(size - 28, size - 28 - L); ctx.stroke();
 }
 
-function drawWatermark(ctx: CanvasRenderingContext2D, size: number, mark: HTMLImageElement | null) {
+function drawWatermark(ctx: CanvasRenderingContext2D, mark: HTMLImageElement | null) {
   if (!mark) return;
   // Brand mark, top-left corner of every generated photo — consistent placement
   // per Ben's request, clear enough to read (not a faint corner watermark).
@@ -139,7 +140,7 @@ async function compositeStudio(src: string, cutout: boolean): Promise<string> {
     ctx.stroke();
     ctx.restore();
   }
-  drawWatermark(ctx, SIZE, mark);
+  drawWatermark(ctx, mark);
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 
@@ -240,6 +241,7 @@ export default function ProductFormModal({
     const f = e.target.files?.[0];
     if (!f) return;
     setImgErr('');
+    if (f.size > MAX_UPLOAD_BYTES) { setImgErr(imageReadErrorMessage(f)); e.target.value = ''; return; }
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
@@ -262,7 +264,7 @@ export default function ProductFormModal({
         // if photo polish isn't configured yet.
         void runPolish(compressed);
       };
-      img.onerror = () => setImgErr('Could not read that image — try another file or paste a URL.');
+      img.onerror = () => setImgErr(imageReadErrorMessage(f));
       img.src = String(reader.result);
     };
     reader.readAsDataURL(f);
@@ -332,6 +334,11 @@ export default function ProductFormModal({
                 )}
                 {d.image && !polished && (
                   <div className="space-y-2 pt-1">
+                    {polishEnabled && (
+                      <p className="text-[11px] text-ink-500">
+                        Works best on photos of just the product (on a table, in-hand). A photo of it being worn will keep the leg/hand in — use "Studio frame" instead for those.
+                      </p>
+                    )}
                     <button type="button" onClick={() => runPolish()} disabled={polishing}
                       title={polishEnabled ? 'Remove background & place on the Sharmyn studio backdrop'
                         : 'Photo polish needs an image API key — ask your developer to activate it.'}

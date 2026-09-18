@@ -37,6 +37,13 @@ export async function polishImage(dataUrl: string): Promise<string> {
   form.append("image_file_b64", b64);
   form.append("size", "auto");
   form.append("format", "png");
+  // Crop tight to the product itself — without this, remove.bg returns the
+  // cutout at the original photo's full frame size (just with a transparent
+  // background), so a shoe that only fills a third of the frame stays that
+  // small once composited onto the studio backdrop. crop_margin leaves a
+  // touch of breathing room; the composite step adds the rest of the margin.
+  form.append("crop", "true");
+  form.append("crop_margin", "5%");
 
   const res = await fetch(REMOVE_BG_API, {
     method: "POST",

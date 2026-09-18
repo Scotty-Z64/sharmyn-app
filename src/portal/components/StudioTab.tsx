@@ -9,6 +9,7 @@ import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { BUSINESS } from '@/config/business';
 import { formatPrice } from '@/portal/lib/utils-shop';
+import { imageReadErrorMessage, MAX_UPLOAD_BYTES } from '@/lib/image-upload-errors';
 import type { Category } from '@contracts/types';
 import type { StudioPost } from '@contracts/types';
 
@@ -399,10 +400,11 @@ function HeroBannerCard() {
     e.target.value = '';
     if (!f) return;
     setErr('');
+    if (f.size > MAX_UPLOAD_BYTES) { setErr(imageReadErrorMessage(f)); return; }
     try {
       setPendingImage(await compressImageFile(f, 1600, 0.85));
     } catch {
-      setErr('Could not read that photo — try another one.');
+      setErr(imageReadErrorMessage(f));
     }
   };
 
@@ -654,10 +656,11 @@ export default function StudioTab() {
     e.target.value = '';
     if (!f) return;
     setImgErr('');
+    if (f.size > MAX_UPLOAD_BYTES) { setImgErr(imageReadErrorMessage(f)); return; }
     try {
       setPhotoSrc(await compressImageFile(f, 1080, 0.85));
     } catch {
-      setImgErr('Could not read that photo — try another one.');
+      setImgErr(imageReadErrorMessage(f));
     }
   };
 
