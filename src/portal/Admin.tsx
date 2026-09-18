@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Bell, Eye, EyeOff, Loader2, LogOut } from 'lucide-react';
 import { trpc } from '@/providers/trpc';
 import { PortalProvider, clearPortalToken, readPortalToken, storePortalToken, usePortal } from '@/portal/lib/portal';
+import InstallPrompt from '@/components/InstallPrompt';
 import OverviewTab, { useStats } from '@/portal/components/OverviewTab';
 import ProductsTab from '@/portal/components/ProductsTab';
 import StockTab from '@/portal/components/StockTab';
@@ -218,12 +219,16 @@ function Dashboard() {
 export default function Admin() {
   const [token, setToken] = useState<string | null>(() => readPortalToken());
 
-  if (!token) {
-    return <LoginGate onSuccess={(t) => { storePortalToken(t); setToken(t); }} />;
-  }
   return (
-    <PortalProvider portalToken={token} onLogout={() => setToken(null)}>
-      <Dashboard />
-    </PortalProvider>
+    <>
+      <InstallPrompt storageKey="sharmyn-install-dismissed-portal" appName="Sharmyn Portal" />
+      {!token ? (
+        <LoginGate onSuccess={(t) => { storePortalToken(t); setToken(t); }} />
+      ) : (
+        <PortalProvider portalToken={token} onLogout={() => setToken(null)}>
+          <Dashboard />
+        </PortalProvider>
+      )}
+    </>
   );
 }
