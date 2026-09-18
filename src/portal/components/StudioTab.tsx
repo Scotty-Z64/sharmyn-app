@@ -388,7 +388,7 @@ function HeroBannerCard() {
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    if (settingsQ.data && !captionTouched) setCaption(settingsQ.data.heroCaption ?? 'New Season Collection');
+    if (settingsQ.data && !captionTouched) setCaption(settingsQ.data.heroCaption ?? '');
   }, [settingsQ.data, captionTouched]);
 
   const currentImage = pendingImage ?? settingsQ.data?.heroImage ?? '/hero-main.png';
@@ -417,7 +417,7 @@ function HeroBannerCard() {
 
   const resetToDefault = () => {
     updateMut.mutate({ token, heroImage: null, heroCaption: null }, {
-      onSuccess: () => { setPendingImage(null); setCaption('New Season Collection'); setCaptionTouched(false); },
+      onSuccess: () => { setPendingImage(null); setCaption(''); setCaptionTouched(false); },
     });
   };
 
@@ -432,10 +432,12 @@ function HeroBannerCard() {
       </div>
 
       <div className="mt-4 relative rounded-2xl overflow-hidden border border-blush-100">
-        <img src={currentImage} alt="Homepage banner preview" className="w-full aspect-[21/9] object-cover" />
-        <p className="absolute bottom-2 left-3 font-display italic text-sm text-ink-900 bg-white/85 px-2.5 py-1 rounded">
-          {caption || 'New Season Collection'}
-        </p>
+        <img src={currentImage} alt="Homepage banner preview" className="w-full aspect-[4/3] sm:aspect-[16/9] object-cover" />
+        {caption && (
+          <p className="absolute bottom-2 left-3 font-display italic text-sm text-ink-900 bg-white/85 px-2.5 py-1 rounded">
+            {caption}
+          </p>
+        )}
       </div>
 
       <div className="mt-3 grid sm:grid-cols-2 gap-2">
@@ -452,10 +454,10 @@ function HeroBannerCard() {
       {err && <p className="mt-2 text-xs text-rose-600">{err}</p>}
 
       <div className="mt-4">
-        <label className={labelCls}>Caption on the banner</label>
+        <label className={labelCls}>Caption on the banner (optional)</label>
         <input value={caption} maxLength={80}
           onChange={(e) => { setCaption(e.target.value); setCaptionTouched(true); }}
-          placeholder="New Season Collection" className={`mt-1.5 ${inputCls}`} />
+          placeholder="e.g. New Season Collection — leave blank for no caption" className={`mt-1.5 ${inputCls}`} />
       </div>
 
       <div className="mt-4 flex justify-end">

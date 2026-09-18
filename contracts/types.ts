@@ -208,5 +208,5 @@ export interface SalesReport {
 
 export interface SiteSettings {
   heroImage: string | null; // data URL; null = use bundled default (/hero-main.png)
-  heroCaption: string | null; // null = default "New Season Collection"
+  heroCaption: string | null; // null/empty = no caption shown
 }

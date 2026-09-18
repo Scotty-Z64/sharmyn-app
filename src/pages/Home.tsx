@@ -27,7 +27,7 @@ function Hero() {
   const reduceMotion = useReducedMotion();
   const settingsQ = trpc.shop.siteSettings.useQuery();
   const heroImage = settingsQ.data?.heroImage || '/hero-main.png';
-  const heroCaption = settingsQ.data?.heroCaption || 'New Season Collection';
+  const heroCaption = settingsQ.data?.heroCaption || '';
   const fadeUp = (delay: number) =>
     reduceMotion
       ? {}
@@ -60,14 +60,18 @@ function Hero() {
         </motion.div>
       </div>
 
-      {/* Framed banner */}
-      <motion.div {...fadeUp(0.34)} className="mt-8 border border-gold-500/70 p-1">
-        <div className="relative border border-gold-400/50 overflow-hidden">
+      {/* Framed banner — full-bleed so it fills the page's full width instead of
+          sitting in a smaller box with empty space either side, and a taller
+          aspect ratio so less of the uploaded photo gets cropped away. */}
+      <motion.div {...fadeUp(0.34)} className="mt-8 w-screen mx-[calc(50%-50vw)] border-y border-gold-400/40">
+        <div className="relative overflow-hidden">
           <img src={heroImage} alt="Sharmyn boutique collection"
-            className="w-full aspect-[4/3] sm:aspect-[21/9] object-cover" />
-          <p className="absolute bottom-2.5 left-3.5 font-display italic text-sm sm:text-base text-ink-900 bg-white/85 px-2.5 py-1">
-            {heroCaption}
-          </p>
+            className="w-full aspect-[4/3] sm:aspect-[16/9] object-cover" />
+          {heroCaption && (
+            <p className="absolute bottom-3 left-4 sm:left-6 font-display italic text-sm sm:text-base text-ink-900 bg-white/85 px-2.5 py-1">
+              {heroCaption}
+            </p>
+          )}
         </div>
       </motion.div>
     </section>
