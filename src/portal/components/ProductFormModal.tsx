@@ -24,8 +24,16 @@ function loadImg(src: string): Promise<HTMLImageElement> {
 
 function drawBackdrop(ctx: CanvasRenderingContext2D, size: number, template: HTMLImageElement | null) {
   if (template) {
-    // The client's real product-photo backdrop — satin sand/gold, stretched to fill the square canvas.
-    ctx.drawImage(template, 0, 0, size, size);
+    // The client's real product-photo backdrop (sand + "Sh" wordmark, bottom-left).
+    // It's not square, so cover-fit it rather than stretching — anchored to the
+    // bottom so the logo is never cropped off; any overflow is cut from the
+    // empty sand texture at the top instead.
+    const scale = Math.max(size / template.width, size / template.height);
+    const w = template.width * scale;
+    const h = template.height * scale;
+    const x = (size - w) / 2;
+    const y = size - h;
+    ctx.drawImage(template, x, y, w, h);
     return;
   }
   // Fallback cream studio gradient (template failed to load).
@@ -47,28 +55,14 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, size: number, template: HTM
   ctx.beginPath(); ctx.moveTo(size - 28 - L, size - 28); ctx.lineTo(size - 28, size - 28); ctx.lineTo(size - 28, size - 28 - L); ctx.stroke();
 }
 
-function drawWatermark(ctx: CanvasRenderingContext2D, mark: HTMLImageElement | null) {
-  if (!mark) return;
-  // Brand mark, top-left corner of every generated photo — consistent placement
-  // per Ben's request, clear enough to read (not a faint corner watermark).
-  const w = 96;
-  const h = (mark.height / mark.width) * w;
-  ctx.save();
-  ctx.globalAlpha = 0.92;
-  ctx.drawImage(mark, 28, 28, w, h);
-  ctx.restore();
-}
-
 /**
  * Composite onto the branded 1080×1080 studio canvas.
- * cutout=true → transparent PNG: shadow + product centered on the backdrop.
+ * cutout=true → transparent PNG: shadow + product on the backdrop, kept clear of the logo.
  * cutout=false → "Studio frame": the photo as-is on a rounded ivory card.
  */
 async function compositeStudio(src: string, cutout: boolean): Promise<string> {
   const SIZE = 1080;
   const img = await loadImg(src);
-  let mark: HTMLImageElement | null = null;
-  try { mark = await loadImg('/sharmyn-mark.png'); } catch { mark = null; }
   let template: HTMLImageElement | null = null;
   try { template = await loadImg('/product-template.jpg'); } catch { template = null; }
   const canvas = document.createElement('canvas');
@@ -78,13 +72,17 @@ async function compositeStudio(src: string, cutout: boolean): Promise<string> {
   drawBackdrop(ctx, SIZE, template);
 
   if (cutout) {
-    // Product at ~80% of canvas height, centered.
-    const targetH = SIZE * 0.8;
-    const scale = targetH / img.height;
-    const w = Math.min(img.width * scale, SIZE * 0.9);
-    const h = w * (img.height / img.width);
+    // Product confined to the upper ~58% of the canvas, centered — kept clear
+    // of the "Sh" wordmark baked into the bottom-left of the backdrop so the
+    // two never overlap, regardless of how wide or tall the product photo is.
+    const maxW = SIZE * 0.92;
+    const maxH = SIZE * 0.52;
+    const scale = Math.min(maxW / img.width, maxH / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
     const x = (SIZE - w) / 2;
-    const y = (SIZE - h) / 2;
+    const bottomY = SIZE * 0.58;
+    const y = bottomY - h;
     // Soft elliptical shadow under the product.
     ctx.save();
     ctx.filter = 'blur(24px)';
@@ -99,16 +97,20 @@ async function compositeStudio(src: string, cutout: boolean): Promise<string> {
     ctx.restore();
   } else {
     // Studio frame: photo inside a rounded ivory card with shadow.
+    // Card confined to the upper portion of the canvas, same as the cutout
+    // path above — an opaque card here would otherwise sit directly on top
+    // of the backdrop's "Sh" wordmark and hide it completely.
     const cardPad = 26;
     const maxW = SIZE * 0.78;
-    const maxH = SIZE * 0.7;
+    const maxH = SIZE * 0.44;
     const scale = Math.min(maxW / img.width, maxH / img.height);
     const w = img.width * scale;
     const h = img.height * scale;
-    const cx = (SIZE - w) / 2 - cardPad;
-    const cy = (SIZE - h) / 2 - cardPad;
     const cw = w + cardPad * 2;
     const ch = h + cardPad * 2;
+    const cx = (SIZE - cw) / 2;
+    const cardBottomY = SIZE * 0.54;
+    const cy = cardBottomY - ch;
     const R = 36;
     const roundRect = (rx: number, ry: number, rw: number, rh: number) => {
       ctx.beginPath();
@@ -140,7 +142,6 @@ async function compositeStudio(src: string, cutout: boolean): Promise<string> {
     ctx.stroke();
     ctx.restore();
   }
-  drawWatermark(ctx, mark);
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 
