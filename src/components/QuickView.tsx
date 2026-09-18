@@ -12,8 +12,9 @@ export default function QuickView() {
   const [qty, setQty] = useState(1);
   const [size, setSize] = useState<string | null>(null);
   const [sizeError, setSizeError] = useState(false);
+  const [activeImg, setActiveImg] = useState(0);
 
-  useEffect(() => { setQty(1); setSize(null); setSizeError(false); }, [quickView]);
+  useEffect(() => { setQty(1); setSize(null); setSizeError(false); setActiveImg(0); }, [quickView]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setQuickView(null); };
     window.addEventListener('keydown', onKey);
@@ -27,6 +28,7 @@ export default function QuickView() {
   const needsSize = !!p && isSizedCategory(p.category) && sizeEntries.length > 0;
   const stockForSize = size ? (p?.sizes?.[size] ?? 0) : p?.quantity ?? 0;
   const addMax = needsSize ? stockForSize : (p?.quantity ?? 1);
+  const gallery = p ? [p.image, ...p.images] : [];
 
   const add = () => {
     if (!p || !resolved || !status) return;
@@ -63,13 +65,24 @@ export default function QuickView() {
               <div className="p-4 md:p-6">
                 <div className="border border-gold-500/70 p-1">
                   <div className="relative border border-gold-400/50 bg-[#FDF3E7] aspect-[4/5] md:aspect-auto md:h-full overflow-hidden">
-                    <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
+                    <img src={gallery[activeImg] ?? p.image} alt={p.name} className="w-full h-full object-cover" />
                     <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
                       <AvailabilityBadge product={p} />
                       <LowStockBadge product={p} />
                     </div>
                   </div>
                 </div>
+                {gallery.length > 1 && (
+                  <div className="mt-2 flex gap-2 overflow-x-auto no-scrollbar">
+                    {gallery.map((src, i) => (
+                      <button key={i} type="button" onClick={() => setActiveImg(i)} aria-label={`View angle ${i + 1}`}
+                        className={`w-14 h-16 shrink-0 rounded-lg overflow-hidden border-2 transition ${
+                          i === activeImg ? 'border-gold-400' : 'border-transparent opacity-60 hover:opacity-100'}`}>
+                        <img src={src} alt="" className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="px-5 pb-8 md:p-8 md:pl-0 flex flex-col gap-3">
                 <h3 className="font-display text-2xl md:text-3xl font-semibold text-ink-900">{p.name}</h3>

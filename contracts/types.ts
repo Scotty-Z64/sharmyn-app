@@ -28,7 +28,8 @@ export interface Product {
   costPrice: number; // ZAR — what it cost the business (owner-only; drives profit reporting)
   sizes?: Record<string, number> | null; // per-size stock for sneakers/shoes, e.g. {"3": 6, "4.5": 2}
   description: string;
-  image: string;
+  image: string; // cover photo
+  images: string[]; // extra angle photos, same studio-composited style as the cover
   availability: Availability;
   quantity: number;
   lowStockAt: number;

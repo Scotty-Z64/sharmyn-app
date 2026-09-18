@@ -22,54 +22,86 @@ function loadImg(src: string): Promise<HTMLImageElement> {
   });
 }
 
-function drawBackdrop(ctx: CanvasRenderingContext2D, size: number, template: HTMLImageElement | null) {
+/** Compress a File to a JPEG data URL (max 800px longest side). Promise-based
+ * so the "extra angle" upload flow can await it inline, unlike the main image
+ * uploader's callback-style FileReader (kept as-is to avoid touching working code). */
+function compressImageFile(file: File, max = 800, quality = 0.8): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('read'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('decode'));
+      img.onload = () => {
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(String(reader.result)); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, template: HTMLImageElement | null) {
   if (template) {
     // Plain sand texture (logo-free — the wordmark is drawn separately, see
     // drawWordmark, so it can be sized independently of the backdrop photo).
-    // Not square, so cover-fit rather than stretch.
-    const scale = Math.max(size / template.width, size / template.height);
-    const w = template.width * scale;
-    const h = template.height * scale;
-    const x = (size - w) / 2;
-    const y = (size - h) / 2;
-    ctx.drawImage(template, x, y, w, h);
+    // Not the same shape as the canvas, so cover-fit rather than stretch.
+    const scale = Math.max(w / template.width, h / template.height);
+    const tw = template.width * scale;
+    const th = template.height * scale;
+    const tx = (w - tw) / 2;
+    const ty = (h - th) / 2;
+    ctx.drawImage(template, tx, ty, tw, th);
     return;
   }
   // Fallback cream studio gradient (template failed to load).
-  const g = ctx.createLinearGradient(0, 0, size, size);
+  const g = ctx.createLinearGradient(0, 0, w, h);
   g.addColorStop(0, '#FBF3E4');
   g.addColorStop(0.55, '#F7E7D0');
   g.addColorStop(1, '#F3E0C9');
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  const r = ctx.createRadialGradient(size * 0.3, size * 0.2, 40, size * 0.3, size * 0.2, size * 0.9);
+  ctx.fillRect(0, 0, w, h);
+  const r = ctx.createRadialGradient(w * 0.3, h * 0.2, 40, w * 0.3, h * 0.2, Math.max(w, h) * 0.9);
   r.addColorStop(0, 'rgba(255,255,255,0.35)');
   r.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = r;
-  ctx.fillRect(0, 0, size, size);
+  ctx.fillRect(0, 0, w, h);
   ctx.strokeStyle = 'rgba(198,154,74,0.35)';
   ctx.lineWidth = 3;
   const L = 54;
   ctx.beginPath(); ctx.moveTo(28, 28 + L); ctx.lineTo(28, 28); ctx.lineTo(28 + L, 28); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(size - 28 - L, size - 28); ctx.lineTo(size - 28, size - 28); ctx.lineTo(size - 28, size - 28 - L); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(w - 28 - L, h - 28); ctx.lineTo(w - 28, h - 28); ctx.lineTo(w - 28, h - 28 - L); ctx.stroke();
 }
 
-function drawWordmark(ctx: CanvasRenderingContext2D, size: number, mark: HTMLImageElement | null) {
+function drawWordmark(ctx: CanvasRenderingContext2D, canvasW: number, canvasH: number, mark: HTMLImageElement | null) {
   if (!mark) return;
   // Small "Sh" wordmark, bottom-left — sized independently of the backdrop
   // photo (see drawBackdrop) so it reads as a mark, not the main visual.
-  const w = size * 0.263;
+  const w = canvasW * 0.263;
   const h = (mark.height / mark.width) * w;
-  ctx.drawImage(mark, size * 0.028, size - h - size * 0.022, w, h);
+  ctx.drawImage(mark, canvasW * 0.028, canvasH - h - canvasH * 0.022, w, h);
 }
 
+const STUDIO_W = 1080;
+const STUDIO_H = 1350; // 4:5 — matches the storefront's product-card/quick-view frame
+                        // exactly, so nothing gets cropped a second time on display.
+
 /**
- * Composite onto the branded 1080×1080 studio canvas.
+ * Composite onto the branded 1080×1350 studio canvas.
  * cutout=true → transparent PNG: shadow + product on the backdrop, kept clear of the logo.
  * cutout=false → "Studio frame": the photo as-is on a rounded ivory card.
+ * userScale: manual size adjustment from the polish preview slider (1 = auto-fit).
  */
-async function compositeStudio(src: string, cutout: boolean): Promise<string> {
-  const SIZE = 1080;
+async function compositeStudio(src: string, cutout: boolean, userScale = 1): Promise<string> {
+  const W = STUDIO_W, H = STUDIO_H;
   const img = await loadImg(src);
   let template: HTMLImageElement | null = null;
   // Cache-busted: these assets get swapped in place occasionally, and browsers
@@ -80,28 +112,33 @@ async function compositeStudio(src: string, cutout: boolean): Promise<string> {
   let mark: HTMLImageElement | null = null;
   try { mark = await loadImg('/sh-wordmark.png?v=1'); } catch { mark = null; }
   const canvas = document.createElement('canvas');
-  canvas.width = SIZE; canvas.height = SIZE;
+  canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('no-canvas');
-  drawBackdrop(ctx, SIZE, template);
+  drawBackdrop(ctx, W, H, template);
 
   if (cutout) {
     // Product confined to the upper ~76% of the canvas, centered — kept clear
-    // of the small "Sh" wordmark in the bottom-left corner.
-    const maxW = SIZE * 0.92;
-    const maxH = SIZE * 0.68;
-    const scale = Math.min(maxW / img.width, maxH / img.height);
+    // of the small "Sh" wordmark in the bottom-left corner. Bottom-anchored,
+    // so a manual size increase (userScale) grows the product upward, away
+    // from the logo, rather than into it.
+    const maxW = W * 0.92;
+    const maxH = H * 0.68;
+    const bottomY = H * 0.76;
+    const fitScale = Math.min(maxW / img.width, maxH / img.height);
+    // Hard cap regardless of userScale — at the slider's top end a wide photo
+    // could otherwise overflow past the canvas edges (sides) or off the top.
+    const scale = Math.min(fitScale * userScale, (W * 0.98) / img.width, bottomY / img.height);
     const w = img.width * scale;
     const h = img.height * scale;
-    const x = (SIZE - w) / 2;
-    const bottomY = SIZE * 0.76;
+    const x = (W - w) / 2;
     const y = bottomY - h;
     // Soft elliptical shadow under the product.
     ctx.save();
     ctx.filter = 'blur(24px)';
     ctx.fillStyle = 'rgba(0,0,0,0.18)';
     ctx.beginPath();
-    ctx.ellipse(SIZE / 2, y + h * 0.94, w * 0.38, Math.max(18, h * 0.045), 0, 0, Math.PI * 2);
+    ctx.ellipse(W / 2, y + h * 0.94, w * 0.38, Math.max(18, h * 0.045), 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     ctx.save();
@@ -114,15 +151,22 @@ async function compositeStudio(src: string, cutout: boolean): Promise<string> {
     // path above — an opaque card here would otherwise sit directly on top
     // of the small "Sh" wordmark and hide it.
     const cardPad = 26;
-    const maxW = SIZE * 0.78;
-    const maxH = SIZE * 0.56;
-    const scale = Math.min(maxW / img.width, maxH / img.height);
+    const maxW = W * 0.78;
+    const maxH = H * 0.56;
+    const cardBottomY = H * 0.72;
+    const fitScale = Math.min(maxW / img.width, maxH / img.height);
+    // Same hard cap as the cutout path — keeps the card (plus its padding)
+    // inside the canvas regardless of userScale.
+    const scale = Math.min(
+      fitScale * userScale,
+      (W * 0.98 - cardPad * 2) / img.width,
+      (cardBottomY - cardPad * 2) / img.height
+    );
     const w = img.width * scale;
     const h = img.height * scale;
     const cw = w + cardPad * 2;
     const ch = h + cardPad * 2;
-    const cx = (SIZE - cw) / 2;
-    const cardBottomY = SIZE * 0.72;
+    const cx = (W - cw) / 2;
     const cy = cardBottomY - ch;
     const R = 36;
     const roundRect = (rx: number, ry: number, rw: number, rh: number) => {
@@ -155,7 +199,7 @@ async function compositeStudio(src: string, cutout: boolean): Promise<string> {
     ctx.stroke();
     ctx.restore();
   }
-  drawWordmark(ctx, SIZE, mark);
+  drawWordmark(ctx, W, H, mark);
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 
@@ -170,6 +214,7 @@ export interface Draft {
   sizes: Record<string, string>; // size -> qty, as raw input text; only entries > 0 are saved
   description: string;
   image: string;
+  images: string[]; // extra angle photos
   featured: boolean;
   availability: Availability;
   quantity: string;
@@ -188,6 +233,7 @@ export function draftFrom(p?: Product): Draft {
     sizes: Object.fromEntries(SNEAKER_SIZES.map((s) => [s, p?.sizes?.[s] ? String(p.sizes[s]) : ''])),
     description: p?.description ?? '',
     image: p?.image ?? '',
+    images: p?.images ?? [],
     featured: p?.featured ?? false,
     availability: p?.availability ?? 'in-stock',
     quantity: p ? String(p.quantity) : '0',
@@ -214,6 +260,13 @@ export default function ProductFormModal({
   const [polished, setPolished] = useState<string | null>(null);
   const [polishNote, setPolishNote] = useState('');
   const polishEnabled = !!polishCfg.data?.enabled;
+  // The transparent cutout (or raw photo, for Studio frame) behind the current
+  // `polished` preview, kept around so the size slider can re-composite locally
+  // — instantly, no re-calling remove.bg — instead of spending API credits on
+  // every nudge.
+  const [cutoutSrc, setCutoutSrc] = useState<string | null>(null);
+  const [cutoutMode, setCutoutMode] = useState(true);
+  const [sizeScale, setSizeScale] = useState(1);
 
   const runPolish = async (imageOverride?: string) => {
     const src = imageOverride ?? d.image;
@@ -227,7 +280,10 @@ export default function ProductFormModal({
     setPolished(null);
     try {
       const { imageData } = await polishMut.mutateAsync({ token, imageData: src });
-      setPolished(await compositeStudio(imageData, true));
+      setCutoutSrc(imageData);
+      setCutoutMode(true);
+      setSizeScale(1);
+      setPolished(await compositeStudio(imageData, true, 1));
     } catch (e) {
       const msg = (e as { message?: string } | null)?.message ?? '';
       setPolishNote(msg.includes('QUOTA') || msg.includes('NOT_CONFIGURED')
@@ -244,12 +300,22 @@ export default function ProductFormModal({
     setPolishNote('');
     setPolished(null);
     try {
-      setPolished(await compositeStudio(d.image, false));
+      setCutoutSrc(d.image);
+      setCutoutMode(false);
+      setSizeScale(1);
+      setPolished(await compositeStudio(d.image, false, 1));
     } catch {
       setPolishNote('Could not build the studio frame — try a different photo.');
     } finally {
       setPolishing(false);
     }
+  };
+
+  // Re-composite locally whenever the size slider moves — no network call.
+  const onSizeScale = async (next: number) => {
+    setSizeScale(next);
+    if (!cutoutSrc) return;
+    setPolished(await compositeStudio(cutoutSrc, cutoutMode, next));
   };
 
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
@@ -284,6 +350,46 @@ export default function ProductFormModal({
     };
     reader.readAsDataURL(f);
     e.target.value = '';
+  };
+
+  // ---- Extra angle photos — same auto-polish pipeline as the cover photo,
+  // just fully automatic (no before/after confirmation step): upload, get
+  // composited onto the studio backdrop, added straight to the list. ----
+  const [angleUploading, setAngleUploading] = useState(false);
+  const [angleErr, setAngleErr] = useState('');
+  const angleFileRef = useRef<HTMLInputElement>(null);
+  const MAX_ANGLES = 5;
+
+  const onAngleFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setAngleErr('');
+    if (d.images.length >= MAX_ANGLES) { setAngleErr(`Up to ${MAX_ANGLES} extra angles per product — remove one to add another.`); return; }
+    if (f.size > MAX_UPLOAD_BYTES) { setAngleErr(imageReadErrorMessage(f)); return; }
+    setAngleUploading(true);
+    let compressed: string;
+    try {
+      compressed = await compressImageFile(f);
+    } catch {
+      setAngleErr(imageReadErrorMessage(f));
+      setAngleUploading(false);
+      return;
+    }
+    try {
+      const finalImg = polishEnabled
+        ? await compositeStudio((await polishMut.mutateAsync({ token, imageData: compressed })).imageData, true, 1)
+        : await compositeStudio(compressed, false, 1);
+      setD((p) => ({ ...p, images: [...p.images, finalImg] }));
+    } catch {
+      setAngleErr('Could not process that photo — please try again.');
+    } finally {
+      setAngleUploading(false);
+    }
+  };
+
+  const removeAngle = (idx: number) => {
+    setD((p) => ({ ...p, images: p.images.filter((_, i) => i !== idx) }));
   };
 
   const save = () => {
@@ -380,13 +486,22 @@ export default function ProductFormModal({
                   className="mt-4 rounded-2xl border border-blush-100 bg-blush-50/50 p-4">
                   <div className="grid grid-cols-2 gap-3">
                     <figure>
-                      <img src={d.image} alt="Original" className="w-full aspect-square object-cover rounded-xl border border-blush-100 bg-white" />
+                      <img src={d.image} alt="Original" className="w-full aspect-[4/5] object-cover rounded-xl border border-blush-100 bg-white" />
                       <figcaption className="mt-1 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-500">Original</figcaption>
                     </figure>
                     <figure>
-                      <img src={polished} alt="Polished" className="w-full aspect-square object-cover rounded-xl border border-gold-400/60 bg-white" />
+                      <img src={polished} alt="Polished" className="w-full aspect-[4/5] object-cover rounded-xl border border-gold-400/60 bg-white" />
                       <figcaption className="mt-1 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">Polished</figcaption>
                     </figure>
+                  </div>
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">Size in frame</label>
+                      <span className="text-[11px] text-ink-500">{Math.round(sizeScale * 100)}%</span>
+                    </div>
+                    <input type="range" min={0.6} max={1.4} step={0.02} value={sizeScale}
+                      onChange={(e) => void onSizeScale(Number(e.target.value))}
+                      className="mt-1.5 w-full accent-gold-500" />
                   </div>
                   <div className="mt-3 flex gap-2">
                     <button type="button"
@@ -402,6 +517,40 @@ export default function ProductFormModal({
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+
+          {/* Extra angles */}
+          <div>
+            <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
+              Extra angles <span className="normal-case font-normal text-ink-500/80">(optional — shown as a gallery on the product)</span>
+            </label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {d.images.map((src, i) => (
+                <div key={i} className="relative w-20 h-24 rounded-xl overflow-hidden border border-blush-100 bg-blush-50">
+                  <img src={src} alt={`Angle ${i + 1}`} className="w-full h-full object-cover" />
+                  <button type="button" onClick={() => removeAngle(i)} aria-label="Remove this angle"
+                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-ink-900/60 text-white grid place-items-center hover:bg-rose-600">
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+              {d.images.length < MAX_ANGLES && (
+                <button type="button" onClick={() => angleFileRef.current?.click()} disabled={angleUploading}
+                  className="w-20 h-24 rounded-xl border-2 border-dashed border-rose-300 bg-blush-50 grid place-items-center hover:bg-blush-100 transition disabled:opacity-60">
+                  {angleUploading
+                    ? <Loader2 size={18} className="animate-spin text-rose-500" />
+                    : <span className="flex flex-col items-center gap-1 text-rose-500">
+                        <ImagePlus size={18} />
+                        <span className="text-[9px] font-semibold uppercase tracking-wide">Add angle</span>
+                      </span>}
+                </button>
+              )}
+            </div>
+            <input ref={angleFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void onAngleFile(e)} />
+            <p className="mt-1.5 text-[11px] text-ink-500">
+              Upload each angle on its own (worn, top-down, sole, etc.) — {polishEnabled ? 'each one is auto-polished onto the studio backdrop automatically.' : 'each one is auto-framed automatically (background removal needs an image API key — ask your developer).'}
+            </p>
+            {angleErr && <p className="mt-1 text-[11px] text-rose-600">{angleErr}</p>}
           </div>
 
           <div>

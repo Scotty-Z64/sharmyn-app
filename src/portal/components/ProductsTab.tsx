@@ -117,6 +117,7 @@ export default function ProductsTab() {
       sizes: sizesPayload,
       description: draft.description.trim(),
       image: draft.image.trim(),
+      images: draft.images,
       featured: draft.featured,
       availability: draft.availability,
       // For sized products the server derives quantity from sizesPayload — this

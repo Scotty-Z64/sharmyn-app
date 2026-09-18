@@ -20,7 +20,8 @@ export const products = mysqlTable("products", {
   costPrice: int("cost_price").notNull().default(0), // ZAR — what it cost the business, owner-only, drives profit reporting
   sizes: json("sizes"), // Record<string, number> | null — per-size stock, e.g. {"3": 6, "4.5": 2} — sneakers/shoes only
   description: text("description").notNull(),
-  image: text("image").notNull(), // MEDIUMTEXT in prod (see scripts/migrate-hardening.ts)
+  image: text("image").notNull(), // MEDIUMTEXT in prod (see scripts/migrate-hardening.ts) — cover photo
+  images: json("images"), // string[] | null — extra angle photos, same studio-composited style as the cover
   availability: mysqlEnum("availability", ["in-stock", "sold-out", "back-soon"]).notNull().default("in-stock"),
   quantity: int("quantity").notNull().default(0), // units on hand
   lowStockAt: int("low_stock_at").notNull().default(3), // warn threshold

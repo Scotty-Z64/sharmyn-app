@@ -113,6 +113,7 @@ const productInput = z.object({
   sizes: z.record(z.string().max(16), z.number().int().min(0)).nullish(),
   description: z.string(),
   image: z.string(),
+  images: z.array(z.string().max(2 * 1024 * 1024)).max(5).default([]),
   availability: z.enum(["in-stock", "sold-out", "back-soon"]),
   quantity: z.number().int().min(0),
   lowStockAt: z.number().int().min(0).default(3),
