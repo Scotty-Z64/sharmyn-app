@@ -359,6 +359,13 @@ export default function ProductFormModal({
   const [angleErr, setAngleErr] = useState('');
   const angleFileRef = useRef<HTMLInputElement>(null);
   const MAX_ANGLES = 5;
+  // Preview-before-adding, same reasoning as the cover photo: show the actual
+  // result (not just silently push it into the list) so it's obvious whether
+  // the background filter applied, and so the size can be nudged per angle.
+  const [anglePreview, setAnglePreview] = useState<{ original: string; polished: string } | null>(null);
+  const [angleCutoutSrc, setAngleCutoutSrc] = useState<string | null>(null);
+  const [angleCutoutMode, setAngleCutoutMode] = useState(true);
+  const [angleScale, setAngleScale] = useState(1);
 
   const onAngleFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -377,15 +384,33 @@ export default function ProductFormModal({
       return;
     }
     try {
-      const finalImg = polishEnabled
-        ? await compositeStudio((await polishMut.mutateAsync({ token, imageData: compressed })).imageData, true, 1)
-        : await compositeStudio(compressed, false, 1);
-      setD((p) => ({ ...p, images: [...p.images, finalImg] }));
+      const cutoutMode = polishEnabled;
+      const src = polishEnabled
+        ? (await polishMut.mutateAsync({ token, imageData: compressed })).imageData
+        : compressed;
+      const finalImg = await compositeStudio(src, cutoutMode, 1);
+      setAngleCutoutSrc(src);
+      setAngleCutoutMode(cutoutMode);
+      setAngleScale(1);
+      setAnglePreview({ original: compressed, polished: finalImg });
     } catch {
       setAngleErr('Could not process that photo — please try again.');
     } finally {
       setAngleUploading(false);
     }
+  };
+
+  const onAngleScale = async (next: number) => {
+    setAngleScale(next);
+    if (!angleCutoutSrc || !anglePreview) return;
+    const polished = await compositeStudio(angleCutoutSrc, angleCutoutMode, next);
+    setAnglePreview({ ...anglePreview, polished });
+  };
+
+  const confirmAngle = () => {
+    if (!anglePreview) return;
+    setD((p) => ({ ...p, images: [...p.images, anglePreview.polished] }));
+    setAnglePreview(null);
   };
 
   const removeAngle = (idx: number) => {
@@ -534,7 +559,7 @@ export default function ProductFormModal({
                   </button>
                 </div>
               ))}
-              {d.images.length < MAX_ANGLES && (
+              {d.images.length < MAX_ANGLES && !anglePreview && (
                 <button type="button" onClick={() => angleFileRef.current?.click()} disabled={angleUploading}
                   className="w-20 h-24 rounded-xl border-2 border-dashed border-rose-300 bg-blush-50 grid place-items-center hover:bg-blush-100 transition disabled:opacity-60">
                   {angleUploading
@@ -551,6 +576,44 @@ export default function ProductFormModal({
               Upload each angle on its own (worn, top-down, sole, etc.) — {polishEnabled ? 'each one is auto-polished onto the studio backdrop automatically.' : 'each one is auto-framed automatically (background removal needs an image API key — ask your developer).'}
             </p>
             {angleErr && <p className="mt-1 text-[11px] text-rose-600">{angleErr}</p>}
+
+            {/* Before / after for the angle currently being added */}
+            <AnimatePresence>
+              {anglePreview && (
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+                  className="mt-3 rounded-2xl border border-blush-100 bg-blush-50/50 p-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <figure>
+                      <img src={anglePreview.original} alt="Original angle" className="w-full aspect-[4/5] object-cover rounded-xl border border-blush-100 bg-white" />
+                      <figcaption className="mt-1 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-500">Original</figcaption>
+                    </figure>
+                    <figure>
+                      <img src={anglePreview.polished} alt="Polished angle" className="w-full aspect-[4/5] object-cover rounded-xl border border-gold-400/60 bg-white" />
+                      <figcaption className="mt-1 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">Polished</figcaption>
+                    </figure>
+                  </div>
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">Size in frame</label>
+                      <span className="text-[11px] text-ink-500">{Math.round(angleScale * 100)}%</span>
+                    </div>
+                    <input type="range" min={0.6} max={1.4} step={0.02} value={angleScale}
+                      onChange={(e) => void onAngleScale(Number(e.target.value))}
+                      className="mt-1.5 w-full accent-gold-500" />
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button type="button" onClick={confirmAngle}
+                      className="flex-1 h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400">
+                      Add this angle
+                    </button>
+                    <button type="button" onClick={() => setAnglePreview(null)}
+                      className="flex-1 h-11 rounded-full border border-blush-200 text-ink-900 text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-white">
+                      Discard
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <div>
