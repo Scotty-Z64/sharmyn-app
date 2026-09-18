@@ -393,8 +393,14 @@ export default function ProductFormModal({
       setAngleCutoutMode(cutoutMode);
       setAngleScale(1);
       setAnglePreview({ original: compressed, polished: finalImg });
-    } catch {
-      setAngleErr('Could not process that photo — please try again.');
+    } catch (e) {
+      const msg = (e as { message?: string } | null)?.message ?? '';
+      setAngleErr(
+        msg.includes('QUOTA') ? 'Photo polish is out of credits right now — top up the image API key, or use Studio frame for this angle.'
+        : msg.includes('BUSY') ? 'The image API is busy right now — wait a moment and try this angle again.'
+        : msg.includes('NOT_CONFIGURED') ? 'Photo polish needs an image API key — ask your developer to activate it.'
+        : `Could not process that photo — please try again. ${msg ? `(${msg.slice(0, 120)})` : ''}`
+      );
     } finally {
       setAngleUploading(false);
     }
