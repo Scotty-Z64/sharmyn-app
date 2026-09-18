@@ -48,11 +48,13 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, size: number, template: HTM
 
 function drawWatermark(ctx: CanvasRenderingContext2D, size: number, mark: HTMLImageElement | null) {
   if (!mark) return;
-  const w = 72;
+  // Brand mark, top-left corner of every generated photo — consistent placement
+  // per Ben's request, clear enough to read (not a faint corner watermark).
+  const w = 96;
   const h = (mark.height / mark.width) * w;
   ctx.save();
-  ctx.globalAlpha = 0.5;
-  ctx.drawImage(mark, size - 28 - w, size - 28 - h, w, h);
+  ctx.globalAlpha = 0.92;
+  ctx.drawImage(mark, 28, 28, w, h);
   ctx.restore();
 }
 
