@@ -72,9 +72,13 @@ async function compositeStudio(src: string, cutout: boolean): Promise<string> {
   const SIZE = 1080;
   const img = await loadImg(src);
   let template: HTMLImageElement | null = null;
-  try { template = await loadImg('/product-template.jpg'); } catch { template = null; }
+  // Cache-busted: these assets get swapped in place occasionally, and browsers
+  // otherwise happily keep serving a stale cached copy under the same filename
+  // (this is exactly how the "two logos" bug happened — an old cached backdrop
+  // combined with a freshly-loaded new wordmark).
+  try { template = await loadImg('/product-template.jpg?v=3'); } catch { template = null; }
   let mark: HTMLImageElement | null = null;
-  try { mark = await loadImg('/sh-wordmark.png'); } catch { mark = null; }
+  try { mark = await loadImg('/sh-wordmark.png?v=1'); } catch { mark = null; }
   const canvas = document.createElement('canvas');
   canvas.width = SIZE; canvas.height = SIZE;
   const ctx = canvas.getContext('2d');
