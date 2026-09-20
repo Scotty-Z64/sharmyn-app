@@ -2,7 +2,7 @@ import { eq, desc, sql, and, lt, gte, lte } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { getDb } from "./connection";
 import { products, orders, notifications, siteSettings } from "@db/schema";
-import { isSizedCategory } from "@contracts/types";
+import { isSizedCategory, pudoDeliveryFee } from "@contracts/types";
 import type {
   Product,
   Order,
@@ -23,12 +23,16 @@ import type {
   SiteSettings,
 } from "@contracts/types";
 
-/** Server-side delivery fees (ZAR) — the ONLY source of truth. */
-export const DELIVERY_FEES: Record<OrderDeliveryInput["method"], number> = {
+/** Server-side delivery fees (ZAR) — the ONLY source of truth. Pudo isn't
+ * flat — see pudoDeliveryFee (contracts/types.ts), priced per parcel by qty. */
+export const DELIVERY_FEES: Record<Exclude<OrderDeliveryInput["method"], "pudo">, number> = {
   collect: 0,
-  pudo: 60,
   door: 80,
 };
+
+function deliveryFeeFor(method: OrderDeliveryInput["method"], totalQty: number): number {
+  return method === "pudo" ? pudoDeliveryFee(totalQty) : DELIVERY_FEES[method];
+}
 
 const UNPAID_TTL_MS = 24 * 60 * 60 * 1000; // lazy sweep: cancel pending+unpaid after 24h
 
@@ -274,10 +278,11 @@ export async function placeOrderTx(
   const db = getDb();
   await sweepStaleUnpaidOrders();
 
+  const totalQty = inputItems.reduce((s, i) => s + i.qty, 0);
   const delivery: OrderDelivery = {
     method: deliveryInput.method,
     locker: deliveryInput.method === "pudo" ? deliveryInput.locker : undefined,
-    fee: DELIVERY_FEES[deliveryInput.method],
+    fee: deliveryFeeFor(deliveryInput.method, totalQty),
   };
 
   // Retry the whole transaction on duplicate-PK (order id collision), max 5.

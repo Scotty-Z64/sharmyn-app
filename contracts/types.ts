@@ -106,6 +106,20 @@ export interface Order {
   statusHistory: { status: OrderStatus; at: string }[];
 }
 
+/**
+ * Pudo delivery pricing: R150 covers one parcel of up to 3 items. Pudo
+ * lockers have a physical size limit, so a bigger order realistically needs
+ * more than one parcel/locker — priced the same per parcel rather than a
+ * flat fee regardless of order size, which would lose money on large orders.
+ * Shared by the checkout page (what the customer is shown) and the order
+ * placement transaction (what's actually charged), so they can never drift.
+ */
+export const PUDO_ITEMS_PER_PARCEL = 3;
+export const PUDO_FEE_PER_PARCEL = 150;
+export function pudoDeliveryFee(totalQty: number): number {
+  return Math.ceil(Math.max(1, totalQty) / PUDO_ITEMS_PER_PARCEL) * PUDO_FEE_PER_PARCEL;
+}
+
 /** Where a paid order sits in the fulfilment pipeline — derived, not stored. */
 export type FulfilmentStage = "awaiting_payment" | "awaiting_supplier" | "awaiting_stock" | "ready_to_pack" | "packed";
 

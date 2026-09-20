@@ -19,7 +19,7 @@ export type {
   OrderItem,
   PudoLockerRef,
 } from '@contracts/types';
-export { SHOE_BRANDS, isSizedCategory } from '@contracts/types';
+export { SHOE_BRANDS, isSizedCategory, pudoDeliveryFee, PUDO_ITEMS_PER_PARCEL, PUDO_FEE_PER_PARCEL } from '@contracts/types';
 
 export interface CartItem {
   productId: string;

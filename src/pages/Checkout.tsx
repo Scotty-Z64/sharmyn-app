@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Copy, CreditCard, Crown, Loader2, Lock, PackageOpen, ShoppingBag, Store } from 'lucide-react';
 import { useShop } from '@/lib/shop';
 import { trpc } from '@/providers/trpc';
-import { clearCart, formatPrice, formatAddress } from '@/lib/store';
+import { clearCart, formatPrice, formatAddress, pudoDeliveryFee, PUDO_ITEMS_PER_PARCEL, PUDO_FEE_PER_PARCEL } from '@/lib/store';
 import type { Order, OrderDelivery, PudoLockerRef } from '@/lib/store';
 import PudoLockerPicker from '@/components/checkout/PudoLockerPicker';
 import { BUSINESS, waLink } from '@/config/business';
@@ -108,7 +108,11 @@ export default function Checkout() {
   );
 
   const subtotal = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
-  const deliveryFee = delivery === 'collect' ? 0 : delivery === 'pudo' ? 60 : 80;
+  const totalQty = lines.reduce((s, l) => s + l.qty, 0);
+  // Kept in sync with the server's actual charge (placeOrderTx) — this is
+  // only what the customer is shown before submitting, never trusted as the
+  // real price; the server recomputes it from the order's real item count.
+  const deliveryFee = delivery === 'collect' ? 0 : delivery === 'pudo' ? pudoDeliveryFee(totalQty) : 80;
   const total = subtotal + deliveryFee;
 
   const selectDelivery = (m: DeliveryMethod) => {
@@ -141,9 +145,9 @@ export default function Checkout() {
     // Slim payload — prices and the delivery fee are recomputed server-side.
     const items = lines.map((l) => ({ productId: l.product.id, qty: l.qty, size: l.size ?? null }));
     const methodLabel =
-      delivery === 'pudo' ? 'Pudo Locker Pickup R60'
+      delivery === 'pudo' ? `Pudo Locker Pickup ${formatPrice(deliveryFee)}`
       : delivery === 'collect' ? 'Collect in Joburg (Free)'
-      : 'Door Delivery R80';
+      : `Door Delivery ${formatPrice(deliveryFee)}`;
     const deliveryInfo: OrderDelivery = {
       method: delivery,
       locker: delivery === 'pudo' ? locker ?? undefined : undefined,
@@ -510,9 +514,11 @@ export default function Checkout() {
               <PackageOpen className="h-5 w-5 text-rose-500 shrink-0" />
               <span className="flex-1">
                 <span className="block text-[14px] font-semibold text-ink-900">
-                  Pudo Locker Pickup — R60 <span className="ml-1 rounded-full bg-gold-400/15 border border-gold-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold-500">Recommended</span>
+                  Pudo Locker Pickup — {formatPrice(pudoDeliveryFee(totalQty))} <span className="ml-1 rounded-full bg-gold-400/15 border border-gold-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold-500">Recommended</span>
                 </span>
-                <span className="block text-[12px] text-ink-500">Collect from a smart locker near you · 2–4 working days</span>
+                <span className="block text-[12px] text-ink-500">
+                  Collect from a smart locker near you · 2–4 working days · {formatPrice(PUDO_FEE_PER_PARCEL)} per {PUDO_ITEMS_PER_PARCEL} items
+                </span>
               </span>
             </label>
             {delivery === 'pudo' && (
