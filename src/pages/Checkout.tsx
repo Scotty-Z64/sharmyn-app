@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router';
-import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Copy, CreditCard, Crown, Loader2, Lock, PackageOpen, ShoppingBag, Store } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ArrowLeft, Copy, CreditCard, Crown, Loader2, Lock, PackageOpen } from 'lucide-react';
 import { useShop } from '@/lib/shop';
 import { trpc } from '@/providers/trpc';
 import { clearCart, formatPrice, formatAddress, pudoDeliveryFee, PUDO_ITEMS_PER_PARCEL, PUDO_FEE_PER_PARCEL } from '@/lib/store';
@@ -87,17 +87,17 @@ export default function Checkout() {
   const [lockerError, setLockerError] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [placed, setPlaced] = useState<Order | null>(null);
-  const [payMethod, setPayMethod] = useState<'online' | 'store'>('online');
   const [shakeKey, setShakeKey] = useState(0);
-  const [summaryOpen, setSummaryOpen] = useState(false);
 
   const utils = trpc.useUtils();
   const placeOrderMutation = trpc.shop.placeOrder.useMutation();
   const createPaymentMutation = trpc.shop.createPayment.useMutation();
   const paymentConfig = trpc.shop.paymentConfig.useQuery(undefined, { staleTime: 5 * 60_000 });
   const onlinePayEnabled = paymentConfig.data?.enabled === true;
-  // Online payment only applies to delivery orders; collection defaults to pay-in-store.
-  const wantsOnlinePay = payMethod === 'online' && delivery !== 'collect' && onlinePayEnabled;
+  // Payment is online-only now — no "pay later" choice. Still gated on
+  // delivery !== 'collect' for when that method returns; unreachable today
+  // since checkout only offers Pudo.
+  const wantsOnlinePay = delivery !== 'collect' && onlinePayEnabled;
 
   const lines = useMemo(
     () =>
@@ -402,7 +402,7 @@ export default function Checkout() {
   );
 
   return (
-    <div className="pb-28 lg:pb-0">
+    <div>
       {/* Slim checkout header strip */}
       <div className="border-b border-gold-400/30 bg-white/80 backdrop-blur">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
@@ -537,40 +537,28 @@ export default function Checkout() {
             )}
           </div>
 
-          {/* Payment method */}
+          {/* Payment method — online payment only, no "pay later" */}
           <h3 className="font-display text-xl font-semibold text-ink-900 mt-7">Payment Method</h3>
           {onlinePayEnabled && delivery !== 'collect' ? (
-            <div className="mt-3 grid gap-3">
-              <label
-                className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition min-h-[44px] ${
-                  payMethod === 'online' ? 'border-rose-500 bg-blush-100/60 ring-2 ring-rose-500/20' : 'border-rose-300/50 bg-white'
-                }`}
-              >
-                <input type="radio" name="payment" value="online" checked={payMethod === 'online'} onChange={() => setPayMethod('online')} className="accent-rose-600 h-4 w-4" />
-                <CreditCard className="h-5 w-5 text-rose-500 shrink-0" />
-                <span className="flex-1">
-                  <span className="block text-[14px] font-semibold text-ink-900">Pay online now — card / instant EFT</span>
-                  <span className="block text-[12px] text-ink-500">Secure payment · you&rsquo;ll be redirected after placing your order</span>
-                </span>
-              </label>
-              <label
-                className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition min-h-[44px] ${
-                  payMethod === 'store' ? 'border-rose-500 bg-blush-100/60 ring-2 ring-rose-500/20' : 'border-rose-300/50 bg-white'
-                }`}
-              >
-                <input type="radio" name="payment" value="store" checked={payMethod === 'store'} onChange={() => setPayMethod('store')} className="accent-rose-600 h-4 w-4" />
-                <Store className="h-5 w-5 text-rose-500 shrink-0" />
-                <span className="flex-1">
-                  <span className="block text-[14px] font-semibold text-ink-900">Pay later</span>
-                  <span className="block text-[12px] text-ink-500">EFT, SnapScan or card on delivery — we&rsquo;ll confirm on WhatsApp</span>
-                </span>
-              </label>
+            <div className="mt-3 flex items-center gap-3 rounded-xl border border-rose-500 bg-blush-100/60 ring-2 ring-rose-500/20 p-4 min-h-[44px]">
+              <CreditCard className="h-5 w-5 text-rose-500 shrink-0" />
+              <span className="flex-1">
+                <span className="block text-[14px] font-semibold text-ink-900">Pay online now — card / instant EFT</span>
+                <span className="block text-[12px] text-ink-500">Secure payment · you&rsquo;ll be redirected after placing your order</span>
+              </span>
             </div>
           ) : (
             <p className="mt-3 rounded-xl border border-gold-400/40 bg-blush-50 px-4 py-3 text-[13px] text-ink-500">
               Online card payments coming soon — pay on collection / we&rsquo;ll WhatsApp you payment details.
             </p>
           )}
+
+          {/* Order summary + checkout button — inline right after payment method
+              on mobile/tablet, instead of buried behind a separate bottom sheet. */}
+          <div className="lg:hidden mt-7 rounded-2xl bg-white p-6 shadow-[0_8px_30px_rgba(43,29,35,0.07)] border-t-2 border-gold-400/60">
+            <h2 className="font-display text-2xl font-semibold text-ink-900 mb-3">Order Summary</h2>
+            {summaryItems}
+          </div>
         </motion.form>
 
         {/* Desktop sticky summary */}
@@ -583,55 +571,6 @@ export default function Checkout() {
           <h2 className="font-display text-2xl font-semibold text-ink-900 mb-3">Order Summary</h2>
           {summaryItems}
         </motion.aside>
-      </div>
-
-      {/* Mobile sticky summary bar + sheet */}
-      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40">
-        <AnimatePresence>
-          {summaryOpen && (
-            <>
-              <motion.div
-                key="backdrop"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-ink-900/40 backdrop-blur-sm"
-                onClick={() => setSummaryOpen(false)}
-              />
-              <motion.div
-                key="sheet"
-                initial={{ y: '100%' }}
-                animate={{ y: 0 }}
-                exit={{ y: '100%' }}
-                transition={{ type: 'spring', stiffness: 300, damping: 32 }}
-                drag="y"
-                dragConstraints={{ top: 0, bottom: 0 }}
-                dragElastic={{ top: 0, bottom: 0.6 }}
-                onDragEnd={(_, info) => { if (info.offset.y > 80) setSummaryOpen(false); }}
-                className="relative max-h-[75dvh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 shadow-2xl"
-              >
-                <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-rose-300" />
-                <h2 className="font-display text-2xl font-semibold text-ink-900 mb-2">Order Summary</h2>
-                {summaryItems}
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
-        {!summaryOpen && (
-          <button
-            type="button"
-            onClick={() => setSummaryOpen(true)}
-            className="w-full h-14 bg-ink-900 text-white flex items-center justify-between px-5 text-[13px] font-semibold uppercase tracking-[0.14em]"
-          >
-            <span className="inline-flex items-center gap-2">
-              <ShoppingBag className="h-4 w-4 text-rose-300" /> Total {formatPrice(total)}
-            </span>
-            <span className="inline-flex items-center gap-1 text-rose-300">
-              View summary
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6" /></svg>
-            </span>
-          </button>
-        )}
       </div>
     </div>
   );

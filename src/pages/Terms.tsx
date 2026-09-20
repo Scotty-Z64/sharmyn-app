@@ -19,9 +19,8 @@ export default function Terms() {
 
       <Section title="Payment">
         <p>
-          You can pay online by card or instant EFT through our secure payment gateway, or choose
-          "Pay later" and settle by EFT, SnapScan, or card on delivery — we'll confirm payment details
-          with you on WhatsApp. Your order is only packed and shipped once payment is confirmed.
+          Orders are paid online by card or instant EFT through our secure payment gateway at
+          checkout. Your order is only packed and shipped once payment is confirmed.
         </p>
       </Section>
 
