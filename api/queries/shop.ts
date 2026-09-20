@@ -389,6 +389,17 @@ export async function cancelOrderTx(id: string): Promise<Order | null> {
       await tx.execute(
         sql`UPDATE products SET quantity = quantity + ${item.qty} WHERE id = ${item.productId}`
       );
+      // Sized products (sneakers/shoes) need their specific size restored too —
+      // placeOrderTx decrements both quantity AND sizes[size] together; only
+      // restoring quantity here left that size's own count permanently short
+      // after any cancellation, even though the pooled total looked correct.
+      if (item.size) {
+        await tx.execute(
+          sql`UPDATE products
+              SET sizes = JSON_SET(sizes, ${"$.\"" + item.size + "\""}, COALESCE(JSON_EXTRACT(sizes, ${"$.\"" + item.size + "\""}), 0) + ${item.qty})
+              WHERE id = ${item.productId} AND sizes IS NOT NULL`
+        );
+      }
       await tx.execute(
         sql`UPDATE products SET availability = 'in-stock' WHERE id = ${item.productId} AND quantity > 0 AND availability = 'sold-out'`
       );
