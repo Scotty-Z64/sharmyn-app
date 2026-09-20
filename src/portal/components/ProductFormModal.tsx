@@ -7,20 +7,12 @@ import { CATEGORIES, SHOE_BRANDS, isSizedCategory, formatPrice } from '@/portal/
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { imageReadErrorMessage, MAX_UPLOAD_BYTES } from '@/lib/image-upload-errors';
+import { loadImg, drawSandBackdrop, drawWordmark, PRODUCT_TEMPLATE_SRC, WORDMARK_SRC } from '@/lib/studio-visuals';
 import { Thumb } from './bits';
 
 // ---------- AI Photo Polish — client-side compositing ----------
 // The server only removes the background (remove.bg → transparent PNG);
 // everything below runs entirely in the browser on a 1080×1080 canvas.
-
-function loadImg(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('load'));
-    img.src = src;
-  });
-}
 
 /** Compress a File to a JPEG data URL (max 800px longest side). Promise-based
  * so the "extra angle" upload flow can await it inline, unlike the main image
@@ -49,47 +41,6 @@ function compressImageFile(file: File, max = 800, quality = 0.8): Promise<string
   });
 }
 
-function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, template: HTMLImageElement | null) {
-  if (template) {
-    // Plain sand texture (logo-free — the wordmark is drawn separately, see
-    // drawWordmark, so it can be sized independently of the backdrop photo).
-    // Not the same shape as the canvas, so cover-fit rather than stretch.
-    const scale = Math.max(w / template.width, h / template.height);
-    const tw = template.width * scale;
-    const th = template.height * scale;
-    const tx = (w - tw) / 2;
-    const ty = (h - th) / 2;
-    ctx.drawImage(template, tx, ty, tw, th);
-    return;
-  }
-  // Fallback cream studio gradient (template failed to load).
-  const g = ctx.createLinearGradient(0, 0, w, h);
-  g.addColorStop(0, '#FBF3E4');
-  g.addColorStop(0.55, '#F7E7D0');
-  g.addColorStop(1, '#F3E0C9');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h);
-  const r = ctx.createRadialGradient(w * 0.3, h * 0.2, 40, w * 0.3, h * 0.2, Math.max(w, h) * 0.9);
-  r.addColorStop(0, 'rgba(255,255,255,0.35)');
-  r.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = r;
-  ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = 'rgba(198,154,74,0.35)';
-  ctx.lineWidth = 3;
-  const L = 54;
-  ctx.beginPath(); ctx.moveTo(28, 28 + L); ctx.lineTo(28, 28); ctx.lineTo(28 + L, 28); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(w - 28 - L, h - 28); ctx.lineTo(w - 28, h - 28); ctx.lineTo(w - 28, h - 28 - L); ctx.stroke();
-}
-
-function drawWordmark(ctx: CanvasRenderingContext2D, canvasW: number, canvasH: number, mark: HTMLImageElement | null) {
-  if (!mark) return;
-  // Small "Sh" wordmark, bottom-left — sized independently of the backdrop
-  // photo (see drawBackdrop) so it reads as a mark, not the main visual.
-  const w = canvasW * 0.263;
-  const h = (mark.height / mark.width) * w;
-  ctx.drawImage(mark, canvasW * 0.028, canvasH - h - canvasH * 0.022, w, h);
-}
-
 const STUDIO_W = 1080;
 const STUDIO_H = 1350; // 4:5 — matches the storefront's product-card/quick-view frame
                         // exactly, so nothing gets cropped a second time on display.
@@ -108,14 +59,14 @@ async function compositeStudio(src: string, cutout: boolean, userScale = 1): Pro
   // otherwise happily keep serving a stale cached copy under the same filename
   // (this is exactly how the "two logos" bug happened — an old cached backdrop
   // combined with a freshly-loaded new wordmark).
-  try { template = await loadImg('/product-template.jpg?v=3'); } catch { template = null; }
+  try { template = await loadImg(PRODUCT_TEMPLATE_SRC); } catch { template = null; }
   let mark: HTMLImageElement | null = null;
-  try { mark = await loadImg('/sh-wordmark.png?v=1'); } catch { mark = null; }
+  try { mark = await loadImg(WORDMARK_SRC); } catch { mark = null; }
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('no-canvas');
-  drawBackdrop(ctx, W, H, template);
+  drawSandBackdrop(ctx, W, H, template);
 
   if (cutout) {
     // Product confined to the upper ~76% of the canvas, centered — kept clear
@@ -199,7 +150,7 @@ async function compositeStudio(src: string, cutout: boolean, userScale = 1): Pro
     ctx.stroke();
     ctx.restore();
   }
-  drawWordmark(ctx, W, H, mark);
+  drawWordmark(ctx, W, H, mark, 0.263);
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 

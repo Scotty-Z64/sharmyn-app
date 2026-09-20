@@ -10,6 +10,7 @@ import { usePortal } from '@/portal/lib/portal';
 import { BUSINESS } from '@/config/business';
 import { formatPrice } from '@/portal/lib/utils-shop';
 import { imageReadErrorMessage, MAX_UPLOAD_BYTES } from '@/lib/image-upload-errors';
+import { drawSandBackdrop, drawWordmark, drawProductShadow, PRODUCT_TEMPLATE_SRC, WORDMARK_SRC } from '@/lib/studio-visuals';
 import type { Category } from '@contracts/types';
 import type { StudioPost } from '@contracts/types';
 
@@ -29,10 +30,7 @@ const FORMATS: { key: FormatKey; label: string; ratio: string; w: number; h: num
 ];
 
 const GOLD = '#96721A';
-const GOLD_LIGHT = '#E5B354';
 const ROSE = '#BB1E55';
-const ROSE_BG = '#FBE4EB';
-const IVORY = '#FBF3E4';
 const INK = '#1A1008';
 const SERIF = '"Cormorant Garamond", Georgia, serif';
 
@@ -97,8 +95,9 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 interface RenderOpts {
   template: TemplateKey;
   format: FormatKey;
-  photo: HTMLImageElement | null;
-  logo: HTMLImageElement | null;
+  photo: HTMLImageElement | null; // usually a transparent cutout now — see applyPhoto
+  backdrop: HTMLImageElement | null; // sand-texture template, shared with product photos
+  wordmark: HTMLImageElement | null; // "Sh" mark, shared with product photos
   headline: string;
   subtext: string;
   price: string;
@@ -108,39 +107,43 @@ interface RenderOpts {
   oldPrice: string;
 }
 
-function coverDraw(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
-  const s = Math.max(w / img.width, h / img.height);
-  const dw = img.width * s, dh = img.height * s;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.clip();
-  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
-  ctx.restore();
-}
-
-function drawPhoto(ctx: CanvasRenderingContext2D, photo: HTMLImageElement | null, x: number, y: number, w: number, h: number) {
-  if (photo) {
-    coverDraw(ctx, photo, x, y, w, h);
-  } else {
-    ctx.fillStyle = '#EFE3E7';
+/**
+ * Fit (not crop) the product photo within a max box, bottom-anchored and
+ * centered, with a soft contact shadow underneath. Fitting rather than
+ * cropping matters because `photo` is usually a background-removed cutout
+ * now (see applyPhoto) — cropping a cutout can slice off part of the product,
+ * where cropping a plain rectangular photo just loses some background.
+ * Returns the actual drawn box so callers can position other elements
+ * (e.g. the Sale badge) relative to it.
+ */
+function drawProductFit(
+  ctx: CanvasRenderingContext2D,
+  photo: HTMLImageElement | null,
+  centerX: number, bottomY: number, maxW: number, maxH: number
+): { x: number; y: number; w: number; h: number } {
+  if (!photo) {
+    const w = maxW, h = maxH, x = centerX - w / 2, y = bottomY - h;
+    ctx.fillStyle = 'rgba(150,114,26,0.08)';
     ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(150,114,26,0.3)';
+    ctx.setLineDash([8, 8]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
     ctx.fillStyle = '#B79AA5';
-    ctx.font = `500 34px ${SERIF}`;
+    ctx.font = `500 ${Math.round(h * 0.08)}px ${SERIF}`;
     ctx.textAlign = 'center';
-    ctx.fillText('Your photo here', x + w / 2, y + h / 2);
+    ctx.fillText('Your photo here', centerX, bottomY - h / 2);
+    return { x, y, w, h };
   }
-}
-
-function drawLogo(ctx: CanvasRenderingContext2D, logo: HTMLImageElement | null, cx: number, y: number, size: number) {
-  if (logo) {
-    ctx.drawImage(logo, cx - size / 2, y, size, size);
-  } else {
-    ctx.fillStyle = GOLD;
-    ctx.font = `700 ${Math.round(size * 0.55)}px ${SERIF}`;
-    ctx.textAlign = 'center';
-    ctx.fillText('SHARMYN', cx, y + size * 0.7);
-  }
+  const scale = Math.min(maxW / photo.width, maxH / photo.height);
+  const w = photo.width * scale, h = photo.height * scale;
+  const x = centerX - w / 2, y = bottomY - h;
+  drawProductShadow(ctx, centerX, bottomY - h * 0.03, w, h);
+  ctx.save();
+  ctx.filter = 'brightness(1.03) contrast(1.04)';
+  ctx.drawImage(photo, x, y, w, h);
+  ctx.restore();
+  return { x, y, w, h };
 }
 
 /**
@@ -150,6 +153,30 @@ function drawLogo(ctx: CanvasRenderingContext2D, logo: HTMLImageElement | null, 
  * 1080x1080 reference), not fixed pixels, so the same template composes
  * sensibly at any aspect ratio instead of only the original Instagram square.
  */
+/** Price in a soft rounded pill — reads as a deliberate UI element rather
+ * than loose text floating on the backdrop. */
+function drawPricePill(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number, fontPx: number, color: string) {
+  ctx.font = `700 ${Math.round(fontPx)}px ${SERIF}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const tw = ctx.measureText(text).width;
+  const padX = fontPx * 0.7, padY = fontPx * 0.55;
+  const pw = tw + padX * 2, ph = fontPx + padY * 1.3;
+  const r = ph / 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - pw / 2 + r, cy - ph / 2);
+  ctx.arcTo(cx + pw / 2, cy - ph / 2, cx + pw / 2, cy + ph / 2, r);
+  ctx.arcTo(cx + pw / 2, cy + ph / 2, cx - pw / 2, cy + ph / 2, r);
+  ctx.arcTo(cx - pw / 2, cy + ph / 2, cx - pw / 2, cy - ph / 2, r);
+  ctx.arcTo(cx - pw / 2, cy - ph / 2, cx + pw / 2, cy - ph / 2, r);
+  ctx.closePath();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fill();
+  ctx.fillStyle = color;
+  ctx.fillText(text, cx, cy + fontPx * 0.04);
+  ctx.textBaseline = 'alphabetic';
+}
+
 export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
   const fmt = FORMATS.find((f) => f.key === o.format) ?? FORMATS[0];
   const W = fmt.w, H = fmt.h;
@@ -165,143 +192,135 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
   const price = o.showPrice && o.price && !isNaN(Number(o.price)) ? formatPrice(Number(o.price)) : '';
   const oldPrice = o.oldPrice && !isNaN(Number(o.oldPrice)) ? formatPrice(Number(o.oldPrice)) : '';
 
+  // Every template shares the same warm textured backdrop and the same
+  // bottom-left brand mark — consistent with product photos, so a Studio
+  // post and a catalogue photo read as the same brand.
+  drawSandBackdrop(ctx, W, H, o.backdrop);
+
   if (o.template === 'elegant') {
-    // Full-bleed photo + subtle gradient + logo watermark + caption bar.
-    drawPhoto(ctx, o.photo, 0, 0, W, H);
-    const grad = ctx.createLinearGradient(0, H * 0.55, 0, H);
-    grad.addColorStop(0, 'rgba(43,29,35,0)');
-    grad.addColorStop(1, 'rgba(43,29,35,0.72)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-    ctx.globalAlpha = 0.9;
-    drawLogo(ctx, o.logo, W / 2, H * 0.044, H * 0.089);
-    ctx.globalAlpha = 1;
+    // Minimal / premium: one hero product shot, quiet serif caption below it.
+    // (Previously assumed a full-bleed lifestyle photo; Studio photos are
+    // cutouts now, so a hero-product layout suits what's actually available.)
     ctx.textAlign = 'center';
+    const maxW = W * 0.8, maxH = H * (isWide ? 0.5 : 0.6);
+    const bottomY = H * (isWide ? 0.62 : 0.66);
+    drawProductFit(ctx, o.photo, W / 2, bottomY, maxW, maxH);
+
+    let ty = bottomY + H * 0.085;
     if (headline) {
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = `600 ${Math.round(H * 0.0685)}px ${SERIF}`;
-      ctx.fillText(headline, W / 2, H - H * 0.176, W * 0.9);
+      ctx.fillStyle = INK;
+      ctx.font = `italic 600 ${Math.round(H * 0.06)}px ${SERIF}`;
+      ctx.fillText(headline, W / 2, ty, W * 0.86);
+      ty += H * 0.058;
     }
     if (subtext) {
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
-      ctx.font = `italic 500 ${Math.round(H * 0.037)}px ${SERIF}`;
-      ctx.fillText(subtext, W / 2, H - H * 0.1185, W * 0.9);
+      ctx.fillStyle = '#7A6A60';
+      ctx.font = `italic 500 ${Math.round(H * 0.032)}px ${SERIF}`;
+      ctx.fillText(subtext, W / 2, ty, W * 0.86);
+      ty += H * 0.05;
     }
-    if (price) {
-      ctx.fillStyle = GOLD_LIGHT;
-      ctx.font = `700 ${Math.round(H * 0.0426)}px ${SERIF}`;
-      ctx.fillText(price, W / 2, H - H * 0.0611);
-    }
+    if (price) drawPricePill(ctx, price, W / 2, ty + H * 0.01, H * 0.036, GOLD);
+    drawWordmark(ctx, W, H, o.wordmark, 0.14);
     return;
   }
 
-  // Shared background
-  ctx.fillStyle = o.template === 'sale' ? ROSE_BG : IVORY;
-  ctx.fillRect(0, 0, W, H);
-
   if (o.template === 'new-in') {
-    drawLogo(ctx, o.logo, W / 2, H * 0.0407, H * 0.0815);
     ctx.textAlign = 'center';
     ctx.fillStyle = accent;
-    ctx.font = `700 ${Math.round(H * 0.063)}px ${SERIF}`;
-    ctx.fillText(headline || 'NEW IN STORE', W / 2, H * 0.1926, W * 0.9);
+    ctx.font = `700 ${Math.round(H * 0.058)}px ${SERIF}`;
+    ctx.fillText(headline || 'NEW IN STORE', W / 2, H * 0.115, W * 0.86);
     if (subtext) {
       ctx.fillStyle = INK;
-      ctx.font = `italic 500 ${Math.round(H * 0.0333)}px ${SERIF}`;
-      ctx.fillText(subtext, W / 2, H * 0.2389, W * 0.9);
+      ctx.font = `italic 500 ${Math.round(H * 0.03)}px ${SERIF}`;
+      ctx.fillText(subtext, W / 2, H * 0.155, W * 0.86);
     }
-    // Elegant frame: gold border + white mat — kept square via M, sized down for wide/landscape.
-    const fs = M * (isWide ? 0.52 : 0.6852);
-    const fx = (W - fs) / 2;
-    const fy = H * (isWide ? 0.22 : 0.2778);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(fx - 16, fy - 16, fs + 32, fs + 32);
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 4;
-    ctx.strokeRect(fx - 16, fy - 16, fs + 32, fs + 32);
-    drawPhoto(ctx, o.photo, fx, fy, fs, fs);
-    if (price) {
-      ctx.fillStyle = INK;
-      ctx.font = `700 ${Math.round(H * 0.0481)}px ${SERIF}`;
-      ctx.fillText(price, W / 2, H - H * 0.0222);
-    }
+    const maxW = W * 0.72, maxH = H * (isWide ? 0.42 : 0.54);
+    const bottomY = H * (isWide ? 0.84 : 0.82);
+    drawProductFit(ctx, o.photo, W / 2, bottomY, maxW, maxH);
+    if (price) drawPricePill(ctx, price, W / 2, H * (isWide ? 0.92 : 0.91), H * 0.036, accent);
+    drawWordmark(ctx, W, H, o.wordmark, 0.14);
     return;
   }
 
   if (o.template === 'sale') {
-    drawLogo(ctx, o.logo, W / 2, H * 0.037, H * 0.074);
-    // Gold % OFF badge
-    const bx = W / 2, by = H * 0.2778, br = M * 0.1389;
+    // Badge + headline live in a fixed zone above the product, and the
+    // product's maxH is capped so its top can never reach into that zone —
+    // by construction, not by reacting to where the product happened to
+    // land (a dynamic "hug the product's top edge" approach overlapped the
+    // headline into tall products like high-top sneakers; fixed positions
+    // with a guaranteed-safe gap sidestep that regardless of photo shape).
+    const maxW = W * 0.6, maxH = H * (isWide ? 0.26 : 0.32);
+    const bottomY = H * (isWide ? 0.82 : 0.8);
+    drawProductFit(ctx, o.photo, W / 2, bottomY, maxW, maxH);
+
+    const br = M * 0.1;
+    const by = H * (isWide ? 0.16 : 0.19);
     ctx.beginPath();
-    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.arc(W / 2, by, br, 0, Math.PI * 2);
     ctx.fillStyle = accent;
     ctx.fill();
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.font = `700 ${Math.round(br * 0.56)}px ${SERIF}`;
-    ctx.fillText((o.salePct || '20') + '%', bx, by - br * 0.027);
-    ctx.font = `700 ${Math.round(br * 0.293)}px ${SERIF}`;
-    ctx.fillText('OFF', bx, by + br * 0.347);
-    ctx.fillStyle = INK;
-    ctx.font = `700 ${Math.round(H * 0.0593)}px ${SERIF}`;
-    ctx.fillText(headline || 'SALE', W / 2, H * 0.4815, W * 0.9);
-    if (subtext) {
-      ctx.font = `italic 500 ${Math.round(H * 0.0333)}px ${SERIF}`;
-      ctx.fillText(subtext, W / 2, H * 0.5278, W * 0.9);
+    ctx.fillText((o.salePct || '20') + '%', W / 2, by - br * 0.03);
+    ctx.font = `700 ${Math.round(br * 0.28)}px ${SERIF}`;
+    ctx.fillText('OFF', W / 2, by + br * 0.35);
+
+    if (headline) {
+      ctx.fillStyle = INK;
+      ctx.font = `700 ${Math.round(H * 0.05)}px ${SERIF}`;
+      ctx.fillText(headline, W / 2, by + br + H * 0.06, W * 0.86);
     }
-    const photoW = W * 0.6, photoH = H * (isWide ? 0.22 : 0.3333);
-    drawPhoto(ctx, o.photo, (W - photoW) / 2, H * 0.5648, photoW, photoH);
+
     if (price) {
+      const py = H * (isWide ? 0.93 : 0.92);
       if (oldPrice) {
-        ctx.font = `500 ${Math.round(H * 0.0407)}px ${SERIF}`;
+        ctx.font = `500 ${Math.round(H * 0.034)}px ${SERIF}`;
         const oldW = ctx.measureText(oldPrice).width;
-        const px = W / 2 - oldW - 24;
-        ctx.fillStyle = '#8A7A80';
+        ctx.font = `700 ${Math.round(H * 0.042)}px ${SERIF}`;
+        const newW = ctx.measureText(price).width;
+        const gap = 18;
+        const totalW = oldW + newW + gap;
+        const startX = W / 2 - totalW / 2;
         ctx.textAlign = 'left';
-        ctx.fillText(oldPrice, px, H - H * 0.0278);
+        ctx.fillStyle = '#8A7A80';
+        ctx.font = `500 ${Math.round(H * 0.034)}px ${SERIF}`;
+        ctx.fillText(oldPrice, startX, py);
         ctx.strokeStyle = ROSE;
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(px - 6, H - H * 0.0426);
-        ctx.lineTo(px + oldW + 6, H - H * 0.0426);
+        ctx.moveTo(startX - 4, py - H * 0.014);
+        ctx.lineTo(startX + oldW + 4, py - H * 0.014);
         ctx.stroke();
         ctx.fillStyle = ROSE;
-        ctx.font = `700 ${Math.round(H * 0.05)}px ${SERIF}`;
-        ctx.fillText(price, px + oldW + 32, H - H * 0.0278);
+        ctx.font = `700 ${Math.round(H * 0.042)}px ${SERIF}`;
+        ctx.fillText(price, startX + oldW + gap, py);
       } else {
-        ctx.textAlign = 'center';
-        ctx.fillStyle = ROSE;
-        ctx.font = `700 ${Math.round(H * 0.05)}px ${SERIF}`;
-        ctx.fillText(price, W / 2, H - H * 0.0278);
+        drawPricePill(ctx, price, W / 2, py - H * 0.01, H * 0.036, ROSE);
       }
     }
+    drawWordmark(ctx, W, H, o.wordmark, 0.14);
     return;
   }
 
   // restocked
-  drawLogo(ctx, o.logo, W / 2, H * 0.0407, H * 0.0815);
-  // Banner
-  const bannerY = H * 0.1759, bannerH = H * 0.1019;
+  const bannerY = H * 0.115, bannerH = H * 0.088;
   ctx.fillStyle = accent;
   ctx.fillRect(0, bannerY, W, bannerH);
   ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'center';
-  ctx.font = `700 ${Math.round(H * 0.0537)}px ${SERIF}`;
-  ctx.fillText(headline || 'BACK IN STOCK', W / 2, bannerY + bannerH * 0.667, W * 0.9);
+  ctx.font = `700 ${Math.round(H * 0.05)}px ${SERIF}`;
+  ctx.fillText(headline || 'BACK IN STOCK', W / 2, bannerY + bannerH * 0.66, W * 0.86);
   if (subtext) {
     ctx.fillStyle = INK;
-    ctx.font = `italic 500 ${Math.round(H * 0.0333)}px ${SERIF}`;
-    ctx.fillText(subtext, W / 2, H * 0.3296, W * 0.9);
+    ctx.font = `italic 500 ${Math.round(H * 0.03)}px ${SERIF}`;
+    ctx.fillText(subtext, W / 2, bannerY + bannerH + H * 0.048, W * 0.86);
   }
-  const photoY = bannerY + bannerH + H * 0.037;
-  const photoH = H - photoY - H * 0.09;
-  const photoW = Math.min(W * 0.65, photoH * (isWide ? 1.4 : 1.25));
-  drawPhoto(ctx, o.photo, (W - photoW) / 2, photoY, photoW, photoH);
-  if (price) {
-    ctx.fillStyle = INK;
-    ctx.font = `700 ${Math.round(H * 0.0481)}px ${SERIF}`;
-    ctx.fillText(price, W / 2, H - H * 0.0222);
-  }
+  const maxW = W * 0.72, maxH = H * (isWide ? 0.4 : 0.5);
+  const bottomY = H * (isWide ? 0.85 : 0.83);
+  drawProductFit(ctx, o.photo, W / 2, bottomY, maxW, maxH);
+  if (price) drawPricePill(ctx, price, W / 2, H * (isWide ? 0.92 : 0.91), H * 0.036, accent);
+  drawWordmark(ctx, W, H, o.wordmark, 0.14);
 }
 
 /* ================= caption engine (rule-based, no AI calls) ================= */
@@ -500,9 +519,13 @@ function GridPlanner() {
   };
 
   const varietyTips = useMemo(() => {
+    // Compare the actual template, not the coarse bgColor bucket — "New In"
+    // and "Restocked" both used to map to the same bucket, so this fired on
+    // almost every card regardless of whether the owner was really repeating
+    // themselves.
     const tips: string[] = [];
     for (let i = 0; i + 1 < posts.length; i++) {
-      if (posts[i].bgColor === posts[i + 1].bgColor) tips.push(posts[i + 1].id);
+      if (posts[i].template === posts[i + 1].template) tips.push(posts[i + 1].id);
     }
     return new Set(tips);
   }, [posts]);
@@ -551,7 +574,7 @@ function GridPlanner() {
                           <p className="absolute top-1.5 left-1.5 bg-gold-500/95 text-white text-[9px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full">Tip: try variety</p>
                         )}
                         <div className="p-2 space-y-1.5">
-                          <p className="text-[11px] font-medium text-ink-900 truncate">{p.headline || p.template}</p>
+                          <p className="text-[11px] font-medium text-ink-900 line-clamp-2 leading-snug min-h-[2.2em]">{p.headline || p.template}</p>
                           <div className="flex items-center gap-1">
                             <button aria-label="Move earlier" disabled={i === 0} onClick={() => move(i, -1)}
                               className="w-9 h-9 grid place-items-center rounded-lg bg-white border border-blush-100 text-ink-500 disabled:opacity-30">
@@ -596,9 +619,32 @@ export default function StudioTab() {
   // Step state
   const [step, setStep] = useState(1);
   const [photoSrc, setPhotoSrc] = useState('');
+  const [productName, setProductName] = useState(''); // real product name, when picked — separate from the on-canvas headline (which is a promo phrase like "NEW IN STORE")
   const [pickerOpen, setPickerOpen] = useState(false);
   const [imgErr, setImgErr] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Background removal — same pipeline as product photos, so whatever
+  // background (or messy phone-photo clutter) the source shot had gets
+  // stripped away instead of just cropped into a box.
+  const polishCfg = trpc.shop.photoPolishConfig.useQuery({ token }, { retry: false });
+  const polishMut = trpc.shop.polishProductImage.useMutation();
+  const [polishingPhoto, setPolishingPhoto] = useState(false);
+
+  const applyPhoto = async (rawSrc: string) => {
+    setImgErr('');
+    if (!polishCfg.data?.enabled) { setPhotoSrc(rawSrc); return; }
+    setPolishingPhoto(true);
+    try {
+      const { imageData } = await polishMut.mutateAsync({ token, imageData: rawSrc });
+      setPhotoSrc(imageData);
+    } catch {
+      // Graceful degrade — the raw photo still works, just not cut out.
+      setPhotoSrc(rawSrc);
+    } finally {
+      setPolishingPhoto(false);
+    }
+  };
 
   // Template state
   const [format, setFormat] = useState<FormatKey>('ig-post');
@@ -622,11 +668,14 @@ export default function StudioTab() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const photoImg = useRef<HTMLImageElement | null>(null);
-  const logoImg = useRef<HTMLImageElement | null>(null);
+  const backdropImg = useRef<HTMLImageElement | null>(null);
+  const wordmarkImg = useRef<HTMLImageElement | null>(null);
 
-  // Load logo once
+  // Load the shared backdrop + wordmark once (same assets the product-photo
+  // pipeline uses, so a Studio post and a catalogue photo look related).
   useEffect(() => {
-    loadImage('/sharmyn-mark.png').then((img) => { logoImg.current = img; redraw(); }).catch(() => {});
+    loadImage(PRODUCT_TEMPLATE_SRC).then((img) => { backdropImg.current = img; redraw(); }).catch(() => {});
+    loadImage(WORDMARK_SRC).then((img) => { wordmarkImg.current = img; redraw(); }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -641,7 +690,7 @@ export default function StudioTab() {
     const c = canvasRef.current;
     if (!c) return;
     renderPost(c, {
-      template, format, photo: photoImg.current, logo: logoImg.current,
+      template, format, photo: photoImg.current, backdrop: backdropImg.current, wordmark: wordmarkImg.current,
       headline, subtext, price, showPrice, accent, salePct, oldPrice,
     });
   }, [template, format, headline, subtext, price, showPrice, accent, salePct, oldPrice]);
@@ -659,15 +708,17 @@ export default function StudioTab() {
     if (!f) return;
     setImgErr('');
     if (f.size > MAX_UPLOAD_BYTES) { setImgErr(imageReadErrorMessage(f)); return; }
+    setProductName('');
     try {
-      setPhotoSrc(await compressImageFile(f, 1080, 0.85));
+      const compressed = await compressImageFile(f, 1080, 0.85);
+      await applyPhoto(compressed);
     } catch {
       setImgErr(imageReadErrorMessage(f));
     }
   };
 
   const regenerate = (cat = category, occ = occasion) => {
-    const g = generateCaptions(cat, occ, headline, price);
+    const g = generateCaptions(cat, occ, productName || headline, price);
     setCaptionIg(g.ig);
     setCaptionFb(g.fb);
     setHashtags(g.hashtags);
@@ -794,9 +845,14 @@ export default function StudioTab() {
       <section className="bg-white rounded-2xl border border-blush-100 p-5">
         <StepHeader n={1} title="Choose your photo" hint="Upload from your phone, or use a product photo" />
         <div className="mt-4 grid sm:grid-cols-2 gap-3">
-          <button onClick={() => fileRef.current?.click()}
-            className="h-40 rounded-2xl border-2 border-dashed border-rose-300 bg-blush-50 grid place-items-center hover:bg-blush-100 transition">
-            {photoSrc
+          <button onClick={() => fileRef.current?.click()} disabled={polishingPhoto}
+            className="h-40 rounded-2xl border-2 border-dashed border-rose-300 bg-blush-50 grid place-items-center hover:bg-blush-100 transition disabled:opacity-80">
+            {polishingPhoto
+              ? <span className="flex flex-col items-center gap-2 text-rose-500">
+                  <Loader2 size={26} className="animate-spin" />
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em]">Removing background…</span>
+                </span>
+              : photoSrc
               ? <img src={photoSrc} alt="Chosen" className="h-full w-full object-cover rounded-2xl" />
               : <span className="flex flex-col items-center gap-2 text-rose-500">
                   <ImagePlus size={30} />
@@ -813,8 +869,13 @@ export default function StudioTab() {
         </div>
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void onFile(e)} />
         {imgErr && <p className="mt-2 text-xs text-rose-600">{imgErr}</p>}
+        <p className="mt-3 text-[11px] text-ink-500">
+          {polishCfg.data?.enabled
+            ? 'The background is removed automatically and placed on the Sharmyn studio backdrop — best on photos of just the product.'
+            : 'Background removal needs an image API key — ask your developer to activate it. Your photo will be used as-is for now.'}
+        </p>
         <div className="mt-4 flex justify-end">
-          <button disabled={!photoSrc} onClick={() => setStep(2)} className={btnGold}>
+          <button disabled={!photoSrc || polishingPhoto} onClick={() => setStep(2)} className={btnGold}>
             Next: design <ArrowRight size={15} />
           </button>
         </div>
@@ -1025,7 +1086,8 @@ export default function StudioTab() {
               <div className="grid grid-cols-3 gap-2">
                 {products.filter((p) => p.image).map((p) => (
                   <button key={p.id} onClick={() => {
-                    setPhotoSrc(p.image);
+                    void applyPhoto(p.image);
+                    setProductName(p.name);
                     setPrice((pr) => pr || String(p.price));
                     setHeadline((h) => h || (template === 'new-in' ? 'NEW IN STORE' : template === 'sale' ? 'SALE' : template === 'restocked' ? 'BACK IN STOCK' : p.name));
                     setCategory(p.category);
