@@ -109,9 +109,13 @@ function NotificationsBell({ goToOrders }: { goToOrders: () => void }) {
         {open && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            {/* Anchored to the viewport (not the bell icon) on mobile — the bell
+                sits well left of the screen's right edge once Install + Log out
+                share the header, so a panel positioned relative to the icon
+                itself was overflowing off the left edge of narrow phones. */}
             <motion.div initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -6, scale: 0.98 }} transition={{ duration: 0.15 }}
-              className="absolute right-0 top-12 z-50 w-80 max-w-[85vw] bg-white rounded-2xl shadow-xl border border-blush-100 overflow-hidden">
+              className="fixed left-4 right-4 top-[104px] sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-80 sm:max-w-[85vw] z-50 bg-white rounded-2xl shadow-xl border border-blush-100 overflow-hidden">
               <p className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500 border-b border-blush-100">
                 Notifications
               </p>
