@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ImagePlus, Loader2, Sparkles, X } from 'lucide-react';
 import type { Availability, Category, Product } from '@/portal/lib/utils-shop';
-import { CATEGORIES, SHOE_BRANDS, isSizedCategory, formatPrice } from '@/portal/lib/utils-shop';
+import { CATEGORIES, SHOE_BRANDS, isSizedCategory, formatPrice, discountPercent } from '@/portal/lib/utils-shop';
 import { imageReadErrorMessage, MAX_UPLOAD_BYTES } from '@/lib/image-upload-errors';
 import { loadImg, drawSandBackdrop, drawWordmark, PRODUCT_TEMPLATE_SRC, WORDMARK_SRC } from '@/lib/studio-visuals';
 import { removeBackgroundClient } from '@/lib/bg-removal';
@@ -160,6 +160,7 @@ export interface Draft {
   category: Category;
   brand: string; // '' = none — sneakers/shoes only
   price: string;
+  oldPrice: string; // '' = no discount shown
   costPrice: string;
   sizes: Record<string, string>; // size -> qty, as raw input text; only entries > 0 are saved
   description: string;
@@ -179,6 +180,7 @@ export function draftFrom(p?: Product): Draft {
     category: p?.category ?? 'sneakers',
     brand: p?.brand ?? '',
     price: p ? String(p.price) : '',
+    oldPrice: p?.oldPrice ? String(p.oldPrice) : '',
     costPrice: p?.costPrice ? String(p.costPrice) : '',
     sizes: Object.fromEntries(SNEAKER_SIZES.map((s) => [s, p?.sizes?.[s] ? String(p.sizes[s]) : ''])),
     description: p?.description ?? '',
@@ -568,6 +570,26 @@ export default function ProductFormModal({
                   className={`${input} pl-8`} />
               </div>
             </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
+              Was Price <span className="text-ink-500/60 normal-case font-normal">(optional — shows a struck-through "was" price + a % off badge)</span>
+            </label>
+            <div className="mt-2 relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-ink-500">R</span>
+              <input type="number" min={0} inputMode="numeric" value={d.oldPrice}
+                onChange={(e) => set('oldPrice', e.target.value)} placeholder="e.g. 1899 — leave blank for no discount"
+                className={`${input} pl-8`} />
+            </div>
+            {(() => {
+              const price = Number(d.price), oldPrice = Number(d.oldPrice);
+              if (!d.oldPrice || isNaN(price) || isNaN(oldPrice)) return null;
+              const pct = discountPercent(price, oldPrice);
+              return pct
+                ? <p className="mt-1.5 text-xs text-ink-500">Customers will see <span className="font-semibold text-ink-900">{pct}% off</span> — was {formatPrice(oldPrice)}, now {formatPrice(price)}.</p>
+                : <p className="mt-1.5 text-xs text-rose-600">Was Price must be higher than the Selling Price to show a discount.</p>;
+            })()}
           </div>
 
           {isSizedCategory(d.category) && (

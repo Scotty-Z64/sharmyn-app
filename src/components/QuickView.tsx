@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Minus, Plus, X } from 'lucide-react';
 import { useShop } from '@/lib/shop';
-import { addToCart, formatPrice, resolveAvailability, isSizedCategory } from '@/lib/store';
-import { AvailabilityBadge, LowStockBadge } from './ProductCard';
+import { addToCart, formatPrice, resolveAvailability, isSizedCategory, discountPercent } from '@/lib/store';
+import { AvailabilityBadge, LowStockBadge, DiscountBadge } from './ProductCard';
 import { BUSINESS, waLink } from '@/config/business';
 import { WhatsAppIcon } from './WhatsAppFloat';
 
@@ -68,6 +68,7 @@ export default function QuickView() {
                     <img src={gallery[activeImg] ?? p.image} alt={p.name} className="w-full h-full object-cover" />
                     <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
                       <AvailabilityBadge product={p} />
+                      <DiscountBadge product={p} />
                       <LowStockBadge product={p} />
                     </div>
                   </div>
@@ -89,6 +90,9 @@ export default function QuickView() {
                 <span className="text-xl font-bold">
                   <span className="text-ink-900 font-medium">Price: </span>
                   <span className="text-gold-500">{formatPrice(p.price)}</span>
+                  {discountPercent(p.price, p.oldPrice) != null && p.oldPrice && (
+                    <span className="ml-2 text-base font-normal text-ink-500 line-through">{formatPrice(p.oldPrice)}</span>
+                  )}
                 </span>
                 <p className="text-sm text-ink-500 leading-relaxed">{p.description}</p>
                 {p.brand && (

@@ -113,6 +113,7 @@ export default function ProductsTab() {
       category: draft.category,
       brand: sized && draft.brand ? draft.brand : null,
       price: Math.round(Number(draft.price)),
+      oldPrice: draft.oldPrice ? Math.round(Number(draft.oldPrice)) : null,
       costPrice: Math.max(0, Math.round(Number(draft.costPrice) || 0)),
       sizes: sizesPayload,
       description: draft.description.trim(),

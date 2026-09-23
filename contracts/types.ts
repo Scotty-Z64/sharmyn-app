@@ -12,6 +12,13 @@ export const SIZED_CATEGORIES: Category[] = ["sneakers", "shoes"];
 export function isSizedCategory(category: Category): boolean {
   return SIZED_CATEGORIES.includes(category);
 }
+
+/** Rounded "X% off" for display, or null when there's no real discount to show
+ * (no oldPrice set, or it's not actually higher than the current price). */
+export function discountPercent(price: number, oldPrice?: number | null): number | null {
+  if (!oldPrice || oldPrice <= price) return null;
+  return Math.round((1 - price / oldPrice) * 100);
+}
 export type Availability = "in-stock" | "sold-out" | "back-soon";
 export type OrderStatus = "pending" | "processing" | "shipped" | "delivered" | "cancelled";
 export type PaymentStatus = "unpaid" | "paid" | "failed";
@@ -25,6 +32,7 @@ export interface Product {
   category: Category;
   brand?: string | null; // sneakers/shoes only, e.g. "Nike", "Adidas Samba"
   price: number; // ZAR — what the customer pays
+  oldPrice?: number | null; // ZAR — pre-discount reference price, shown struck through; null/unset = no discount shown
   costPrice: number; // ZAR — what it cost the business (owner-only; drives profit reporting)
   sizes?: Record<string, number> | null; // per-size stock for sneakers/shoes, e.g. {"3": 6, "4.5": 2}
   description: string;

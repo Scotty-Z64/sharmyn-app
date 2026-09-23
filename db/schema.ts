@@ -17,6 +17,7 @@ export const products = mysqlTable("products", {
   category: varchar("category", { length: 20 }).notNull(),
   brand: varchar("brand", { length: 30 }), // sneakers/shoes only, e.g. "Nike", "Adidas Samba" — null for other categories
   price: int("price").notNull(), // ZAR — what the customer pays
+  oldPrice: int("old_price"), // ZAR — pre-discount reference price, shown struck through; null = no discount shown
   costPrice: int("cost_price").notNull().default(0), // ZAR — what it cost the business, owner-only, drives profit reporting
   sizes: json("sizes"), // Record<string, number> | null — per-size stock, e.g. {"3": 6, "4.5": 2} — sneakers/shoes only
   description: text("description").notNull(),

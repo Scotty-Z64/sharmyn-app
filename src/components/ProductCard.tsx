@@ -1,7 +1,7 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { motion } from 'framer-motion';
 import type { Product } from '@/lib/store';
-import { addToCart, formatPrice, resolveAvailability, isSizedCategory } from '@/lib/store';
+import { addToCart, formatPrice, resolveAvailability, isSizedCategory, discountPercent } from '@/lib/store';
 import { useShop } from '@/lib/shop';
 
 export function AvailabilityBadge({ product }: { product: Product }) {
@@ -22,6 +22,29 @@ export function LowStockBadge({ product }: { product: Product }) {
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-[0.1em] bg-[#FBF3E2] text-[#B07A1E]">
       Only {product.quantity} left
+    </span>
+  );
+}
+
+export function DiscountBadge({ product }: { product: Product }) {
+  const pct = discountPercent(product.price, product.oldPrice);
+  if (!pct) return null;
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-[0.1em] bg-gold-500 text-white">
+      {pct}% off
+    </span>
+  );
+}
+
+/** Current price, struck-through "was" price when discounted. Same row either way. */
+export function PriceRow({ product, className }: { product: Product; className?: string }) {
+  const pct = discountPercent(product.price, product.oldPrice);
+  return (
+    <span className={className}>
+      {formatPrice(product.price)}
+      {pct != null && product.oldPrice && (
+        <span className="ml-1.5 font-normal text-ink-500 line-through">{formatPrice(product.oldPrice)}</span>
+      )}
     </span>
   );
 }
@@ -65,6 +88,7 @@ export default function ProductCard({ product, index = 0 }: { product: Product; 
             className="w-full h-full object-cover" />
           <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
             <AvailabilityBadge product={product} />
+            <DiscountBadge product={product} />
             <LowStockBadge product={product} />
           </div>
           {product.refNumber > 0 && (
@@ -81,7 +105,7 @@ export default function ProductCard({ product, index = 0 }: { product: Product; 
         <h3 className="text-[13px] sm:text-[15px] font-medium text-ink-900 leading-snug">
           {product.name} <span className="text-ink-500 font-normal">#{product.refNumber}</span>
         </h3>
-        <span className="text-[14px] sm:text-[15px] font-bold text-ink-900">{formatPrice(product.price)}</span>
+        <PriceRow product={product} className="text-[14px] sm:text-[15px] font-bold text-ink-900" />
         <button onClick={onAdd} disabled={status === 'sold-out'}
           className={`mt-2 w-full h-11 text-[11px] font-semibold uppercase tracking-[0.16em] transition-colors ${
             status === 'sold-out'

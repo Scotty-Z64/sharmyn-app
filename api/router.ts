@@ -108,6 +108,7 @@ const productInput = z.object({
   category: z.enum(["sneakers", "shoes", "jewellery", "handbags", "clothing"]),
   brand: z.string().max(30).nullish(),
   price: z.number(),
+  oldPrice: z.number().min(0).nullish(),
   costPrice: z.number().min(0).default(0),
   sizes: z.record(z.string().max(16), z.number().int().min(0)).nullish(),
   description: z.string(),

@@ -2,7 +2,7 @@
 import type { Availability, Category, Product } from '@contracts/types';
 
 export type { Availability, Category, Order, OrderItem, OrderStatus, OrderCustomer, OrderDelivery, OwnerNotification, PaymentStatus, PudoLockerRef, Product, RefundStatus } from '@contracts/types';
-export { SHOE_BRANDS, isSizedCategory } from '@contracts/types';
+export { SHOE_BRANDS, isSizedCategory, discountPercent } from '@contracts/types';
 
 export const CATEGORIES: { key: Category; label: string; tagline: string }[] = [
   { key: 'sneakers', label: 'Sneakers', tagline: 'Street-soft soles' },
