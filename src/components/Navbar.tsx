@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Facebook, Instagram, Menu, Search, ShoppingBag, X } from 'lucide-react';
+import { Download, Facebook, Instagram, Menu, Search, ShoppingBag, X } from 'lucide-react';
 import { useShop } from '@/lib/shop';
 import { BUSINESS } from '@/config/business';
+import { InstallButton } from '@/components/InstallPrompt';
 
 export const MENU_LINKS = [
   { label: 'Sneakers', to: '/#sneakers' },
@@ -81,6 +82,7 @@ export default function Navbar() {
           </nav>
 
           <div className="flex items-center gap-1">
+            <InstallButton appName="Sharmyn" className="hidden sm:grid w-11 h-11 place-items-center text-ink-900 hover:text-gold-500 transition-colors" />
             <button onClick={() => setSearchOpen(true)} aria-label="Search"
               className="w-11 h-11 grid place-items-center text-ink-900 hover:text-gold-500 transition-colors">
               <Search size={20} />
@@ -134,6 +136,13 @@ export default function Navbar() {
                     className="w-full flex items-center h-12 px-6 text-sm font-medium uppercase tracking-[0.12em] text-ink-900 hover:text-gold-500 hover:bg-[#FDF3E7]/60 transition-colors">
                     Shoe Size Guide
                   </button>
+                </motion.div>
+                <motion.div initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.04 * (MENU_LINKS.length + 1), duration: 0.3 }}>
+                  <InstallButton appName="Sharmyn"
+                    className="w-full flex items-center gap-2.5 h-12 px-6 text-sm font-medium uppercase tracking-[0.12em] text-ink-900 hover:text-gold-500 hover:bg-[#FDF3E7]/60 transition-colors">
+                    <Download size={16} /> Add to Home Screen
+                  </InstallButton>
                 </motion.div>
               </nav>
               <div className="border-t border-gold-400/20 px-6 py-5 flex items-center gap-4">

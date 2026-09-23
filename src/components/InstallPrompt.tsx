@@ -5,7 +5,10 @@ import { Download, Share, SquarePlus, X } from 'lucide-react';
 // it lets us trigger the native install flow from our own button instead of
 // relying on Ben finding it buried in the browser menu. iOS Safari never fires
 // this event at all (Apple has no install API), so there we can only show
-// instructions for the manual Share -> Add to Home Screen steps.
+// instructions for the manual Share -> Add to Home Screen steps. And an
+// in-app browser (opening the link from inside WhatsApp, Instagram, etc.)
+// often fires neither and actively blocks installing at all — that's the
+// single most common reason someone can't install a PWA from their phone.
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
@@ -20,13 +23,16 @@ function isIos(): boolean {
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
 }
 
-/** Dismissible "Install app" banner — same component, different copy/scope for
- * the store vs the owner portal (each has its own manifest and dismissal key). */
-export default function InstallPrompt({ storageKey, appName }: { storageKey: string; appName: string }) {
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem(storageKey) === '1');
-  const [showIosHelp, setShowIosHelp] = useState(false);
+/** True when the page is almost certainly running inside an in-app browser
+ * (WhatsApp, Instagram, Facebook, TikTok, ...) rather than real Chrome/Safari —
+ * these routinely block installing a PWA and never fire beforeinstallprompt. */
+function isLikelyInAppBrowser(): boolean {
+  const ua = window.navigator.userAgent.toLowerCase();
+  return /fban|fbav|instagram|whatsapp|tiktok|line\/|micromessenger|snapchat/.test(ua);
+}
 
+function useDeferredInstallPrompt() {
+  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   useEffect(() => {
     if (isStandalone()) return;
     const onPrompt = (e: Event) => {
@@ -36,6 +42,62 @@ export default function InstallPrompt({ storageKey, appName }: { storageKey: str
     window.addEventListener('beforeinstallprompt', onPrompt);
     return () => window.removeEventListener('beforeinstallprompt', onPrompt);
   }, []);
+  return deferred;
+}
+
+function Step({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <p className="flex items-start gap-3 text-sm text-ink-900">
+      <span className="shrink-0 w-7 h-7 rounded-full bg-blush-100 grid place-items-center font-semibold text-xs">{n}</span>
+      {children}
+    </p>
+  );
+}
+
+/** Shared "how to install" modal — iOS gets the exact Share -> Add to Home
+ * Screen steps; everything else (Android where the native prompt didn't fire,
+ * an in-app browser, desktop) gets a generic fallback that calls out the
+ * in-app-browser trap by name, since that's the most likely real blocker. */
+function InstallHelpModal({ appName, ios, onClose }: { appName: string; ios: boolean; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[80] bg-ink-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()}
+        className="w-full sm:max-w-sm bg-white rounded-2xl p-6 text-center">
+        <p className="font-display text-xl font-semibold text-ink-900">Add {appName} to your Home Screen</p>
+        <div className="mt-5 space-y-4 text-left">
+          {ios ? (
+            <>
+              <Step n={1}>Tap the <Share size={16} className="inline mx-1 -mt-0.5" /> <b>Share</b> button in Safari's toolbar.</Step>
+              <Step n={2}>Scroll down and tap <SquarePlus size={16} className="inline mx-1 -mt-0.5" /> <b>Add to Home Screen</b>.</Step>
+              <Step n={3}>Tap <b>Add</b> — done! It'll appear on your Home Screen like any other app.</Step>
+            </>
+          ) : (
+            <>
+              <Step n={1}>
+                If you opened this from WhatsApp, Instagram or another app, tap <b>••• </b>
+                or <b>Open in Browser</b> first — installing doesn't work from inside those apps.
+              </Step>
+              <Step n={2}>In Chrome, tap the <b>⋮</b> menu (top-right) and choose <b>Add to Home screen</b> or <b>Install app</b>.</Step>
+              <Step n={3}>Confirm — {appName} will appear on your Home Screen like any other app.</Step>
+            </>
+          )}
+        </div>
+        <button onClick={onClose}
+          className="mt-6 w-full h-12 rounded-full bg-gold-500 text-white text-[12px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition">
+          Got it
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Dismissible "Install app" banner — same component, different copy/scope for
+ * the store vs the owner portal (each has its own manifest and dismissal key). */
+export default function InstallPrompt({ storageKey, appName }: { storageKey: string; appName: string }) {
+  const deferred = useDeferredInstallPrompt();
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(storageKey) === '1');
+  const [showHelp, setShowHelp] = useState(false);
 
   const dismiss = () => {
     try { localStorage.setItem(storageKey, '1'); } catch { /* private browsing — fine, just won't persist */ }
@@ -44,7 +106,10 @@ export default function InstallPrompt({ storageKey, appName }: { storageKey: str
 
   if (dismissed || isStandalone()) return null;
   // Nothing actionable here (desktop Chrome without a trigger yet, Firefox, etc.) — stay invisible.
-  if (!deferred && !isIos()) return null;
+  // An in-app browser gets the banner too, even with no native prompt: it's the
+  // one case where "tap here" genuinely helps, since the fallback modal calls
+  // out exactly why the install is stuck and what to do about it.
+  if (!deferred && !isIos() && !isLikelyInAppBrowser()) return null;
 
   const install = async () => {
     if (deferred) {
@@ -53,7 +118,7 @@ export default function InstallPrompt({ storageKey, appName }: { storageKey: str
       dismiss();
       return;
     }
-    setShowIosHelp(true);
+    setShowHelp(true);
   };
 
   return (
@@ -63,7 +128,7 @@ export default function InstallPrompt({ storageKey, appName }: { storageKey: str
           the same position once you scroll. */}
       <div className="relative z-[65] bg-gold-500 text-white">
         <div className="max-w-6xl mx-auto px-3 sm:px-6 h-11 flex items-center justify-between gap-3">
-          <button onClick={install} className="flex-1 min-w-0 flex items-center gap-2 text-left">
+          <button onClick={() => void install()} className="flex-1 min-w-0 flex items-center gap-2 text-left">
             <Download size={16} className="shrink-0" />
             <span className="text-[12px] font-semibold truncate">
               Add {appName} to your home screen — tap here
@@ -75,33 +140,40 @@ export default function InstallPrompt({ storageKey, appName }: { storageKey: str
         </div>
       </div>
 
-      {showIosHelp && (
-        <div className="fixed inset-0 z-[80] bg-ink-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
-          onClick={() => setShowIosHelp(false)}>
-          <div onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-sm bg-white rounded-2xl p-6 text-center">
-            <p className="font-display text-xl font-semibold text-ink-900">Add {appName} to your Home Screen</p>
-            <div className="mt-5 space-y-4 text-left">
-              <p className="flex items-start gap-3 text-sm text-ink-900">
-                <span className="shrink-0 w-7 h-7 rounded-full bg-blush-100 grid place-items-center font-semibold text-xs">1</span>
-                Tap the <Share size={16} className="inline mx-1 -mt-0.5" /> <b>Share</b> button in Safari's toolbar.
-              </p>
-              <p className="flex items-start gap-3 text-sm text-ink-900">
-                <span className="shrink-0 w-7 h-7 rounded-full bg-blush-100 grid place-items-center font-semibold text-xs">2</span>
-                Scroll down and tap <SquarePlus size={16} className="inline mx-1 -mt-0.5" /> <b>Add to Home Screen</b>.
-              </p>
-              <p className="flex items-start gap-3 text-sm text-ink-900">
-                <span className="shrink-0 w-7 h-7 rounded-full bg-blush-100 grid place-items-center font-semibold text-xs">3</span>
-                Tap <b>Add</b> — done! It'll appear on your Home Screen like any other app.
-              </p>
-            </div>
-            <button onClick={() => { setShowIosHelp(false); dismiss(); }}
-              className="mt-6 w-full h-12 rounded-full bg-gold-500 text-white text-[12px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition">
-              Got it
-            </button>
-          </div>
-        </div>
-      )}
+      {showHelp && <InstallHelpModal appName={appName} ios={isIos()} onClose={() => { setShowHelp(false); dismiss(); }} />}
+    </>
+  );
+}
+
+/** Persistent, always-discoverable install icon for a header — unlike the
+ * banner above, this never hides itself based on a dismissed flag or on
+ * whether the native prompt has fired yet, so there's always a way in even
+ * if the banner was dismissed earlier or never appeared (in-app browsers,
+ * Android before its install heuristics are satisfied, etc.). */
+export function InstallButton({ appName, className, children }: { appName: string; className?: string; children?: React.ReactNode }) {
+  const deferred = useDeferredInstallPrompt();
+  const [showHelp, setShowHelp] = useState(false);
+  const [standalone] = useState(isStandalone);
+
+  if (standalone) return null;
+
+  const install = async () => {
+    if (deferred) {
+      await deferred.prompt();
+      await deferred.userChoice;
+      return;
+    }
+    setShowHelp(true);
+  };
+
+  return (
+    <>
+      <button type="button" onClick={() => void install()} aria-label={`Add ${appName} to home screen`}
+        title={`Add ${appName} to home screen`}
+        className={className ?? 'w-11 h-11 grid place-items-center text-ink-900 hover:text-gold-500 transition-colors'}>
+        {children ?? <Download size={20} />}
+      </button>
+      {showHelp && <InstallHelpModal appName={appName} ios={isIos()} onClose={() => setShowHelp(false)} />}
     </>
   );
 }

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Bell, Eye, EyeOff, Loader2, LogOut } from 'lucide-react';
+import { ArrowLeft, Bell, Download, Eye, EyeOff, Loader2, LogOut } from 'lucide-react';
 import { trpc } from '@/providers/trpc';
 import { PortalProvider, clearPortalToken, readPortalToken, storePortalToken, usePortal } from '@/portal/lib/portal';
-import InstallPrompt from '@/components/InstallPrompt';
+import InstallPrompt, { InstallButton } from '@/components/InstallPrompt';
 import OverviewTab, { useStats } from '@/portal/components/OverviewTab';
 import ProductsTab from '@/portal/components/ProductsTab';
 import StockTab from '@/portal/components/StockTab';
@@ -162,6 +162,10 @@ function Dashboard() {
             <span className="font-display italic text-lg font-semibold text-ink-900 truncate">Sharmyn · Owner Portal</span>
           </span>
           <span className="flex items-center gap-2">
+            <InstallButton appName="Sharmyn Portal"
+              className="w-9 h-9 grid place-items-center rounded-full text-ink-500 hover:text-gold-500 hover:bg-blush-50 transition shrink-0">
+              <Download size={18} />
+            </InstallButton>
             <NotificationsBell goToOrders={() => setTab('orders')} />
             <button onClick={() => { clearPortalToken(); logout(); }}
               className="h-11 px-4 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.1em] flex items-center gap-1.5 hover:bg-gold-400 transition">
