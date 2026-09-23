@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Copy,
@@ -403,18 +403,31 @@ function HeroBannerCard() {
     onSuccess: () => { void utils.shop.siteSettings.invalidate(); toast('Homepage banner updated ✓'); },
   });
   const fileRef = useRef<HTMLInputElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [captionTouched, setCaptionTouched] = useState(false);
+  // Crop focal point (0-100 each axis) — where the frame is centered when the
+  // photo doesn't match its box and something has to be cropped off. Dragging
+  // directly on the preview is the whole "make it easy to size any picture"
+  // fix: no image editor to learn, just point at what should stay in view.
+  const [focusX, setFocusX] = useState(50);
+  const [focusY, setFocusY] = useState(50);
+  const [focusTouched, setFocusTouched] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     if (settingsQ.data && !captionTouched) setCaption(settingsQ.data.heroCaption ?? '');
-  }, [settingsQ.data, captionTouched]);
+    if (settingsQ.data && !focusTouched) {
+      setFocusX(settingsQ.data.heroFocusX ?? 50);
+      setFocusY(settingsQ.data.heroFocusY ?? 50);
+    }
+  }, [settingsQ.data, captionTouched, focusTouched]);
 
   const currentImage = pendingImage ?? settingsQ.data?.heroImage ?? '/hero-main.png';
   const hasCustomSaved = !!(settingsQ.data?.heroImage || settingsQ.data?.heroCaption);
-  const hasChanges = pendingImage !== null || captionTouched;
+  const hasChanges = pendingImage !== null || captionTouched || focusTouched;
 
   const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -424,21 +437,46 @@ function HeroBannerCard() {
     if (f.size > MAX_UPLOAD_BYTES) { setErr(imageReadErrorMessage(f)); return; }
     try {
       setPendingImage(await compressImageFile(f, 1600, 0.85));
+      // A new photo starts centered — the old focal point was chosen for a
+      // different image and may not mean anything on this one.
+      setFocusX(50); setFocusY(50); setFocusTouched(false);
     } catch {
       setErr(imageReadErrorMessage(f));
     }
   };
 
+  const setFocusFromEvent = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = Math.round(Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100)));
+    const y = Math.round(Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100)));
+    setFocusX(x); setFocusY(y); setFocusTouched(true);
+  };
+  const onFramePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragging(true);
+    setFocusFromEvent(e);
+  };
+  const onFramePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    setFocusFromEvent(e);
+  };
+  const stopDragging = () => setDragging(false);
+  const centerFocus = () => { setFocusX(50); setFocusY(50); setFocusTouched(true); };
+
   const save = () => {
     updateMut.mutate(
-      { token, heroImage: pendingImage ?? undefined, heroCaption: captionTouched ? caption.trim() || null : undefined },
-      { onSuccess: () => { setPendingImage(null); setCaptionTouched(false); } }
+      {
+        token, heroImage: pendingImage ?? undefined, heroCaption: captionTouched ? caption.trim() || null : undefined,
+        heroFocusX: focusTouched ? focusX : undefined, heroFocusY: focusTouched ? focusY : undefined,
+      },
+      { onSuccess: () => { setPendingImage(null); setCaptionTouched(false); setFocusTouched(false); } }
     );
   };
 
   const resetToDefault = () => {
-    updateMut.mutate({ token, heroImage: null, heroCaption: null }, {
-      onSuccess: () => { setPendingImage(null); setCaption(''); setCaptionTouched(false); },
+    updateMut.mutate({ token, heroImage: null, heroCaption: null, heroFocusX: null, heroFocusY: null }, {
+      onSuccess: () => { setPendingImage(null); setCaption(''); setCaptionTouched(false); setFocusX(50); setFocusY(50); setFocusTouched(false); },
     });
   };
 
@@ -452,18 +490,31 @@ function HeroBannerCard() {
         </div>
       </div>
 
-      <div className="mt-4 relative rounded-2xl overflow-hidden border border-blush-100">
-        <img src={currentImage} alt="Homepage banner preview" className="w-full aspect-[4/3] sm:aspect-[16/9] object-cover" />
+      <div ref={frameRef}
+        onPointerDown={onFramePointerDown} onPointerMove={onFramePointerMove}
+        onPointerUp={stopDragging} onPointerCancel={stopDragging}
+        className="mt-4 relative rounded-2xl overflow-hidden border border-blush-100 cursor-crosshair touch-none select-none">
+        <img src={currentImage} alt="Homepage banner preview" draggable={false}
+          style={{ objectPosition: `${focusX}% ${focusY}%` }}
+          className="w-full aspect-[4/3] sm:aspect-[16/9] object-cover pointer-events-none" />
         {caption && (
-          <p className="absolute bottom-2 left-3 font-display italic text-sm text-ink-900 bg-white/85 px-2.5 py-1 rounded">
+          <p className="absolute bottom-2 left-3 font-display italic text-sm text-ink-900 bg-white/85 px-2.5 py-1 rounded pointer-events-none">
             {caption}
           </p>
         )}
+        {/* Focal point marker — shows exactly what "50% 50%" (or wherever it's
+            been dragged to) means, since that's otherwise an invisible concept. */}
+        <span className="absolute w-6 h-6 -ml-3 -mt-3 rounded-full border-2 border-white bg-gold-500/80 shadow-md pointer-events-none"
+          style={{ left: `${focusX}%`, top: `${focusY}%` }} />
       </div>
+      <p className="mt-1.5 text-[11px] text-ink-500">Tap or drag anywhere on the photo to choose what stays in view — the rest gets cropped off to fit.</p>
 
-      <div className="mt-3 grid sm:grid-cols-2 gap-2">
+      <div className="mt-3 grid sm:grid-cols-3 gap-2">
         <button onClick={() => fileRef.current?.click()} className={btnGold}>
           <ImagePlus size={16} /> {settingsQ.data?.heroImage || pendingImage ? 'Change photo' : 'Upload a photo'}
+        </button>
+        <button onClick={centerFocus} className={btnGhost}>
+          <RotateCcw size={15} /> Center photo
         </button>
         {hasCustomSaved && (
           <button onClick={resetToDefault} disabled={updateMut.isPending} className={btnGhost}>

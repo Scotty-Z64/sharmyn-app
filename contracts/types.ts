@@ -232,4 +232,9 @@ export interface SalesReport {
 export interface SiteSettings {
   heroImage: string | null; // data URL; null = use bundled default (/hero-main.png)
   heroCaption: string | null; // null/empty = no caption shown
+  // Crop focal point, 0-100 each axis — where the banner box is centered when
+  // the photo's aspect ratio doesn't match the box and something has to be
+  // cropped off. null = center (50/50), matching the old fixed behaviour.
+  heroFocusX: number | null;
+  heroFocusY: number | null;
 }

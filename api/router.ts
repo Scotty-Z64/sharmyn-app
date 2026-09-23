@@ -557,11 +557,16 @@ export const appRouter = createRouter({
           token: adminToken,
           heroImage: z.string().max(16 * 1024 * 1024).nullable().optional(),
           heroCaption: z.string().max(80).nullable().optional(),
+          heroFocusX: z.number().min(0).max(100).nullable().optional(),
+          heroFocusY: z.number().min(0).max(100).nullable().optional(),
         })
       )
       .mutation(({ input }) => {
         assertAdminToken(input.token);
-        return updateSiteSettings({ heroImage: input.heroImage, heroCaption: input.heroCaption });
+        return updateSiteSettings({
+          heroImage: input.heroImage, heroCaption: input.heroCaption,
+          heroFocusX: input.heroFocusX, heroFocusY: input.heroFocusY,
+        });
       }),
 
     // ---- Content Studio ----

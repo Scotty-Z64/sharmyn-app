@@ -89,6 +89,8 @@ export const siteSettings = mysqlTable("site_settings", {
   id: int("id").primaryKey(), // singleton row, always id=1
   heroImage: text("hero_image"), // MEDIUMTEXT in prod — data URL; null = use bundled default (/hero-main.png)
   heroCaption: varchar("hero_caption", { length: 80 }), // null = default "New Season Collection"
+  heroFocusX: int("hero_focus_x"), // 0-100 crop focal point; null = center (50)
+  heroFocusY: int("hero_focus_y"), // 0-100 crop focal point; null = center (50)
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

@@ -28,6 +28,8 @@ function Hero() {
   const settingsQ = trpc.shop.siteSettings.useQuery();
   const heroImage = settingsQ.data?.heroImage || '/hero-main.png';
   const heroCaption = settingsQ.data?.heroCaption || '';
+  const heroFocusX = settingsQ.data?.heroFocusX ?? 50;
+  const heroFocusY = settingsQ.data?.heroFocusY ?? 50;
   const fadeUp = (delay: number) =>
     reduceMotion
       ? {}
@@ -66,6 +68,7 @@ function Hero() {
       <motion.div {...fadeUp(0.34)} className="mt-8 w-screen mx-[calc(50%-50vw)] border-y border-gold-400/40">
         <div className="relative overflow-hidden">
           <img src={heroImage} alt="Sharmyn boutique collection"
+            style={{ objectPosition: `${heroFocusX}% ${heroFocusY}%` }}
             className="w-full aspect-[4/3] sm:aspect-[16/9] object-cover" />
           {heroCaption && (
             <p className="absolute bottom-3 left-4 sm:left-6 font-display italic text-sm sm:text-base text-ink-900 bg-white/85 px-2.5 py-1">

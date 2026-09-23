@@ -696,18 +696,27 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
 export async function getSiteSettings(): Promise<SiteSettings> {
   const db = getDb();
   const [row] = await db.select().from(siteSettings).where(eq(siteSettings.id, 1));
-  return { heroImage: row?.heroImage ?? null, heroCaption: row?.heroCaption ?? null };
+  return {
+    heroImage: row?.heroImage ?? null,
+    heroCaption: row?.heroCaption ?? null,
+    heroFocusX: row?.heroFocusX ?? null,
+    heroFocusY: row?.heroFocusY ?? null,
+  };
 }
 
 export async function updateSiteSettings(patch: {
   heroImage?: string | null;
   heroCaption?: string | null;
+  heroFocusX?: number | null;
+  heroFocusY?: number | null;
 }): Promise<SiteSettings> {
   const db = getDb();
   const [existing] = await db.select().from(siteSettings).where(eq(siteSettings.id, 1));
   const next = {
     heroImage: patch.heroImage !== undefined ? patch.heroImage : (existing?.heroImage ?? null),
     heroCaption: patch.heroCaption !== undefined ? patch.heroCaption : (existing?.heroCaption ?? null),
+    heroFocusX: patch.heroFocusX !== undefined ? patch.heroFocusX : (existing?.heroFocusX ?? null),
+    heroFocusY: patch.heroFocusY !== undefined ? patch.heroFocusY : (existing?.heroFocusY ?? null),
   };
   if (existing) {
     await db.update(siteSettings).set({ ...next, updatedAt: new Date() }).where(eq(siteSettings.id, 1));
