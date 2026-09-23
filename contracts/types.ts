@@ -229,6 +229,9 @@ export interface SalesReport {
   byCategory: ReportCategoryRow[];
 }
 
+export const HERO_ASPECTS = ["wide", "standard", "tall", "square"] as const;
+export type HeroAspect = (typeof HERO_ASPECTS)[number];
+
 export interface SiteSettings {
   heroImage: string | null; // data URL; null = use bundled default (/hero-main.png)
   heroCaption: string | null; // null/empty = no caption shown
@@ -240,4 +243,9 @@ export interface SiteSettings {
   // Zoom, as a percentage (100 = fills the box exactly, the old fixed
   // behaviour; up to 300 = zoomed in 3x on the focal point). null = 100.
   heroZoom: number | null;
+  // Banner shape. null = the original fixed behaviour (4:3 on phones, 16:9
+  // on desktop) so existing banners look untouched; set = one fixed ratio
+  // at every screen size, for a photo that needs a genuinely different shape
+  // (e.g. a tall poster) rather than just a different crop within 4:3/16:9.
+  heroAspect: HeroAspect | null;
 }

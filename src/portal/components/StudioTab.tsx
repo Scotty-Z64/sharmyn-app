@@ -8,7 +8,8 @@ import {
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { BUSINESS } from '@/config/business';
-import { formatPrice } from '@/portal/lib/utils-shop';
+import { formatPrice, heroAspectClass, HERO_ASPECT_OPTIONS } from '@/portal/lib/utils-shop';
+import type { HeroAspect } from '@/portal/lib/utils-shop';
 import { imageReadErrorMessage, MAX_UPLOAD_BYTES } from '@/lib/image-upload-errors';
 import { drawSandBackdrop, drawWordmark, drawProductShadow, PRODUCT_TEMPLATE_SRC, WORDMARK_SRC } from '@/lib/studio-visuals';
 import { removeBackgroundClient } from '@/lib/bg-removal';
@@ -420,6 +421,11 @@ function HeroBannerCard() {
   // that has extra clutter around the edges even after repositioning.
   const [zoom, setZoom] = useState(100);
   const [zoomTouched, setZoomTouched] = useState(false);
+  // Banner shape — a fixed aspect ratio at every screen size, separate from
+  // focus/zoom (those control the photo within the frame; this controls the
+  // frame itself). null = the original 4:3-phone/16:9-desktop pair.
+  const [aspect, setAspect] = useState<HeroAspect | null>(null);
+  const [aspectTouched, setAspectTouched] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
@@ -429,11 +435,12 @@ function HeroBannerCard() {
       setFocusY(settingsQ.data.heroFocusY ?? 50);
     }
     if (settingsQ.data && !zoomTouched) setZoom(settingsQ.data.heroZoom ?? 100);
-  }, [settingsQ.data, captionTouched, focusTouched, zoomTouched]);
+    if (settingsQ.data && !aspectTouched) setAspect(settingsQ.data.heroAspect ?? null);
+  }, [settingsQ.data, captionTouched, focusTouched, zoomTouched, aspectTouched]);
 
   const currentImage = pendingImage ?? settingsQ.data?.heroImage ?? '/hero-main.png';
   const hasCustomSaved = !!(settingsQ.data?.heroImage || settingsQ.data?.heroCaption);
-  const hasChanges = pendingImage !== null || captionTouched || focusTouched || zoomTouched;
+  const hasChanges = pendingImage !== null || captionTouched || focusTouched || zoomTouched || aspectTouched;
 
   const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -470,24 +477,26 @@ function HeroBannerCard() {
   };
   const stopDragging = () => setDragging(false);
   const centerFocus = () => { setFocusX(50); setFocusY(50); setFocusTouched(true); setZoom(100); setZoomTouched(true); };
+  const pickAspect = (a: HeroAspect) => { setAspect(a); setAspectTouched(true); };
 
   const save = () => {
     updateMut.mutate(
       {
         token, heroImage: pendingImage ?? undefined, heroCaption: captionTouched ? caption.trim() || null : undefined,
         heroFocusX: focusTouched ? focusX : undefined, heroFocusY: focusTouched ? focusY : undefined,
-        heroZoom: zoomTouched ? zoom : undefined,
+        heroZoom: zoomTouched ? zoom : undefined, heroAspect: aspectTouched ? aspect : undefined,
       },
-      { onSuccess: () => { setPendingImage(null); setCaptionTouched(false); setFocusTouched(false); setZoomTouched(false); } }
+      { onSuccess: () => { setPendingImage(null); setCaptionTouched(false); setFocusTouched(false); setZoomTouched(false); setAspectTouched(false); } }
     );
   };
 
   const resetToDefault = () => {
-    updateMut.mutate({ token, heroImage: null, heroCaption: null, heroFocusX: null, heroFocusY: null, heroZoom: null }, {
+    updateMut.mutate({ token, heroImage: null, heroCaption: null, heroFocusX: null, heroFocusY: null, heroZoom: null, heroAspect: null }, {
       onSuccess: () => {
         setPendingImage(null); setCaption(''); setCaptionTouched(false);
         setFocusX(50); setFocusY(50); setFocusTouched(false);
         setZoom(100); setZoomTouched(false);
+        setAspect(null); setAspectTouched(false);
       },
     });
   };
@@ -508,7 +517,7 @@ function HeroBannerCard() {
         className="mt-4 relative rounded-2xl overflow-hidden border border-blush-100 cursor-crosshair touch-none select-none">
         <img src={currentImage} alt="Homepage banner preview" draggable={false}
           style={{ objectPosition: `${focusX}% ${focusY}%`, transform: `scale(${zoom / 100})`, transformOrigin: `${focusX}% ${focusY}%` }}
-          className="w-full aspect-[4/3] sm:aspect-[16/9] object-cover pointer-events-none" />
+          className={`w-full object-cover pointer-events-none ${heroAspectClass(aspect)}`} />
         {caption && (
           <p className="absolute bottom-2 left-3 font-display italic text-sm text-ink-900 bg-white/85 px-2.5 py-1 rounded pointer-events-none">
             {caption}
@@ -520,6 +529,20 @@ function HeroBannerCard() {
           style={{ left: `${focusX}%`, top: `${focusY}%` }} />
       </div>
       <p className="mt-1.5 text-[11px] text-ink-500">Tap or drag anywhere on the photo to choose what stays in view — the rest gets cropped off to fit.</p>
+
+      <div className="mt-3">
+        <label className={labelCls}>Banner shape</label>
+        <p className="mt-0.5 text-[11px] text-ink-500">Change this if the photo's own shape (e.g. a tall poster) doesn't suit the default — the taller shapes push the shop down the page a bit, so use the smallest one that fits the photo.</p>
+        <div className="mt-1.5 grid grid-cols-4 gap-2">
+          {HERO_ASPECT_OPTIONS.map((o) => (
+            <button key={o.key} type="button" onClick={() => pickAspect(o.key)}
+              className={`h-10 rounded-lg border text-[11px] font-semibold uppercase tracking-[0.06em] transition ${
+                aspect === o.key ? 'border-gold-500 bg-gold-500 text-white' : 'border-blush-100 bg-white text-ink-900 hover:bg-blush-50'}`}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="mt-3">
         <div className="flex items-center justify-between">

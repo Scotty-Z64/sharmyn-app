@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { Search, X } from 'lucide-react';
 import { trpc } from '@/providers/trpc';
 import { useShop } from '@/lib/shop';
-import { CATEGORIES, SHOE_BRANDS, resolveAvailability, type Category, type Product } from '@/lib/store';
+import { CATEGORIES, SHOE_BRANDS, resolveAvailability, heroAspectClass, type Category, type Product } from '@/lib/store';
 import ProductCard from '@/components/ProductCard';
 import QuickView from '@/components/QuickView';
 import SearchOverlay from '@/components/SearchOverlay';
@@ -31,6 +31,7 @@ function Hero() {
   const heroFocusX = settingsQ.data?.heroFocusX ?? 50;
   const heroFocusY = settingsQ.data?.heroFocusY ?? 50;
   const heroZoom = settingsQ.data?.heroZoom ?? 100;
+  const heroAspect = settingsQ.data?.heroAspect ?? null;
   const fadeUp = (delay: number) =>
     reduceMotion
       ? {}
@@ -70,7 +71,7 @@ function Hero() {
         <div className="relative overflow-hidden">
           <img src={heroImage} alt="Sharmyn boutique collection"
             style={{ objectPosition: `${heroFocusX}% ${heroFocusY}%`, transform: `scale(${heroZoom / 100})`, transformOrigin: `${heroFocusX}% ${heroFocusY}%` }}
-            className="w-full aspect-[4/3] sm:aspect-[16/9] object-cover" />
+            className={`w-full object-cover ${heroAspectClass(heroAspect)}`} />
           {heroCaption && (
             <p className="absolute bottom-3 left-4 sm:left-6 font-display italic text-sm sm:text-base text-ink-900 bg-white/85 px-2.5 py-1">
               {heroCaption}

@@ -92,6 +92,7 @@ export const siteSettings = mysqlTable("site_settings", {
   heroFocusX: int("hero_focus_x"), // 0-100 crop focal point; null = center (50)
   heroFocusY: int("hero_focus_y"), // 0-100 crop focal point; null = center (50)
   heroZoom: int("hero_zoom"), // percentage, 100 = fills box exactly; null = 100
+  heroAspect: varchar("hero_aspect", { length: 10 }), // "wide" | "standard" | "tall" | "square"; null = old fixed 4:3/16:9 pair
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

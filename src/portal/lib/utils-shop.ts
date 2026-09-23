@@ -1,8 +1,20 @@
 // Sharmyn Owner Portal — shared helpers + re-exported contract types.
-import type { Availability, Category, Product } from '@contracts/types';
+import type { Availability, Category, HeroAspect, Product } from '@contracts/types';
 
-export type { Availability, Category, Order, OrderItem, OrderStatus, OrderCustomer, OrderDelivery, OwnerNotification, PaymentStatus, PudoLockerRef, Product, RefundStatus } from '@contracts/types';
-export { SHOE_BRANDS, isSizedCategory, discountPercent } from '@contracts/types';
+export type { Availability, Category, HeroAspect, Order, OrderItem, OrderStatus, OrderCustomer, OrderDelivery, OwnerNotification, PaymentStatus, PudoLockerRef, Product, RefundStatus } from '@contracts/types';
+export { SHOE_BRANDS, isSizedCategory, discountPercent, HERO_ASPECTS } from '@contracts/types';
+
+/** Banner shape presets — a fixed ratio at every screen size when chosen;
+ * null (the default) keeps the original 4:3-on-phones/16:9-on-desktop pair. */
+export const HERO_ASPECT_OPTIONS: { key: HeroAspect; label: string; className: string }[] = [
+  { key: 'wide', label: 'Wide', className: 'aspect-[16/9]' },
+  { key: 'standard', label: 'Standard', className: 'aspect-[4/3]' },
+  { key: 'tall', label: 'Tall', className: 'aspect-[4/5]' },
+  { key: 'square', label: 'Square', className: 'aspect-square' },
+];
+export function heroAspectClass(aspect: HeroAspect | null): string {
+  return HERO_ASPECT_OPTIONS.find((o) => o.key === aspect)?.className ?? 'aspect-[4/3] sm:aspect-[16/9]';
+}
 
 export const CATEGORIES: { key: Category; label: string; tagline: string }[] = [
   { key: 'sneakers', label: 'Sneakers', tagline: 'Street-soft soles' },

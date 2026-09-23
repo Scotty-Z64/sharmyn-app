@@ -702,6 +702,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
     heroFocusX: row?.heroFocusX ?? null,
     heroFocusY: row?.heroFocusY ?? null,
     heroZoom: row?.heroZoom ?? null,
+    heroAspect: (row?.heroAspect as SiteSettings["heroAspect"]) ?? null,
   };
 }
 
@@ -711,6 +712,7 @@ export async function updateSiteSettings(patch: {
   heroFocusX?: number | null;
   heroFocusY?: number | null;
   heroZoom?: number | null;
+  heroAspect?: SiteSettings["heroAspect"] | null;
 }): Promise<SiteSettings> {
   const db = getDb();
   const [existing] = await db.select().from(siteSettings).where(eq(siteSettings.id, 1));
@@ -720,6 +722,7 @@ export async function updateSiteSettings(patch: {
     heroFocusX: patch.heroFocusX !== undefined ? patch.heroFocusX : (existing?.heroFocusX ?? null),
     heroFocusY: patch.heroFocusY !== undefined ? patch.heroFocusY : (existing?.heroFocusY ?? null),
     heroZoom: patch.heroZoom !== undefined ? patch.heroZoom : (existing?.heroZoom ?? null),
+    heroAspect: patch.heroAspect !== undefined ? patch.heroAspect : ((existing?.heroAspect as SiteSettings["heroAspect"]) ?? null),
   };
   if (existing) {
     await db.update(siteSettings).set({ ...next, updatedAt: new Date() }).where(eq(siteSettings.id, 1));

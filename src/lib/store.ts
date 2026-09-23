@@ -11,6 +11,7 @@ import type {
 
 export type { Availability, Category, DeliveryMethod, OrderStatus };
 export type { Product };
+export type { HeroAspect } from '@contracts/types';
 export type {
   Order,
   PublicOrder,
@@ -19,7 +20,20 @@ export type {
   OrderItem,
   PudoLockerRef,
 } from '@contracts/types';
-export { SHOE_BRANDS, isSizedCategory, pudoDeliveryFee, PUDO_ITEMS_PER_PARCEL, PUDO_FEE_PER_PARCEL, discountPercent } from '@contracts/types';
+export { SHOE_BRANDS, isSizedCategory, pudoDeliveryFee, PUDO_ITEMS_PER_PARCEL, PUDO_FEE_PER_PARCEL, discountPercent, HERO_ASPECTS } from '@contracts/types';
+import type { HeroAspect } from '@contracts/types';
+
+/** Banner shape presets — a fixed ratio at every screen size when chosen;
+ * null (the default) keeps the original 4:3-on-phones/16:9-on-desktop pair. */
+export const HERO_ASPECT_OPTIONS: { key: HeroAspect; label: string; className: string }[] = [
+  { key: 'wide', label: 'Wide', className: 'aspect-[16/9]' },
+  { key: 'standard', label: 'Standard', className: 'aspect-[4/3]' },
+  { key: 'tall', label: 'Tall', className: 'aspect-[4/5]' },
+  { key: 'square', label: 'Square', className: 'aspect-square' },
+];
+export function heroAspectClass(aspect: HeroAspect | null): string {
+  return HERO_ASPECT_OPTIONS.find((o) => o.key === aspect)?.className ?? 'aspect-[4/3] sm:aspect-[16/9]';
+}
 
 export interface CartItem {
   productId: string;

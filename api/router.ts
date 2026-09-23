@@ -53,6 +53,7 @@ import { createExchange, listExchangesForOrder, markExchangeSlipSent } from "./q
 import { adminConfigured, verifyAdminPassword, issueAdminToken, assertAdminToken, rateLimit, clientIp } from "./lib/admin";
 import { notifyOwner, notifyCustomer, notifyLowStock, sendInvoice, sendExchangeSlip } from "./lib/notify";
 import type { Order } from "@contracts/types";
+import { HERO_ASPECTS } from "@contracts/types";
 
 /** Fire-and-forget the invoice PDF exactly once per order, guarded by invoiceSentAt. */
 function sendInvoiceOnce(order: Order): void {
@@ -560,6 +561,7 @@ export const appRouter = createRouter({
           heroFocusX: z.number().min(0).max(100).nullable().optional(),
           heroFocusY: z.number().min(0).max(100).nullable().optional(),
           heroZoom: z.number().min(100).max(300).nullable().optional(),
+          heroAspect: z.enum(HERO_ASPECTS).nullable().optional(),
         })
       )
       .mutation(({ input }) => {
@@ -567,7 +569,7 @@ export const appRouter = createRouter({
         return updateSiteSettings({
           heroImage: input.heroImage, heroCaption: input.heroCaption,
           heroFocusX: input.heroFocusX, heroFocusY: input.heroFocusY,
-          heroZoom: input.heroZoom,
+          heroZoom: input.heroZoom, heroAspect: input.heroAspect,
         });
       }),
 
