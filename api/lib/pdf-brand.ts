@@ -11,10 +11,13 @@ export const SAND = "#F3E0C9"; // blush-100 — light enough to keep body text l
 
 let logoCache: Buffer | null | undefined;
 
-/** The Sh♡ monogram mark, read once from the built static assets. Returns null if missing (dev-only fallback). */
+/** The full "Sharmyn — Style that defines you" wordmark, pre-composited onto
+ * the same sand tone as the letterhead band (see SAND above) so it sits flush
+ * with no visible edge, the same trick the round site-wide mark uses. Read
+ * once from the built static assets. Returns null if missing (dev-only fallback). */
 function loadLogo(): Buffer | null {
   if (logoCache !== undefined) return logoCache;
-  const p = join(process.cwd(), "dist/public/sharmyn-mark.png");
+  const p = join(process.cwd(), "dist/public/sharmyn-invoice-logo.png");
   logoCache = existsSync(p) ? readFileSync(p) : null;
   return logoCache;
 }
@@ -26,7 +29,7 @@ export function drawLetterhead(doc: PDFKit.PDFDocument, title: string, rightLine
 
   const logo = loadLogo();
   if (logo) {
-    doc.image(logo, 50, 18, { height: 54 });
+    doc.image(logo, 50, 24, { height: 42 });
   } else {
     doc.fillColor(INK).fontSize(24).font("Helvetica-Bold").text(BUSINESS_NAME, 50, 32);
   }
