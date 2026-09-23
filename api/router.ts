@@ -559,6 +559,7 @@ export const appRouter = createRouter({
           heroCaption: z.string().max(80).nullable().optional(),
           heroFocusX: z.number().min(0).max(100).nullable().optional(),
           heroFocusY: z.number().min(0).max(100).nullable().optional(),
+          heroZoom: z.number().min(100).max(300).nullable().optional(),
         })
       )
       .mutation(({ input }) => {
@@ -566,6 +567,7 @@ export const appRouter = createRouter({
         return updateSiteSettings({
           heroImage: input.heroImage, heroCaption: input.heroCaption,
           heroFocusX: input.heroFocusX, heroFocusY: input.heroFocusY,
+          heroZoom: input.heroZoom,
         });
       }),
 

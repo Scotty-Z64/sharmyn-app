@@ -237,4 +237,7 @@ export interface SiteSettings {
   // cropped off. null = center (50/50), matching the old fixed behaviour.
   heroFocusX: number | null;
   heroFocusY: number | null;
+  // Zoom, as a percentage (100 = fills the box exactly, the old fixed
+  // behaviour; up to 300 = zoomed in 3x on the focal point). null = 100.
+  heroZoom: number | null;
 }

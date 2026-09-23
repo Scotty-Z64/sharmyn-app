@@ -91,6 +91,7 @@ export const siteSettings = mysqlTable("site_settings", {
   heroCaption: varchar("hero_caption", { length: 80 }), // null = default "New Season Collection"
   heroFocusX: int("hero_focus_x"), // 0-100 crop focal point; null = center (50)
   heroFocusY: int("hero_focus_y"), // 0-100 crop focal point; null = center (50)
+  heroZoom: int("hero_zoom"), // percentage, 100 = fills box exactly; null = 100
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

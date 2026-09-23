@@ -415,6 +415,11 @@ function HeroBannerCard() {
   const [focusY, setFocusY] = useState(50);
   const [focusTouched, setFocusTouched] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // Zoom, 100-300% — 100 is the normal "fill the box" size; above that scales
+  // in further around the focal point, for tightening the crop on a photo
+  // that has extra clutter around the edges even after repositioning.
+  const [zoom, setZoom] = useState(100);
+  const [zoomTouched, setZoomTouched] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
@@ -423,11 +428,12 @@ function HeroBannerCard() {
       setFocusX(settingsQ.data.heroFocusX ?? 50);
       setFocusY(settingsQ.data.heroFocusY ?? 50);
     }
-  }, [settingsQ.data, captionTouched, focusTouched]);
+    if (settingsQ.data && !zoomTouched) setZoom(settingsQ.data.heroZoom ?? 100);
+  }, [settingsQ.data, captionTouched, focusTouched, zoomTouched]);
 
   const currentImage = pendingImage ?? settingsQ.data?.heroImage ?? '/hero-main.png';
   const hasCustomSaved = !!(settingsQ.data?.heroImage || settingsQ.data?.heroCaption);
-  const hasChanges = pendingImage !== null || captionTouched || focusTouched;
+  const hasChanges = pendingImage !== null || captionTouched || focusTouched || zoomTouched;
 
   const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -437,9 +443,10 @@ function HeroBannerCard() {
     if (f.size > MAX_UPLOAD_BYTES) { setErr(imageReadErrorMessage(f)); return; }
     try {
       setPendingImage(await compressImageFile(f, 1600, 0.85));
-      // A new photo starts centered — the old focal point was chosen for a
-      // different image and may not mean anything on this one.
+      // A new photo starts centered and unzoomed — the old crop was chosen
+      // for a different image and may not mean anything on this one.
       setFocusX(50); setFocusY(50); setFocusTouched(false);
+      setZoom(100); setZoomTouched(false);
     } catch {
       setErr(imageReadErrorMessage(f));
     }
@@ -462,21 +469,26 @@ function HeroBannerCard() {
     setFocusFromEvent(e);
   };
   const stopDragging = () => setDragging(false);
-  const centerFocus = () => { setFocusX(50); setFocusY(50); setFocusTouched(true); };
+  const centerFocus = () => { setFocusX(50); setFocusY(50); setFocusTouched(true); setZoom(100); setZoomTouched(true); };
 
   const save = () => {
     updateMut.mutate(
       {
         token, heroImage: pendingImage ?? undefined, heroCaption: captionTouched ? caption.trim() || null : undefined,
         heroFocusX: focusTouched ? focusX : undefined, heroFocusY: focusTouched ? focusY : undefined,
+        heroZoom: zoomTouched ? zoom : undefined,
       },
-      { onSuccess: () => { setPendingImage(null); setCaptionTouched(false); setFocusTouched(false); } }
+      { onSuccess: () => { setPendingImage(null); setCaptionTouched(false); setFocusTouched(false); setZoomTouched(false); } }
     );
   };
 
   const resetToDefault = () => {
-    updateMut.mutate({ token, heroImage: null, heroCaption: null, heroFocusX: null, heroFocusY: null }, {
-      onSuccess: () => { setPendingImage(null); setCaption(''); setCaptionTouched(false); setFocusX(50); setFocusY(50); setFocusTouched(false); },
+    updateMut.mutate({ token, heroImage: null, heroCaption: null, heroFocusX: null, heroFocusY: null, heroZoom: null }, {
+      onSuccess: () => {
+        setPendingImage(null); setCaption(''); setCaptionTouched(false);
+        setFocusX(50); setFocusY(50); setFocusTouched(false);
+        setZoom(100); setZoomTouched(false);
+      },
     });
   };
 
@@ -495,7 +507,7 @@ function HeroBannerCard() {
         onPointerUp={stopDragging} onPointerCancel={stopDragging}
         className="mt-4 relative rounded-2xl overflow-hidden border border-blush-100 cursor-crosshair touch-none select-none">
         <img src={currentImage} alt="Homepage banner preview" draggable={false}
-          style={{ objectPosition: `${focusX}% ${focusY}%` }}
+          style={{ objectPosition: `${focusX}% ${focusY}%`, transform: `scale(${zoom / 100})`, transformOrigin: `${focusX}% ${focusY}%` }}
           className="w-full aspect-[4/3] sm:aspect-[16/9] object-cover pointer-events-none" />
         {caption && (
           <p className="absolute bottom-2 left-3 font-display italic text-sm text-ink-900 bg-white/85 px-2.5 py-1 rounded pointer-events-none">
@@ -508,6 +520,16 @@ function HeroBannerCard() {
           style={{ left: `${focusX}%`, top: `${focusY}%` }} />
       </div>
       <p className="mt-1.5 text-[11px] text-ink-500">Tap or drag anywhere on the photo to choose what stays in view — the rest gets cropped off to fit.</p>
+
+      <div className="mt-3">
+        <div className="flex items-center justify-between">
+          <label className={labelCls}>Zoom</label>
+          <span className="text-[11px] text-ink-500">{zoom}%</span>
+        </div>
+        <input type="range" min={100} max={300} step={5} value={zoom}
+          onChange={(e) => { setZoom(Number(e.target.value)); setZoomTouched(true); }}
+          className="mt-1.5 w-full accent-gold-500" />
+      </div>
 
       <div className="mt-3 grid sm:grid-cols-3 gap-2">
         <button onClick={() => fileRef.current?.click()} className={btnGold}>
