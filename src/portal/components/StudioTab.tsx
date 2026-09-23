@@ -12,6 +12,7 @@ import { formatPrice } from '@/portal/lib/utils-shop';
 import { imageReadErrorMessage, MAX_UPLOAD_BYTES } from '@/lib/image-upload-errors';
 import { drawSandBackdrop, drawWordmark, drawProductShadow, PRODUCT_TEMPLATE_SRC, WORDMARK_SRC } from '@/lib/studio-visuals';
 import { removeBackgroundClient } from '@/lib/bg-removal';
+import { downloadDataUrl, shareOrSaveImage, openImageForSaving } from '@/lib/share-image';
 import type { Category } from '@contracts/types';
 import type { StudioPost } from '@contracts/types';
 
@@ -498,8 +499,9 @@ function GridPlanner() {
   const postsQ = trpc.shop.studioList.useQuery({ token });
   const updateMut = trpc.shop.studioUpdate.useMutation({ onSuccess: () => void utils.shop.studioList.invalidate() });
   const deleteMut = trpc.shop.studioDelete.useMutation({ onSuccess: () => void utils.shop.studioList.invalidate() });
-  const [open, setOpen] = useState(false);
-  const [dragId, setDragId] = useState<string | null>(null);
+  // Open by default — this used to be collapsed, which meant it was easy to
+  // never even notice the feature existed.
+  const [open, setOpen] = useState(true);
 
   const posts = useMemo(() => postsQ.data ?? [], [postsQ.data]);
 
@@ -507,6 +509,10 @@ function GridPlanner() {
     updateMut.mutate({ token, id: a.id, patch: { gridOrder: b.gridOrder } });
     updateMut.mutate({ token, id: b.id, patch: { gridOrder: a.gridOrder } });
   };
+  // Reordering is buttons only now — the previous version also supported
+  // dragging a card, but that used the HTML5 drag-and-drop API, which most
+  // phone browsers simply don't fire for a touch gesture. It silently did
+  // nothing on a phone, which is worse than not offering it at all.
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
     if (j < 0 || j >= posts.length) return;
@@ -517,6 +523,13 @@ function GridPlanner() {
     if (next) updateMut.mutate({ token, id: p.id, patch: { status: next } }, {
       onSuccess: () => toast(next === 'ready' ? 'Marked ready to post ✓' : 'Marked as posted ✓'),
     });
+  };
+  const download = (p: StudioPost) => {
+    downloadDataUrl(p.imageData, `sharmyn-post-${p.id}.jpg`);
+    toast('Image downloaded ✓');
+  };
+  const share = (p: StudioPost) => {
+    void shareOrSaveImage(p.imageData, `sharmyn-post-${p.id}.jpg`, `${p.captionIg}\n\n${p.hashtags}`.trim(), toast);
   };
 
   const varietyTips = useMemo(() => {
@@ -537,8 +550,8 @@ function GridPlanner() {
         <span className="flex items-center gap-3">
           <LayoutGrid size={20} className="text-gold-500" />
           <span className="text-left">
-            <span className="block font-display text-xl font-semibold text-ink-900">Your Post Grid</span>
-            <span className="block text-xs text-ink-500">Saved posts, shown like your Instagram profile — newest first</span>
+            <span className="block font-display text-xl font-semibold text-ink-900">Your Saved Posts</span>
+            <span className="block text-xs text-ink-500">Everything you've saved, in the order you'll post it</span>
           </span>
         </span>
         <motion.span animate={{ rotate: open ? 180 : 0 }}><ChevronDown size={20} className="text-ink-500" /></motion.span>
@@ -550,30 +563,27 @@ function GridPlanner() {
               {postsQ.isLoading ? (
                 <p className="py-8 text-center text-sm text-ink-500"><Loader2 className="inline animate-spin mr-2" size={16} />Loading your posts…</p>
               ) : posts.length === 0 ? (
-                <p className="py-8 text-center text-sm text-ink-500">No posts yet — create one above and tap “Save to my grid”.</p>
+                <p className="py-8 text-center text-sm text-ink-500">No posts yet — make one above and tap "Save to my grid".</p>
               ) : (
                 <>
-                  <p className="mb-3 text-xs text-ink-500">Use the arrows (or drag a card) to rearrange. Tap the big button to move a post from Draft → Ready → Posted.</p>
+                  <div className="mb-4 rounded-xl bg-blush-50 border border-blush-100 p-4 text-[12px] text-ink-900 leading-relaxed">
+                    <p className="font-semibold mb-1">How this works:</p>
+                    <p>Posts you save land here, numbered in the order you'll post them — use ‹ › to reorder. When one's ready, tap <b>Download</b> or <b>Share</b> to get the image onto your phone and post it on Instagram yourself. Then come back and tap the button to mark it posted, so you can keep track of what's left.</p>
+                  </div>
                   <div className="grid grid-cols-3 gap-2 sm:gap-3">
                     {posts.map((p, i) => (
                       <div key={p.id}
-                        draggable
-                        onDragStart={() => setDragId(p.id)}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={() => {
-                          if (!dragId || dragId === p.id) return;
-                          const a = posts.find((x) => x.id === dragId);
-                          if (a) swap(a, p);
-                          setDragId(null);
-                        }}
-                        className={`relative rounded-xl border overflow-hidden bg-blush-50 transition ${p.status === 'posted' ? 'opacity-50 border-blush-100' : 'border-blush-100'} ${dragId === p.id ? 'ring-2 ring-gold-400' : ''}`}>
-                        <img src={p.imageData} alt={p.headline || 'Post'} className="w-full aspect-square object-cover" />
-                        {p.status === 'posted' && (
-                          <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-emerald-600 text-white grid place-items-center"><Check size={13} /></span>
-                        )}
-                        {varietyTips.has(p.id) && (
-                          <p className="absolute top-1.5 left-1.5 bg-gold-500/95 text-white text-[9px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full">Tip: try variety</p>
-                        )}
+                        className={`relative rounded-xl border overflow-hidden bg-blush-50 transition ${p.status === 'posted' ? 'opacity-60 border-blush-100' : 'border-blush-100'}`}>
+                        <div className="relative">
+                          <img src={p.imageData} alt={p.headline || 'Post'} className="w-full aspect-square object-cover" />
+                          <span className="absolute top-1.5 left-1.5 w-6 h-6 rounded-full bg-ink-900/80 text-white grid place-items-center text-[11px] font-bold">{i + 1}</span>
+                          {p.status === 'posted' && (
+                            <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-emerald-600 text-white grid place-items-center"><Check size={13} /></span>
+                          )}
+                          {varietyTips.has(p.id) && (
+                            <p className="absolute bottom-0 inset-x-0 bg-gold-500/95 text-white text-[9px] font-semibold uppercase tracking-wide text-center py-1">Tip: try variety</p>
+                          )}
+                        </div>
                         <div className="p-2 space-y-1.5">
                           <p className="text-[11px] font-medium text-ink-900 line-clamp-2 leading-snug min-h-[2.2em]">{p.headline || p.template}</p>
                           <div className="flex items-center gap-1">
@@ -590,12 +600,24 @@ function GridPlanner() {
                               <Trash2 size={15} />
                             </button>
                           </div>
+                          {p.status !== 'posted' && (
+                            <div className="flex items-center gap-1">
+                              <button aria-label="Download image" onClick={() => download(p)}
+                                className="flex-1 h-9 grid place-items-center rounded-lg bg-white border border-gold-400 text-gold-500">
+                                <Download size={15} />
+                              </button>
+                              <button aria-label="Share image" onClick={() => share(p)}
+                                className="flex-1 h-9 grid place-items-center rounded-lg bg-white border border-gold-400 text-gold-500">
+                                <Share2 size={15} />
+                              </button>
+                            </div>
+                          )}
                           <button onClick={() => advance(p)} disabled={p.status === 'posted'}
                             className={`w-full h-10 rounded-lg text-[10px] font-semibold uppercase tracking-[0.08em] transition ${
                               p.status === 'posted' ? 'bg-emerald-50 text-emerald-700'
                               : p.status === 'ready' ? 'bg-gold-500 text-white hover:bg-gold-400'
                               : 'bg-blush-100 text-ink-900 hover:bg-rose-300/40'}`}>
-                            {p.status === 'posted' ? '✓ Posted' : p.status === 'ready' ? 'Mark posted' : 'Draft → Mark ready'}
+                            {p.status === 'posted' ? '✓ Posted' : p.status === 'ready' ? "I've posted this ✓" : 'Ready to post'}
                           </button>
                         </div>
                       </div>
@@ -745,67 +767,17 @@ export default function StudioTab() {
     return canvasRef.current?.toDataURL('image/png') ?? null;
   };
 
-  /** data: URL → File, without any async work (keeps the click gesture "fresh" for navigator.share). */
-  const dataUrlToFile = (dataUrl: string, filename: string): File => {
-    const [meta, b64] = dataUrl.split(',');
-    const mime = /data:(.*?);/.exec(meta)?.[1] || 'image/png';
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new File([bytes], filename, { type: mime });
-  };
-
-  /** Most reliable "save" path on phones, especially installed PWAs where programmatic
-   * downloads are unreliable: open the image in a new tab so the owner can long-press
-   * (mobile) or right-click (desktop) to save it — always works, no browser quirks. */
-  const openImageForSaving = (dataUrl: string) => {
-    const win = window.open('', '_blank');
-    if (!win) { toast('Please allow pop-ups, then try again.'); return; }
-    win.document.write(`<!doctype html><html><head><title>Sharmyn post</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;background:#1A1008;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="${dataUrl}" alt="Sharmyn post" style="max-width:100%;height:auto;display:block;" /></body></html>`);
-    win.document.close();
-  };
-
   const downloadPng = (dataUrl: string) => {
-    const a = document.createElement('a');
-    a.href = dataUrl;
-    a.download = `sharmyn-${template}-${format}-${Date.now()}.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    downloadDataUrl(dataUrl, `sharmyn-${template}-${format}-${Date.now()}.png`);
   };
 
   const fullCaption = () => `${captionIg}\n\n${hashtags}`.trim();
 
   const sharePost = () => {
     setBusy(true);
-    try {
-      const dataUrl = toPngDataUrl();
-      if (!dataUrl) { toast('Could not create the image — try again.'); setBusy(false); return; }
-      const file = dataUrlToFile(dataUrl, 'sharmyn-post.png');
-      const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-      if (navigator.share && nav.canShare?.({ files: [file] })) {
-        navigator.share({ files: [file], text: fullCaption() })
-          .then(() => toast('Shared ✓'))
-          .catch((e) => {
-            if ((e as Error)?.name !== 'AbortError') {
-              // Share sheet itself failed (rare, but happens) — fall back to the
-              // always-reliable "open in a tab, long-press to save" path.
-              openImageForSaving(dataUrl);
-              void copyText(fullCaption(), 'Caption');
-              toast('Image opened — long-press to save, caption copied');
-            }
-          })
-          .finally(() => setBusy(false));
-      } else {
-        openImageForSaving(dataUrl);
-        void copyText(fullCaption(), 'Caption');
-        toast('Image opened — long-press to save, caption copied');
-        setBusy(false);
-      }
-    } catch {
-      toast('Something went wrong — please try again.');
-      setBusy(false);
-    }
+    const dataUrl = toPngDataUrl();
+    if (!dataUrl) { toast('Could not create the image — try again.'); setBusy(false); return; }
+    void shareOrSaveImage(dataUrl, 'sharmyn-post.png', fullCaption(), toast).finally(() => setBusy(false));
   };
 
   const saveToGrid = () => {
