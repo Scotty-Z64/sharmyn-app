@@ -1,9 +1,16 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Download, FileText, TrendingUp } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { formatPrice, CATEGORIES } from '@/portal/lib/utils-shop';
+
+/** Compact axis tick — "R850" under a thousand, "R12k" above, so the y-axis
+ * doesn't round small ranges down to "R0k" across the board. */
+function formatAxisRand(v: number): string {
+  return v < 1000 ? `R${Math.round(v)}` : `R${Math.round(v / 1000)}k`;
+}
 
 type RangeKey = '7d' | '30d' | '90d' | 'month' | 'custom';
 
@@ -96,6 +103,17 @@ export default function ReportsTab() {
       [],
       ['Category', 'Qty sold', 'Revenue', 'Profit'],
       ...report.byCategory.map((c) => [catLabel(c.category), c.qtySold, c.revenue, c.profit]),
+      [],
+      ['Size', 'Qty sold', 'Revenue'],
+      ...report.bySize.map((s) => [s.size, s.qtySold, s.revenue]),
+      [],
+      ['Discount impact'],
+      ['Items sold on discount', report.discountImpact.itemsSoldOnDiscount],
+      ['Revenue from discounted items', report.discountImpact.revenueFromDiscounted],
+      ['Discount given', report.discountImpact.discountGiven],
+      [],
+      ['Date', 'Revenue', 'Orders'],
+      ...report.trend.map((t) => [t.date, t.revenue, t.orders]),
     ];
     downloadCsv(`sharmyn-report-${isoDateInput(from)}-to-${isoDateInput(to)}.csv`, toCsv(rows));
     toast('Report downloaded');
@@ -154,6 +172,35 @@ export default function ReportsTab() {
             ))}
           </div>
 
+          <div className="mt-4 bg-white rounded-2xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
+            <h3 className="font-display text-lg font-semibold text-ink-900">Revenue over time</h3>
+            {report.trend.every((t) => t.revenue === 0) ? (
+              <p className="mt-3 text-sm text-ink-500">No sales in this range yet.</p>
+            ) : (
+              <div className="mt-3 h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={report.trend} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#96721A" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#96721A" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F3E0C9" vertical={false} />
+                    <XAxis dataKey="date" tickFormatter={(d: string) => new Date(d).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
+                      tick={{ fontSize: 11, fill: '#7A6152' }} axisLine={false} tickLine={false} minTickGap={24} />
+                    <YAxis tickFormatter={formatAxisRand} tick={{ fontSize: 11, fill: '#7A6152' }} axisLine={false} tickLine={false} width={48} />
+                    <Tooltip
+                      labelFormatter={(d: string) => new Date(d).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      formatter={(value: number, name: string) => [name === 'revenue' ? formatPrice(value) : value, name === 'revenue' ? 'Revenue' : 'Orders']}
+                      contentStyle={{ borderRadius: 12, border: '1px solid #F3E0C9', fontSize: 12 }} />
+                    <Area type="monotone" dataKey="revenue" name="revenue" stroke="#96721A" strokeWidth={2} fill="url(#revenueFill)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
               <h3 className="font-display text-lg font-semibold text-ink-900 flex items-center gap-2">
@@ -202,6 +249,61 @@ export default function ReportsTab() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
+              <h3 className="font-display text-lg font-semibold text-ink-900">By size</h3>
+              <p className="text-[11px] text-ink-500">Sneakers &amp; shoes only — which sizes actually sell</p>
+              {report.bySize.length === 0 ? (
+                <p className="mt-3 text-sm text-ink-500">No sized items sold in this range yet.</p>
+              ) : (
+                <div className="mt-3 space-y-2.5">
+                  {(() => {
+                    const max = Math.max(...report.bySize.map((s) => s.qtySold));
+                    return report.bySize.map((s) => {
+                      const pct = max > 0 ? Math.round((s.qtySold / max) * 100) : 0;
+                      return (
+                        <div key={s.size}>
+                          <div className="flex items-center justify-between text-sm mb-1">
+                            <span className="text-ink-900">Size {s.size}</span>
+                            <span className="text-ink-500 text-[11px]">{s.qtySold} sold · {formatPrice(s.revenue)}</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-blush-100 overflow-hidden">
+                            <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+                              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                              className="h-full rounded-full bg-rose-500" />
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
+              <h3 className="font-display text-lg font-semibold text-ink-900">Discount impact</h3>
+              <p className="text-[11px] text-ink-500">Only orders placed since markdown pricing was added</p>
+              {report.discountImpact.itemsSoldOnDiscount === 0 ? (
+                <p className="mt-3 text-sm text-ink-500">No discounted items sold in this range yet.</p>
+              ) : (
+                <div className="mt-3 grid grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-500">Items sold</p>
+                    <p className="font-display text-xl font-semibold text-ink-900 mt-1">{report.discountImpact.itemsSoldOnDiscount}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-500">Revenue</p>
+                    <p className="font-display text-xl font-semibold text-ink-900 mt-1">{formatPrice(report.discountImpact.revenueFromDiscounted)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-500">Discount given</p>
+                    <p className="font-display text-xl font-semibold text-rose-600 mt-1">{formatPrice(report.discountImpact.discountGiven)}</p>
+                  </div>
                 </div>
               )}
             </div>

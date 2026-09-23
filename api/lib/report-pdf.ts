@@ -90,6 +90,36 @@ export async function buildReportPdf(report: SalesReport): Promise<Buffer> {
       doc.text(fmt(c.revenue), 360, y, { width: 90, align: "right" });
       doc.fillColor("#1F8A5B").text(fmt(c.profit), 455, y, { width: 90, align: "right" });
       y += 16;
+      if (y > 740) { doc.addPage(); y = 50; }
+    }
+
+    if (report.bySize.length > 0) {
+      y += 15;
+      if (y > 700) { doc.addPage(); y = 50; }
+      doc.fillColor(GOLD).fontSize(11).font("Helvetica-Bold").text("By size (sneakers & shoes)", 50, y);
+      y += 18;
+      doc.font("Helvetica").fontSize(9);
+      for (const s of report.bySize) {
+        doc.fillColor(INK).text(`Size ${s.size}`, 50, y, { width: 150 });
+        doc.text(String(s.qtySold), 300, y, { width: 50, align: "right" });
+        doc.text(fmt(s.revenue), 360, y, { width: 90, align: "right" });
+        y += 16;
+        if (y > 740) { doc.addPage(); y = 50; }
+      }
+    }
+
+    if (report.discountImpact.itemsSoldOnDiscount > 0) {
+      y += 15;
+      if (y > 700) { doc.addPage(); y = 50; }
+      doc.fillColor(GOLD).fontSize(11).font("Helvetica-Bold").text("Discount impact", 50, y);
+      y += 18;
+      doc.fillColor(INK).fontSize(9).font("Helvetica");
+      doc.text(`Items sold on discount: ${report.discountImpact.itemsSoldOnDiscount}`, 50, y, { width: 495 });
+      y += 15;
+      doc.text(`Revenue from discounted items: ${fmt(report.discountImpact.revenueFromDiscounted)}`, 50, y, { width: 495 });
+      y += 15;
+      doc.text(`Discount given: ${fmt(report.discountImpact.discountGiven)}`, 50, y, { width: 495 });
+      y += 15;
     }
 
     doc.fillColor(SOFT).fontSize(8).font("Helvetica").text(

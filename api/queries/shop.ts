@@ -20,6 +20,9 @@ import type {
   SalesReport,
   ReportProductRow,
   ReportCategoryRow,
+  ReportSizeRow,
+  ReportTrendPoint,
+  DiscountImpact,
   SiteSettings,
 } from "@contracts/types";
 
@@ -332,6 +335,7 @@ export async function placeOrderTx(
             name: row.name,
             price: row.price,
             costPrice: row.costPrice,
+            oldPrice: row.oldPrice ?? null,
             qty: input.qty,
             size: input.size ?? null,
           });
@@ -628,6 +632,17 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
   let paidRevenue = 0;
   let paidProfit = 0;
   const productAgg = new Map<string, { name: string; qtySold: number; revenue: number; profit: number }>();
+  const sizeAgg = new Map<string, { qtySold: number; revenue: number }>();
+  let discountItemsSold = 0;
+  let discountRevenue = 0;
+  let discountGiven = 0;
+
+  // Seed every day in range (not just days with sales) so the trend line
+  // doesn't skip gaps.
+  const trendMap = new Map<string, { revenue: number; orders: number }>();
+  for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+    trendMap.set(d.toISOString().slice(0, 10), { revenue: 0, orders: 0 });
+  }
 
   for (const row of rows) {
     const order = toOrder(row);
@@ -635,6 +650,13 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
     if (order.status !== "cancelled") {
       revenue += order.total;
       if (order.paymentStatus === "paid") paidRevenue += order.total;
+
+      const day = order.createdAt.slice(0, 10);
+      const bucket = trendMap.get(day) ?? { revenue: 0, orders: 0 };
+      bucket.revenue += order.total;
+      bucket.orders += 1;
+      trendMap.set(day, bucket);
+
       for (const item of order.items) {
         const itemProfit = (item.price - (item.costPrice ?? 0)) * item.qty;
         if (order.paymentStatus === "paid") paidProfit += itemProfit;
@@ -643,9 +665,36 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
         agg.revenue += item.price * item.qty;
         agg.profit += itemProfit;
         productAgg.set(item.productId, agg);
+
+        if (item.size) {
+          const sAgg = sizeAgg.get(item.size) ?? { qtySold: 0, revenue: 0 };
+          sAgg.qtySold += item.qty;
+          sAgg.revenue += item.price * item.qty;
+          sizeAgg.set(item.size, sAgg);
+        }
+
+        if (item.oldPrice && item.oldPrice > item.price) {
+          discountItemsSold += item.qty;
+          discountRevenue += item.price * item.qty;
+          discountGiven += (item.oldPrice - item.price) * item.qty;
+        }
       }
     }
   }
+
+  const bySize: ReportSizeRow[] = [...sizeAgg.entries()]
+    .map(([size, v]) => ({ size, ...v }))
+    .sort((a, b) => b.qtySold - a.qtySold);
+
+  const trend: ReportTrendPoint[] = [...trendMap.entries()]
+    .map(([date, v]) => ({ date, ...v }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const discountImpact: DiscountImpact = {
+    itemsSoldOnDiscount: discountItemsSold,
+    revenueFromDiscounted: discountRevenue,
+    discountGiven,
+  };
 
   // Resolve current category for each product that actually sold, in one query.
   const productIds = [...productAgg.keys()];
@@ -690,6 +739,9 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
     byStatus,
     topProducts,
     byCategory,
+    bySize,
+    trend,
+    discountImpact,
   };
 }
 

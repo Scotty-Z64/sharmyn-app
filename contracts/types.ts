@@ -53,6 +53,7 @@ export interface OrderItem {
   name: string;
   price: number;
   costPrice: number; // ZAR — snapshotted at order time, drives profit reporting
+  oldPrice?: number | null; // ZAR — snapshotted at order time, drives discount-impact reporting; null = wasn't on discount
   qty: number;
   size?: string | null; // selected shoe size, if applicable
 }
@@ -216,6 +217,31 @@ export interface ReportCategoryRow {
   profit: number;
 }
 
+/** Sneakers/shoes only, across all products — which sizes actually sell,
+ * independent of which product, for restocking decisions. */
+export interface ReportSizeRow {
+  size: string;
+  qtySold: number;
+  revenue: number;
+}
+
+/** One point per day in the report range, even days with zero sales, so a
+ * trend line doesn't silently skip gaps. */
+export interface ReportTrendPoint {
+  date: string; // YYYY-MM-DD
+  revenue: number;
+  orders: number;
+}
+
+/** Only reflects orders placed after discount pricing shipped — oldPrice is
+ * snapshotted onto the order item at sale time, so orders placed before that
+ * existed have nothing to report (shown as zero, not missing/broken). */
+export interface DiscountImpact {
+  itemsSoldOnDiscount: number; // total qty across line items that had oldPrice set
+  revenueFromDiscounted: number; // revenue from those items, at the actual (discounted) sale price
+  discountGiven: number; // sum of (oldPrice - price) * qty — what customers saved / the business gave up
+}
+
 export interface SalesReport {
   from: string; // ISO date, inclusive
   to: string; // ISO date, inclusive
@@ -227,6 +253,9 @@ export interface SalesReport {
   byStatus: Record<OrderStatus, number>;
   topProducts: ReportProductRow[]; // sorted desc by revenue
   byCategory: ReportCategoryRow[];
+  bySize: ReportSizeRow[]; // sorted desc by qtySold
+  trend: ReportTrendPoint[]; // sorted asc by date
+  discountImpact: DiscountImpact;
 }
 
 export const HERO_ASPECTS = ["wide", "standard", "tall", "square"] as const;
