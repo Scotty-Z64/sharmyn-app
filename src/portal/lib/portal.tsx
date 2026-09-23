@@ -34,16 +34,19 @@ export function usePortal(): PortalState {
   return ctx;
 }
 
+// localStorage (not sessionStorage) — stays logged in across app launches.
+// On an installed home-screen PWA especially, a session-only token meant Ben
+// had to re-enter the password almost every time he opened the app.
 export function readPortalToken(): string | null {
-  try { return sessionStorage.getItem(SESSION_KEY); } catch { return null; }
+  try { return localStorage.getItem(SESSION_KEY); } catch { return null; }
 }
 
 export function storePortalToken(token: string): void {
-  try { sessionStorage.setItem(SESSION_KEY, token); } catch { /* ignore */ }
+  try { localStorage.setItem(SESSION_KEY, token); } catch { /* ignore */ }
 }
 
 export function clearPortalToken(): void {
-  try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
 }
 
 function isUnauthorized(err: unknown): boolean {

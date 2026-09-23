@@ -1,7 +1,7 @@
 // Server-only admin auth. Never imported from src/ (client bundle).
 //
 // Token flow:
-//   1. adminLogin({ password }) → { token } (12h expiry)
+//   1. adminLogin({ password }) → { token } (30d expiry)
 //   2. All other admin procedures take { token } and call assertAdminToken.
 // Token = `${expMs}.${hmac}` where hmac = HMAC-SHA256(`exp:${expMs}`, secret),
 // secret derived from ADMIN_PASSWORD + APP_SECRET. Fails CLOSED when
@@ -9,7 +9,11 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 
-const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12h
+// 30d, paired with client-side localStorage (not sessionStorage) token
+// storage — this is a single shared owner password, not a per-user account,
+// so "stay logged in" is the expected behaviour rather than a security
+// regression; logging out is still one tap away.
+const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export function adminConfigured(): boolean {
   return !!process.env.ADMIN_PASSWORD;

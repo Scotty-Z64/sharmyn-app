@@ -51,25 +51,31 @@ function LoginGate({ onSuccess }: { onSuccess: (token: string) => void }) {
         <img src="/sharmyn-logo.png" alt="Sharmyn logo" className="w-36 h-auto mx-auto" />
         <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-gold-500">Owner Portal</p>
 
-        <div className="mt-6 relative">
-          <input type={show ? 'text' : 'password'} value={pw} autoFocus
-            onChange={(e) => { setPw(e.target.value); setErr(''); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
-            placeholder="Password" aria-label="Owner portal password"
-            className={`w-full h-[52px] px-5 pr-12 rounded-full border text-sm bg-blush-50/60 focus:outline-none transition ${
-              err ? 'border-rose-600 ring-2 ring-rose-600/30' : 'border-blush-100 focus:border-rose-300 focus:ring-2 focus:ring-rose-300/40'}`} />
-          <button type="button" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'}
-            className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full text-ink-500 hover:bg-blush-100">
-            {show ? <EyeOff size={18} /> : <Eye size={18} />}
-          </button>
-        </div>
-        {err && <p className="mt-2 text-xs text-rose-600">{err}</p>}
+        {/* A real <form> + autoComplete hints — without these, the browser
+            never recognises this as a login and never offers to save the
+            password. autoComplete="username" on a hidden field helps Chrome's
+            save-password heuristics even though there's no separate username. */}
+        <form onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+          <input type="text" name="username" autoComplete="username" value="Sharmyn Owner" readOnly hidden />
+          <div className="mt-6 relative">
+            <input type={show ? 'text' : 'password'} name="password" autoComplete="current-password" value={pw} autoFocus
+              onChange={(e) => { setPw(e.target.value); setErr(''); }}
+              placeholder="Password" aria-label="Owner portal password"
+              className={`w-full h-[52px] px-5 pr-12 rounded-full border text-sm bg-blush-50/60 focus:outline-none transition ${
+                err ? 'border-rose-600 ring-2 ring-rose-600/30' : 'border-blush-100 focus:border-rose-300 focus:ring-2 focus:ring-rose-300/40'}`} />
+            <button type="button" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full text-ink-500 hover:bg-blush-100">
+              {show ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+          {err && <p className="mt-2 text-xs text-rose-600">{err}</p>}
 
-        <button onClick={() => void submit()} disabled={login.isPending}
-          className="mt-4 w-full h-[52px] rounded-full bg-gold-500 text-white text-[12px] font-semibold uppercase tracking-[0.14em] hover:bg-gold-400 active:scale-[0.97] transition disabled:opacity-60 flex items-center justify-center gap-2">
-          {login.isPending && <Loader2 size={16} className="animate-spin" />}
-          Enter Portal
-        </button>
+          <button type="submit" disabled={login.isPending}
+            className="mt-4 w-full h-[52px] rounded-full bg-gold-500 text-white text-[12px] font-semibold uppercase tracking-[0.14em] hover:bg-gold-400 active:scale-[0.97] transition disabled:opacity-60 flex items-center justify-center gap-2">
+            {login.isPending && <Loader2 size={16} className="animate-spin" />}
+            Enter Portal
+          </button>
+        </form>
       </motion.div>
     </div>
   );
