@@ -4,15 +4,14 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ImagePlus, Loader2, Sparkles, X } from 'lucide-react';
 import type { Availability, Category, Product } from '@/portal/lib/utils-shop';
 import { CATEGORIES, SHOE_BRANDS, isSizedCategory, formatPrice } from '@/portal/lib/utils-shop';
-import { trpc } from '@/providers/trpc';
-import { usePortal } from '@/portal/lib/portal';
 import { imageReadErrorMessage, MAX_UPLOAD_BYTES } from '@/lib/image-upload-errors';
 import { loadImg, drawSandBackdrop, drawWordmark, PRODUCT_TEMPLATE_SRC, WORDMARK_SRC } from '@/lib/studio-visuals';
+import { removeBackgroundClient } from '@/lib/bg-removal';
 import { Thumb } from './bits';
 
-// ---------- AI Photo Polish — client-side compositing ----------
-// The server only removes the background (remove.bg → transparent PNG);
-// everything below runs entirely in the browser on a 1080×1080 canvas.
+// ---------- AI Photo Polish — client-side background removal + compositing ----------
+// Both steps run entirely in the browser (WASM model + a 1080×1080 canvas) —
+// no server round-trip, no API key, no per-image cost.
 
 /** Compress a File to a JPEG data URL (max 800px longest side). Promise-based
  * so the "extra angle" upload flow can await it inline, unlike the main image
@@ -203,18 +202,13 @@ export default function ProductFormModal({
   const fileRef = useRef<HTMLInputElement>(null);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((p) => ({ ...p, [k]: v }));
 
-  // ---- AI Photo Polish ----
-  const { token } = usePortal();
-  const polishCfg = trpc.shop.photoPolishConfig.useQuery({ token }, { retry: false });
-  const polishMut = trpc.shop.polishProductImage.useMutation();
+  // ---- AI Photo Polish (client-side background removal — no server, no API key) ----
   const [polishing, setPolishing] = useState(false);
   const [polished, setPolished] = useState<string | null>(null);
   const [polishNote, setPolishNote] = useState('');
-  const polishEnabled = !!polishCfg.data?.enabled;
   // The transparent cutout (or raw photo, for Studio frame) behind the current
   // `polished` preview, kept around so the size slider can re-composite locally
-  // — instantly, no re-calling remove.bg — instead of spending API credits on
-  // every nudge.
+  // — instantly, no re-running background removal on every nudge.
   const [cutoutSrc, setCutoutSrc] = useState<string | null>(null);
   const [cutoutMode, setCutoutMode] = useState(true);
   const [sizeScale, setSizeScale] = useState(1);
@@ -223,23 +217,16 @@ export default function ProductFormModal({
     const src = imageOverride ?? d.image;
     if (!src || polishing) return;
     setPolishNote('');
-    if (!polishEnabled) {
-      setPolishNote('Photo polish needs an image API key — ask your developer to activate it. (Studio frame below still works!)');
-      return;
-    }
     setPolishing(true);
     setPolished(null);
     try {
-      const { imageData } = await polishMut.mutateAsync({ token, imageData: src });
+      const imageData = await removeBackgroundClient(src);
       setCutoutSrc(imageData);
       setCutoutMode(true);
       setSizeScale(1);
       setPolished(await compositeStudio(imageData, true, 1));
-    } catch (e) {
-      const msg = (e as { message?: string } | null)?.message ?? '';
-      setPolishNote(msg.includes('QUOTA') || msg.includes('NOT_CONFIGURED')
-        ? 'Photo polish is not available right now — ask your developer to check the image API key. Studio frame still works below.'
-        : 'Polish failed — please try again, or use Studio frame instead.');
+    } catch {
+      setPolishNote('Polish failed — please try again, or use Studio frame instead.');
     } finally {
       setPolishing(false);
     }
@@ -291,9 +278,7 @@ export default function ProductFormModal({
         ctx.drawImage(img, 0, 0, w, h);
         const compressed = canvas.toDataURL('image/jpeg', 0.8);
         set('image', compressed);
-        // Auto-composite onto the branded backdrop the moment a photo is chosen —
-        // no extra click needed. Falls back to showing the "needs API key" note
-        // if photo polish isn't configured yet.
+        // Auto-composite onto the branded backdrop the moment a photo is chosen.
         void runPolish(compressed);
       };
       img.onerror = () => setImgErr(imageReadErrorMessage(f));
@@ -335,23 +320,15 @@ export default function ProductFormModal({
       return;
     }
     try {
-      const cutoutMode = polishEnabled;
-      const src = polishEnabled
-        ? (await polishMut.mutateAsync({ token, imageData: compressed })).imageData
-        : compressed;
-      const finalImg = await compositeStudio(src, cutoutMode, 1);
+      const src = await removeBackgroundClient(compressed);
+      const finalImg = await compositeStudio(src, true, 1);
       setAngleCutoutSrc(src);
-      setAngleCutoutMode(cutoutMode);
+      setAngleCutoutMode(true);
       setAngleScale(1);
       setAnglePreview({ original: compressed, polished: finalImg });
     } catch (e) {
       const msg = (e as { message?: string } | null)?.message ?? '';
-      setAngleErr(
-        msg.includes('QUOTA') ? 'Photo polish is out of credits right now — top up the image API key, or use Studio frame for this angle.'
-        : msg.includes('BUSY') ? 'The image API is busy right now — wait a moment and try this angle again.'
-        : msg.includes('NOT_CONFIGURED') ? 'Photo polish needs an image API key — ask your developer to activate it.'
-        : `Could not process that photo — please try again. ${msg ? `(${msg.slice(0, 120)})` : ''}`
-      );
+      setAngleErr(`Could not process that photo — please try again. ${msg ? `(${msg.slice(0, 120)})` : ''}`);
     } finally {
       setAngleUploading(false);
     }
@@ -437,14 +414,11 @@ export default function ProductFormModal({
                 )}
                 {d.image && !polished && (
                   <div className="space-y-2 pt-1">
-                    {polishEnabled && (
-                      <p className="text-[11px] text-ink-500">
-                        Works best on photos of just the product (on a table, in-hand). A photo of it being worn will keep the leg/hand in — use "Studio frame" instead for those.
-                      </p>
-                    )}
+                    <p className="text-[11px] text-ink-500">
+                      Works best on photos of just the product (on a table, in-hand). A photo of it being worn will keep the leg/hand in — use "Studio frame" instead for those.
+                    </p>
                     <button type="button" onClick={() => runPolish()} disabled={polishing}
-                      title={polishEnabled ? 'Remove background & place on the Sharmyn studio backdrop'
-                        : 'Photo polish needs an image API key — ask your developer to activate it.'}
+                      title="Remove background & place on the Sharmyn studio backdrop"
                       className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-gold-400 text-gold-500 text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-blush-50 disabled:opacity-60">
                       {polishing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                       {polishing ? 'Polishing…' : '✨ Polish photo'}
@@ -530,7 +504,7 @@ export default function ProductFormModal({
             </div>
             <input ref={angleFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void onAngleFile(e)} />
             <p className="mt-1.5 text-[11px] text-ink-500">
-              Upload each angle on its own (worn, top-down, sole, etc.) — {polishEnabled ? 'each one is auto-polished onto the studio backdrop automatically.' : 'each one is auto-framed automatically (background removal needs an image API key — ask your developer).'}
+              Upload each angle on its own (worn, top-down, sole, etc.) — each one is auto-polished onto the studio backdrop automatically.
             </p>
             {angleErr && <p className="mt-1 text-[11px] text-rose-600">{angleErr}</p>}
 

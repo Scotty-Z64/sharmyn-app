@@ -41,7 +41,6 @@ import {
   refundYocoCheckout,
   buildPayfastRedirect,
 } from "./lib/payments";
-import { photoPolishEnabled, polishImage } from "./lib/photo";
 import { publishToInstagram } from "./lib/meta";
 import {
   createStudioPost,
@@ -547,31 +546,6 @@ export const appRouter = createRouter({
         assertAdminToken(input.token);
         await markNotificationRead(input.id);
         return { ok: true };
-      }),
-
-    // ---- AI photo polish (remove.bg; gated on REMOVE_BG_API_KEY) ----
-    photoPolishConfig: publicQuery.input(z.object({ token: adminToken })).query(({ input }) => {
-      assertAdminToken(input.token);
-      return { enabled: photoPolishEnabled() };
-    }),
-    polishProductImage: publicQuery
-      .input(z.object({ token: adminToken, imageData: z.string().max(12 * 1024 * 1024) }))
-      .mutation(async ({ input, ctx }) => {
-        rateLimit(`polishProductImage:${clientIp(ctx.req)}`, 10);
-        assertAdminToken(input.token);
-        if (!photoPolishEnabled()) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PHOTO_POLISH_NOT_CONFIGURED" });
-        }
-        try {
-          const polished = await polishImage(input.imageData);
-          return { imageData: polished };
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          if (msg.startsWith("IMAGE_TOO_LARGE") || msg.startsWith("INVALID_IMAGE")) {
-            throw new TRPCError({ code: "BAD_REQUEST", message: msg.split(":")[0] });
-          }
-          throw new TRPCError({ code: "BAD_GATEWAY", message: msg.split(":")[0] });
-        }
       }),
 
     // ---- Storefront settings ----

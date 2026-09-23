@@ -11,6 +11,7 @@ import { BUSINESS } from '@/config/business';
 import { formatPrice } from '@/portal/lib/utils-shop';
 import { imageReadErrorMessage, MAX_UPLOAD_BYTES } from '@/lib/image-upload-errors';
 import { drawSandBackdrop, drawWordmark, drawProductShadow, PRODUCT_TEMPLATE_SRC, WORDMARK_SRC } from '@/lib/studio-visuals';
+import { removeBackgroundClient } from '@/lib/bg-removal';
 import type { Category } from '@contracts/types';
 import type { StudioPost } from '@contracts/types';
 
@@ -626,17 +627,15 @@ export default function StudioTab() {
 
   // Background removal — same pipeline as product photos, so whatever
   // background (or messy phone-photo clutter) the source shot had gets
-  // stripped away instead of just cropped into a box.
-  const polishCfg = trpc.shop.photoPolishConfig.useQuery({ token }, { retry: false });
-  const polishMut = trpc.shop.polishProductImage.useMutation();
+  // stripped away instead of just cropped into a box. Runs client-side
+  // (in-browser WASM model) — no server, no API key, no credits to run out.
   const [polishingPhoto, setPolishingPhoto] = useState(false);
 
   const applyPhoto = async (rawSrc: string) => {
     setImgErr('');
-    if (!polishCfg.data?.enabled) { setPhotoSrc(rawSrc); return; }
     setPolishingPhoto(true);
     try {
-      const { imageData } = await polishMut.mutateAsync({ token, imageData: rawSrc });
+      const imageData = await removeBackgroundClient(rawSrc);
       setPhotoSrc(imageData);
     } catch {
       // Graceful degrade — the raw photo still works, just not cut out.
@@ -870,9 +869,7 @@ export default function StudioTab() {
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void onFile(e)} />
         {imgErr && <p className="mt-2 text-xs text-rose-600">{imgErr}</p>}
         <p className="mt-3 text-[11px] text-ink-500">
-          {polishCfg.data?.enabled
-            ? 'The background is removed automatically and placed on the Sharmyn studio backdrop — best on photos of just the product.'
-            : 'Background removal needs an image API key — ask your developer to activate it. Your photo will be used as-is for now.'}
+          The background is removed automatically and placed on the Sharmyn studio backdrop — best on photos of just the product.
         </p>
         <div className="mt-4 flex justify-end">
           <button disabled={!photoSrc || polishingPhoto} onClick={() => setStep(2)} className={btnGold}>
