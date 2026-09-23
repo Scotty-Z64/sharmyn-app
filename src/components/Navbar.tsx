@@ -82,7 +82,7 @@ export default function Navbar() {
           </nav>
 
           <div className="flex items-center gap-1">
-            <InstallButton appName="Sharmyn" className="hidden sm:grid w-11 h-11 place-items-center text-ink-900 hover:text-gold-500 transition-colors" />
+            <InstallButton appName="Sharmyn" className="w-11 h-11 grid place-items-center text-ink-900 hover:text-gold-500 transition-colors" />
             <button onClick={() => setSearchOpen(true)} aria-label="Search"
               className="w-11 h-11 grid place-items-center text-ink-900 hover:text-gold-500 transition-colors">
               <Search size={20} />

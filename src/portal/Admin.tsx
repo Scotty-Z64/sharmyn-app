@@ -76,6 +76,14 @@ function LoginGate({ onSuccess }: { onSuccess: (token: string) => void }) {
             Enter Portal
           </button>
         </form>
+
+        {/* Also offered here, not just after logging in — otherwise anyone
+            stuck on this screen (the exact situation that prompted this)
+            never sees a way to install the app at all. */}
+        <InstallButton appName="Sharmyn Portal"
+          className="mt-4 w-full h-10 flex items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-500 hover:text-gold-500 transition-colors">
+          <Download size={14} /> Add to Home Screen
+        </InstallButton>
       </motion.div>
     </div>
   );
