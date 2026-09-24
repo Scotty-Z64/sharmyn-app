@@ -517,7 +517,7 @@ export default function Checkout() {
                   Pudo Locker Pickup — {formatPrice(pudoDeliveryFee(totalQty))} <span className="ml-1 rounded-full bg-gold-400/15 border border-gold-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold-500">Recommended</span>
                 </span>
                 <span className="block text-[12px] text-ink-500">
-                  Collect from a smart locker near you · 2–4 working days · {formatPrice(PUDO_FEE_PER_PARCEL)} per {PUDO_ITEMS_PER_PARCEL} items
+                  Collect from a smart locker near you · 5–7 working days · {formatPrice(PUDO_FEE_PER_PARCEL)} per {PUDO_ITEMS_PER_PARCEL} items
                 </span>
               </span>
             </label>

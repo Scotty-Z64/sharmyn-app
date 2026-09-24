@@ -29,7 +29,7 @@ export default function Terms() {
           you at checkout. Delivery is R150 per parcel of up to 3 items; larger orders are priced per
           extra parcel (e.g. 4–6 items is R300), shown at checkout before you pay.</p>
         <p>
-          Delivery typically takes 2–4 working days from payment confirmation. Delays can happen with
+          Delivery typically takes 5–7 working days from payment confirmation. Delays can happen with
           courier partners beyond our control — we'll keep you updated if this happens.
         </p>
       </Section>
