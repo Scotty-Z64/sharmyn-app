@@ -2,7 +2,13 @@
 // resilience. Never touches /api/* (products, prices, orders always come from the
 // network — this is a boutique storefront, stale stock/pricing is worse than a
 // failed request).
-const CACHE = "sharmyn-shell-v1";
+//
+// __BUILD_ID__ is stamped in at build time (scripts/stamp-sw-version.js) — a
+// fixed literal here meant every deploy reused the exact same cache name, so
+// the cleanup below never actually ran and a device that ever hit one failed
+// network request on a page load could stay pinned to whatever shell got
+// cached that day, indefinitely, with no visible sign anything was stale.
+const CACHE = "sharmyn-shell-__BUILD_ID__";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
