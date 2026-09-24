@@ -7,6 +7,26 @@
 // photos / Studio), never on the storefront, so the one-time download cost
 // is a non-issue for customers.
 
+// The model download (~80MB, first use per browser only) or the underlying
+// Web Worker can stall or die silently on a slow/flaky connection — no
+// network error, no rejection, the awaiting promise just never settles.
+// Without a hard ceiling, that reads as "the system hangs" and blocks the
+// whole product form, since every caller awaits this before doing anything
+// else. Race it against a timeout so it always eventually settles one way
+// or another, and callers' existing catch-and-fall-back-to-the-raw-photo
+// logic kicks in instead of hanging forever.
+const TIMEOUT_MS = 45_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); }
+    );
+  });
+}
+
 let removeBackgroundFn: typeof import('@imgly/background-removal').removeBackground | null = null;
 
 async function getRemoveBackground() {
@@ -87,11 +107,20 @@ async function trimToOpaqueBounds(dataUrl: string, marginFraction = 0.05): Promi
   return out.toDataURL('image/png');
 }
 
-/** Strip the background from a photo (data URL in, transparent PNG data URL out,
- * tightly cropped to the product with a small margin). */
-export async function removeBackgroundClient(dataUrl: string): Promise<string> {
+async function removeBackgroundClientInner(dataUrl: string): Promise<string> {
   const removeBackground = await getRemoveBackground();
   const blob = await removeBackground(dataUrl, { output: { format: 'image/png' } });
   const cutout = await blobToDataUrl(blob);
   return trimToOpaqueBounds(cutout);
+}
+
+/** Strip the background from a photo (data URL in, transparent PNG data URL out,
+ * tightly cropped to the product with a small margin). Never hangs longer than
+ * TIMEOUT_MS — see note above. */
+export async function removeBackgroundClient(dataUrl: string): Promise<string> {
+  return withTimeout(
+    removeBackgroundClientInner(dataUrl),
+    TIMEOUT_MS,
+    'Background removal timed out — the image model may be slow to load on this connection.'
+  );
 }

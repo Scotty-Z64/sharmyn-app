@@ -227,8 +227,24 @@ export default function ProductFormModal({
       setCutoutMode(true);
       setSizeScale(1);
       setPolished(await compositeStudio(imageData, true, 1));
-    } catch {
-      setPolishNote('Polish failed — please try again, or use Studio frame instead.');
+    } catch (e) {
+      const msg = (e as { message?: string } | null)?.message ?? '';
+      if (msg.includes('timed out')) {
+        // Don't leave them stuck — frame the original photo automatically
+        // (same as "Studio frame") so there's still a usable photo without
+        // an extra manual step, and explain why it's not background-removed.
+        try {
+          setCutoutSrc(src);
+          setCutoutMode(false);
+          setSizeScale(1);
+          setPolished(await compositeStudio(src, false, 1));
+          setPolishNote('Background removal took too long on this connection, so we framed the original photo instead. Try "Polish photo" again if you\'d like to retry it.');
+        } catch {
+          setPolishNote('Polish failed — please try again, or use Studio frame instead.');
+        }
+      } else {
+        setPolishNote('Polish failed — please try again, or use Studio frame instead.');
+      }
     } finally {
       setPolishing(false);
     }
@@ -431,6 +447,7 @@ export default function ProductFormModal({
                         Studio frame (no background removal)
                       </button>
                     </div>
+                    {polishing && <p className="text-[11px] text-ink-500">The first photo on a new device can take up to a minute — it's downloading the background-removal model once. After that it's fast.</p>}
                     {polishNote && <p className="text-[11px] text-ink-500">{polishNote}</p>}
                   </div>
                 )}
