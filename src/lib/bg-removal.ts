@@ -63,6 +63,16 @@ function loadImageEl(src: string): Promise<HTMLImageElement> {
 // "float" above where the shadow/ground line is. remove.bg used to do this
 // trim server-side (crop + 5% margin); replicate that here so callers only
 // ever see a tightly-cropped cutout, matching the old behaviour.
+//
+// On a low-contrast subject (a white/pale product on a pale backdrop —
+// exactly the common case here) the model's confidence at the true edge is
+// low across a wide margin, not just a thin fringe: a broad halo of
+// semi-transparent "maybe foreground" pixels survives around the actual
+// product. Left as-is, that halo (a) drags the crop box out well past the
+// real subject and (b) renders as a visible blotchy/speckled smear once
+// composited onto the studio backdrop. Hard-zero anything below a real
+// confidence floor — both so the crop box reflects only the product, and so
+// those pixels are fully transparent (invisible) rather than a ghost smear.
 async function trimToOpaqueBounds(dataUrl: string, marginFraction = 0.05): Promise<string> {
   const img = await loadImageEl(dataUrl);
   const w = img.width, h = img.height;
@@ -72,22 +82,24 @@ async function trimToOpaqueBounds(dataUrl: string, marginFraction = 0.05): Promi
   const ctx = canvas.getContext('2d');
   if (!ctx) return dataUrl;
   ctx.drawImage(img, 0, 0);
-  const { data } = ctx.getImageData(0, 0, w, h);
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const { data } = imageData;
 
-  const ALPHA_THRESHOLD = 10;
+  const ALPHA_THRESHOLD = 128;
   let minX = w, minY = h, maxX = -1, maxY = -1;
   for (let y = 0; y < h; y++) {
     const rowStart = y * w * 4;
     for (let x = 0; x < w; x++) {
-      if (data[rowStart + x * 4 + 3] > ALPHA_THRESHOLD) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
+      const ai = rowStart + x * 4 + 3;
+      if (data[ai] <= ALPHA_THRESHOLD) { data[ai] = 0; continue; }
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
     }
   }
-  if (maxX < minX || maxY < minY) return dataUrl; // nothing detected — fall back untouched
+  if (maxX < minX || maxY < minY) return dataUrl; // nothing confidently detected — fall back untouched
+  ctx.putImageData(imageData, 0, 0);
 
   const boxW = maxX - minX + 1;
   const boxH = maxY - minY + 1;
@@ -112,15 +124,15 @@ export type BgRemovalProgress = (current: number, total: number) => void;
 async function removeBackgroundClientInner(dataUrl: string, onProgress?: BgRemovalProgress): Promise<string> {
   const removeBackground = await getRemoveBackground();
   const blob = await removeBackground(dataUrl, {
-    // Quantized 8-bit model (~40MB) instead of the default fp16 (~80MB) — on
-    // a slow connection or an underpowered device the default was pushing
-    // owners past the timeout below on essentially every photo. Also, this
-    // library performs best with SharedArrayBuffer (needs COOP/COEP response
-    // headers we don't currently set site-wide, since that has knock-on
-    // effects on cross-origin resources like the payment gateway redirects),
-    // so every user is on the slower single-threaded WASM path regardless —
-    // the smaller model is the lever we actually have right now.
-    model: 'isnet_quint8',
+    // isnet_fp16 (the library default, ~80MB) — briefly tried the smaller
+    // quantized isnet_quint8 model to help with slow downloads, but its
+    // segmentation confidence is visibly noisier on a low-contrast subject
+    // (e.g. a white shoe on a pale background): a real product photo came
+    // back with a broad blotchy "splatter" halo around the product instead
+    // of a clean edge. Output correctness matters more than shaving the
+    // download in half, so back to the better model — the timeout below and
+    // the noise floor in trimToOpaqueBounds are the actual right levers for
+    // reliability without giving up quality.
     output: { format: 'image/png' },
     progress: onProgress ? (_key, current, total) => onProgress(current, total) : undefined,
   });
