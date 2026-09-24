@@ -107,19 +107,35 @@ async function trimToOpaqueBounds(dataUrl: string, marginFraction = 0.05): Promi
   return out.toDataURL('image/png');
 }
 
-async function removeBackgroundClientInner(dataUrl: string): Promise<string> {
+export type BgRemovalProgress = (current: number, total: number) => void;
+
+async function removeBackgroundClientInner(dataUrl: string, onProgress?: BgRemovalProgress): Promise<string> {
   const removeBackground = await getRemoveBackground();
-  const blob = await removeBackground(dataUrl, { output: { format: 'image/png' } });
+  const blob = await removeBackground(dataUrl, {
+    // Quantized 8-bit model (~40MB) instead of the default fp16 (~80MB) — on
+    // a slow connection or an underpowered device the default was pushing
+    // owners past the timeout below on essentially every photo. Also, this
+    // library performs best with SharedArrayBuffer (needs COOP/COEP response
+    // headers we don't currently set site-wide, since that has knock-on
+    // effects on cross-origin resources like the payment gateway redirects),
+    // so every user is on the slower single-threaded WASM path regardless —
+    // the smaller model is the lever we actually have right now.
+    model: 'isnet_quint8',
+    output: { format: 'image/png' },
+    progress: onProgress ? (_key, current, total) => onProgress(current, total) : undefined,
+  });
   const cutout = await blobToDataUrl(blob);
   return trimToOpaqueBounds(cutout);
 }
 
 /** Strip the background from a photo (data URL in, transparent PNG data URL out,
  * tightly cropped to the product with a small margin). Never hangs longer than
- * TIMEOUT_MS — see note above. */
-export async function removeBackgroundClient(dataUrl: string): Promise<string> {
+ * TIMEOUT_MS — see note above. Optional onProgress reports model download
+ * progress (current/total bytes) so callers can show real feedback instead of
+ * a static spinner during the (up to ~40MB) first-use download. */
+export async function removeBackgroundClient(dataUrl: string, onProgress?: BgRemovalProgress): Promise<string> {
   return withTimeout(
-    removeBackgroundClientInner(dataUrl),
+    removeBackgroundClientInner(dataUrl, onProgress),
     TIMEOUT_MS,
     'Background removal timed out — the image model may be slow to load on this connection.'
   );

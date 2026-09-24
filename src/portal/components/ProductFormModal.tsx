@@ -208,6 +208,13 @@ export default function ProductFormModal({
   const [polishing, setPolishing] = useState(false);
   const [polished, setPolished] = useState<string | null>(null);
   const [polishNote, setPolishNote] = useState('');
+  // Real download progress (0-100) instead of a static spinner — mainly so
+  // it's obvious whether it's actually still moving vs. genuinely stuck, on
+  // a slow connection where the model download can take a while.
+  const [polishPct, setPolishPct] = useState<number | null>(null);
+  const onPolishProgress = (current: number, total: number) => {
+    if (total > 0) setPolishPct(Math.round((current / total) * 100));
+  };
   // The transparent cutout (or raw photo, for Studio frame) behind the current
   // `polished` preview, kept around so the size slider can re-composite locally
   // — instantly, no re-running background removal on every nudge.
@@ -221,8 +228,9 @@ export default function ProductFormModal({
     setPolishNote('');
     setPolishing(true);
     setPolished(null);
+    setPolishPct(null);
     try {
-      const imageData = await removeBackgroundClient(src);
+      const imageData = await removeBackgroundClient(src, onPolishProgress);
       setCutoutSrc(imageData);
       setCutoutMode(true);
       setSizeScale(1);
@@ -247,6 +255,7 @@ export default function ProductFormModal({
       }
     } finally {
       setPolishing(false);
+      setPolishPct(null);
     }
   };
 
@@ -439,7 +448,7 @@ export default function ProductFormModal({
                       title="Remove background & place on the Sharmyn studio backdrop"
                       className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-gold-400 text-gold-500 text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-blush-50 disabled:opacity-60">
                       {polishing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      {polishing ? 'Polishing…' : '✨ Polish photo'}
+                      {polishing ? (polishPct != null ? `Downloading… ${polishPct}%` : 'Polishing…') : '✨ Polish photo'}
                     </button>
                     <div>
                       <button type="button" onClick={runStudioFrame} disabled={polishing}

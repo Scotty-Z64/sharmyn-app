@@ -748,18 +748,23 @@ export default function StudioTab() {
   // stripped away instead of just cropped into a box. Runs client-side
   // (in-browser WASM model) — no server, no API key, no credits to run out.
   const [polishingPhoto, setPolishingPhoto] = useState(false);
+  const [polishingPct, setPolishingPct] = useState<number | null>(null);
 
   const applyPhoto = async (rawSrc: string) => {
     setImgErr('');
     setPolishingPhoto(true);
+    setPolishingPct(null);
     try {
-      const imageData = await removeBackgroundClient(rawSrc);
+      const imageData = await removeBackgroundClient(rawSrc, (current, total) => {
+        if (total > 0) setPolishingPct(Math.round((current / total) * 100));
+      });
       setPhotoSrc(imageData);
     } catch {
       // Graceful degrade — the raw photo still works, just not cut out.
       setPhotoSrc(rawSrc);
     } finally {
       setPolishingPhoto(false);
+      setPolishingPct(null);
     }
   };
 
@@ -917,7 +922,7 @@ export default function StudioTab() {
             {polishingPhoto
               ? <span className="flex flex-col items-center gap-2 text-rose-500">
                   <Loader2 size={26} className="animate-spin" />
-                  <span className="text-xs font-semibold uppercase tracking-[0.12em]">Removing background…</span>
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em]">{polishingPct != null ? `Downloading… ${polishingPct}%` : 'Removing background…'}</span>
                 </span>
               : photoSrc
               ? <img src={photoSrc} alt="Chosen" className="h-full w-full object-cover rounded-2xl" />
