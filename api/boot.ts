@@ -183,6 +183,34 @@ app.get("/api/report.pdf", async (c) => {
   });
 });
 
+// Product photo bytes — decoupled from the products list so that list/detail
+// responses stay small (a few KB of JSON) no matter how many products exist
+// or how big their photos are. listProducts()/adminProducts hand out this
+// URL in place of the raw base64 (see photoUrl() in queries/shop.ts); the
+// actual bytes are only decoded and served here, once per image, with real
+// HTTP caching so the browser never re-downloads an unchanged photo.
+app.get("/api/product-image/:id", async (c) => {
+  const id = c.req.param("id");
+  const angleParam = c.req.query("angle");
+  const angle = angleParam != null ? parseInt(angleParam, 10) : null;
+  const { getProductImageRaw } = await import("./queries/shop");
+  const raw = await getProductImageRaw(id, Number.isNaN(angle) ? null : angle);
+  if (!raw) return c.json({ error: "Not Found" }, 404);
+  const match = /^data:([^;,]+)(?:;charset=[^;,]+)?;base64,(.+)$/.exec(raw);
+  if (!match) return c.json({ error: "Not Found" }, 404);
+  const [, contentType, base64] = match;
+  const bytes = Buffer.from(base64, "base64");
+  const etag = `"${id}-${angle ?? "cover"}-${bytes.length}"`;
+  if (c.req.header("if-none-match") === etag) return new Response(null, { status: 304 });
+  return new Response(bytes, {
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": "public, max-age=300",
+      ETag: etag,
+    },
+  });
+});
+
 app.use("/api/trpc/*", async (c) => {
   return fetchRequestHandler({
     endpoint: "/api/trpc",

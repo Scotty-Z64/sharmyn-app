@@ -2,6 +2,7 @@ import { asc, desc, eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { getDb } from "./connection";
 import { studioPosts } from "@db/schema";
+import { getProductImageRaw } from "./shop";
 import type { Product, StudioPost, StudioPostStatus } from "@contracts/types";
 
 function toStudioPost(row: typeof studioPosts.$inferSelect): StudioPost {
@@ -119,8 +120,12 @@ export async function createAutoDraftPost(
     kind === "new-in"
       ? `We just added ${product.name} to the shop — R${product.price}. Head to the store to grab yours before it's gone, or message us on WhatsApp for help choosing.`
       : `Good news — ${product.name} is back in stock at R${product.price}! It sold out fast last time, so don't wait. Shop online or WhatsApp us to order.`;
+  // product.image is our own /api/product-image/<id> URL (see photoUrl() in
+  // shop.ts) — studio posts need the actual bytes to download/share, so pull
+  // the real stored value instead of the URL.
+  const rawImage = (await getProductImageRaw(product.id, null)) ?? product.image;
   return createStudioPost({
-    imageData: product.image,
+    imageData: rawImage,
     template: kind,
     headline,
     captionIg,

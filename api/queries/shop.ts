@@ -40,7 +40,20 @@ function deliveryFeeFor(method: OrderDeliveryInput["method"], totalQty: number):
 
 const UNPAID_TTL_MS = 24 * 60 * 60 * 1000; // lazy sweep: cancel pending+unpaid after 24h
 
+/** Route product/image lookups: recognises our own served-photo URLs so
+ * upsertProduct can tell "unchanged" from "actually a new value". */
+const PRODUCT_IMAGE_URL_RE = /^\/api\/product-image\/([^?]+)(?:\?angle=(\d+))?$/;
+
+/** A full base64 photo is heavy — never inline it in a list response.
+ * Anything else (a bundled placeholder path, a pasted supplier URL) is
+ * already cheap, so it passes through untouched. */
+function photoUrl(productId: string, value: string, angle: number | null): string {
+  if (!value.startsWith("data:")) return value;
+  return angle == null ? `/api/product-image/${productId}` : `/api/product-image/${productId}?angle=${angle}`;
+}
+
 function toProduct(row: typeof products.$inferSelect): Product {
+  const extraImages = (row.images as string[] | null) ?? [];
   return {
     id: row.id,
     name: row.name,
@@ -51,8 +64,8 @@ function toProduct(row: typeof products.$inferSelect): Product {
     costPrice: row.costPrice,
     sizes: (row.sizes as Record<string, number> | null) ?? null,
     description: row.description,
-    image: row.image,
-    images: (row.images as string[] | null) ?? [],
+    image: photoUrl(row.id, row.image, null),
+    images: extraImages.map((img, i) => photoUrl(row.id, img, i)),
     availability: row.availability,
     quantity: row.quantity,
     lowStockAt: row.lowStockAt,
@@ -123,6 +136,17 @@ export async function findProduct(id: string): Promise<Product | null> {
   return row ? toProduct(row) : null;
 }
 
+/** Raw stored photo bytes for the /api/product-image/:id route — the only
+ * place the real base64 leaves the DB; list/detail responses only ever carry
+ * the URL (see photoUrl/toProduct above), which is what keeps them small. */
+export async function getProductImageRaw(id: string, angle: number | null): Promise<string | null> {
+  const [row] = await getDb().select({ image: products.image, images: products.images }).from(products).where(eq(products.id, id));
+  if (!row) return null;
+  if (angle == null) return row.image;
+  const extra = (row.images as string[] | null) ?? [];
+  return extra[angle] ?? null;
+}
+
 /** Signals the router uses to decide whether to fire a low-stock alert or an auto-draft Content Studio post. */
 export interface StockChangeSignal {
   product: Product;
@@ -154,6 +178,22 @@ export async function upsertProduct(
     ? Object.values(p.sizes as Record<string, number>).reduce((s, n) => s + Math.max(0, Math.round(n)), 0)
     : Math.max(0, Math.round(p.quantity));
 
+  // toProduct() hands the client our own /api/product-image/<id> URL in place
+  // of the real base64, so an unedited save round-trips that URL right back
+  // here — resolve it back to the real stored value instead of clobbering the
+  // photo with a self-referential URL string.
+  const existingImages = (existing?.images as string[] | null) ?? [];
+  const resolvedImage = (() => {
+    const m = PRODUCT_IMAGE_URL_RE.exec(p.image);
+    if (m && m[1] === p.id && m[2] === undefined && existing) return existing.image;
+    return p.image;
+  })();
+  const resolvedImages = (p.images ?? []).map((img) => {
+    const m = PRODUCT_IMAGE_URL_RE.exec(img);
+    if (m && m[1] === p.id && m[2] !== undefined) return existingImages[parseInt(m[2], 10)] ?? img;
+    return img;
+  });
+
   const values = {
     id: p.id,
     name: p.name,
@@ -164,8 +204,8 @@ export async function upsertProduct(
     costPrice: Math.max(0, Math.round(p.costPrice ?? 0)),
     sizes: sizesValue,
     description: p.description,
-    image: p.image,
-    images: p.images?.length ? p.images.slice(0, 5) : null,
+    image: resolvedImage,
+    images: resolvedImages.length ? resolvedImages.slice(0, 5) : null,
     availability: p.availability,
     quantity: quantityValue,
     lowStockAt: Math.max(0, Math.round(p.lowStockAt ?? 3)),
