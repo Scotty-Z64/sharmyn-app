@@ -322,14 +322,14 @@ export default function ProductFormModal({
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext('2d');
-        if (!ctx) { const raw = String(reader.result); set('image', raw); setCropSrc(raw); return; }
+        if (!ctx) { const raw = String(reader.result); set('image', raw); void runPolish(raw); return; }
         ctx.drawImage(img, 0, 0, w, h);
         const compressed = canvas.toDataURL('image/jpeg', 0.8);
         set('image', compressed);
-        // Offer a crop step before polishing — skipping it (one click) behaves
-        // exactly like the old auto-polish-immediately flow, so a clean
-        // product-on-table photo still only takes one extra click.
-        setCropSrc(compressed);
+        // Auto-composite onto the branded backdrop the moment a photo is chosen,
+        // same as always — cropping is an optional retry step (below, once the
+        // result is visible), not something that has to happen first.
+        void runPolish(compressed);
       };
       img.onerror = () => setImgErr(imageReadErrorMessage(f));
       img.src = String(reader.result);
@@ -352,23 +352,13 @@ export default function ProductFormModal({
   const [angleCutoutSrc, setAngleCutoutSrc] = useState<string | null>(null);
   const [angleCutoutMode, setAngleCutoutMode] = useState(true);
   const [angleScale, setAngleScale] = useState(1);
+  // Same worn-shoe problem as the cover photo can happen on an angle shot too
+  // — offered as a retry here rather than a forced first step, same reasoning.
+  const [angleCropSrc, setAngleCropSrc] = useState<string | null>(null);
 
-  const onAngleFile = async (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = '';
-    if (!f) return;
+  const polishAngle = async (compressed: string) => {
     setAngleErr('');
-    if (d.images.length >= MAX_ANGLES) { setAngleErr(`Up to ${MAX_ANGLES} extra angles per product — remove one to add another.`); return; }
-    if (f.size > MAX_UPLOAD_BYTES) { setAngleErr(imageReadErrorMessage(f)); return; }
     setAngleUploading(true);
-    let compressed: string;
-    try {
-      compressed = await compressImageFile(f);
-    } catch {
-      setAngleErr(imageReadErrorMessage(f));
-      setAngleUploading(false);
-      return;
-    }
     try {
       const src = await removeBackgroundClient(compressed);
       const finalImg = await compositeStudio(src, true, 1);
@@ -384,12 +374,37 @@ export default function ProductFormModal({
     }
   };
 
+  const onAngleFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setAngleErr('');
+    if (d.images.length >= MAX_ANGLES) { setAngleErr(`Up to ${MAX_ANGLES} extra angles per product — remove one to add another.`); return; }
+    if (f.size > MAX_UPLOAD_BYTES) { setAngleErr(imageReadErrorMessage(f)); return; }
+    let compressed: string;
+    try {
+      compressed = await compressImageFile(f);
+    } catch {
+      setAngleErr(imageReadErrorMessage(f));
+      return;
+    }
+    await polishAngle(compressed);
+  };
+
   const onAngleScale = async (next: number) => {
     setAngleScale(next);
     if (!angleCutoutSrc || !anglePreview) return;
     const polished = await compositeStudio(angleCutoutSrc, angleCutoutMode, next);
     setAnglePreview({ ...anglePreview, polished });
   };
+
+  const onAngleCropConfirm = async (rect: { x: number; y: number; w: number; h: number }) => {
+    if (!angleCropSrc) return;
+    const cropped = await cropDataUrl(angleCropSrc, rect);
+    setAngleCropSrc(null);
+    await polishAngle(cropped);
+  };
+  const onAngleCropSkip = () => { setAngleCropSrc(null); };
 
   const confirmAngle = () => {
     if (!anglePreview) return;
@@ -608,6 +623,17 @@ export default function ProductFormModal({
                       Discard
                     </button>
                   </div>
+                  {!angleCropSrc && (
+                    <button type="button" onClick={() => setAngleCropSrc(anglePreview.original)}
+                      className="mt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
+                      Not quite right? Crop and re-polish
+                    </button>
+                  )}
+                  {angleCropSrc && (
+                    <div className="mt-3">
+                      <CropStep src={angleCropSrc} onConfirm={(rect) => void onAngleCropConfirm(rect)} onSkip={onAngleCropSkip} />
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
