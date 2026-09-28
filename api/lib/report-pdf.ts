@@ -122,6 +122,20 @@ export async function buildReportPdf(report: SalesReport): Promise<Buffer> {
       y += 15;
     }
 
+    if (report.freeShippingImpact.ordersWithFreeShipping > 0) {
+      y += 15;
+      if (y > 700) { doc.addPage(); y = 50; }
+      doc.fillColor(GOLD).fontSize(11).font("Helvetica-Bold").text("Free shipping impact", 50, y);
+      y += 18;
+      doc.fillColor(INK).fontSize(9).font("Helvetica");
+      doc.text(`Orders with free shipping: ${report.freeShippingImpact.ordersWithFreeShipping}`, 50, y, { width: 495 });
+      y += 15;
+      doc.text(`Items in those orders: ${report.freeShippingImpact.itemsInThoseOrders}`, 50, y, { width: 495 });
+      y += 15;
+      doc.text(`Shipping revenue waived: ${fmt(report.freeShippingImpact.shippingRevenueWaived)}`, 50, y, { width: 495 });
+      y += 15;
+    }
+
     doc.fillColor(SOFT).fontSize(8).font("Helvetica").text(
       `Generated ${formatDate(new Date())} · Sharmyn owner portal`,
       50, 780, { width: 495, align: "center" }

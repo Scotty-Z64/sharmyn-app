@@ -255,6 +255,14 @@ export interface DiscountImpact {
   discountGiven: number; // sum of (oldPrice - price) * qty — what customers saved / the business gave up
 }
 
+/** Tracks the free-shipping-on-2+-items promo: which orders qualified (Pudo,
+ * fee waived to 0) and what that delivery would normally have cost. */
+export interface FreeShippingImpact {
+  ordersWithFreeShipping: number; // non-cancelled orders where the Pudo fee was waived
+  itemsInThoseOrders: number; // total item qty across those orders
+  shippingRevenueWaived: number; // sum of pudoStandardFee(totalQty) for those orders — what would've been charged
+}
+
 export interface SalesReport {
   from: string; // ISO date, inclusive
   to: string; // ISO date, inclusive
@@ -269,6 +277,7 @@ export interface SalesReport {
   bySize: ReportSizeRow[]; // sorted desc by qtySold
   trend: ReportTrendPoint[]; // sorted asc by date
   discountImpact: DiscountImpact;
+  freeShippingImpact: FreeShippingImpact;
 }
 
 export const HERO_ASPECTS = ["wide", "standard", "tall", "square"] as const;

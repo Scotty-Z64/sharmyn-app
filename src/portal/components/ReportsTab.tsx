@@ -112,6 +112,11 @@ export default function ReportsTab() {
       ['Revenue from discounted items', report.discountImpact.revenueFromDiscounted],
       ['Discount given', report.discountImpact.discountGiven],
       [],
+      ['Free shipping impact'],
+      ['Orders with free shipping', report.freeShippingImpact.ordersWithFreeShipping],
+      ['Items in those orders', report.freeShippingImpact.itemsInThoseOrders],
+      ['Shipping revenue waived', report.freeShippingImpact.shippingRevenueWaived],
+      [],
       ['Date', 'Revenue', 'Orders'],
       ...report.trend.map((t) => [t.date, t.revenue, t.orders]),
     ];
@@ -254,7 +259,7 @@ export default function ReportsTab() {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
             <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
               <h3 className="font-display text-lg font-semibold text-ink-900">By size</h3>
               <p className="text-[11px] text-ink-500">Sneakers &amp; shoes only — which sizes actually sell</p>
@@ -303,6 +308,29 @@ export default function ReportsTab() {
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-500">Discount given</p>
                     <p className="font-display text-xl font-semibold text-rose-600 mt-1">{formatPrice(report.discountImpact.discountGiven)}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
+              <h3 className="font-display text-lg font-semibold text-ink-900">Free shipping impact</h3>
+              <p className="text-[11px] text-ink-500">Pudo orders of 2+ items — delivery waived automatically</p>
+              {report.freeShippingImpact.ordersWithFreeShipping === 0 ? (
+                <p className="mt-3 text-sm text-ink-500">No free-shipping orders in this range yet.</p>
+              ) : (
+                <div className="mt-3 grid grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-500">Orders</p>
+                    <p className="font-display text-xl font-semibold text-ink-900 mt-1">{report.freeShippingImpact.ordersWithFreeShipping}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-500">Items</p>
+                    <p className="font-display text-xl font-semibold text-ink-900 mt-1">{report.freeShippingImpact.itemsInThoseOrders}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-500">Waived</p>
+                    <p className="font-display text-xl font-semibold text-rose-600 mt-1">{formatPrice(report.freeShippingImpact.shippingRevenueWaived)}</p>
                   </div>
                 </div>
               )}

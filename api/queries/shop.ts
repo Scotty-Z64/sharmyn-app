@@ -2,7 +2,7 @@ import { eq, desc, sql, and, lt, gte, lte } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { getDb } from "./connection";
 import { products, orders, notifications, siteSettings } from "@db/schema";
-import { isSizedCategory, pudoDeliveryFee } from "@contracts/types";
+import { isSizedCategory, pudoDeliveryFee, pudoStandardFee } from "@contracts/types";
 import type {
   Product,
   Order,
@@ -23,6 +23,7 @@ import type {
   ReportSizeRow,
   ReportTrendPoint,
   DiscountImpact,
+  FreeShippingImpact,
   SiteSettings,
 } from "@contracts/types";
 
@@ -636,6 +637,9 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
   let discountItemsSold = 0;
   let discountRevenue = 0;
   let discountGiven = 0;
+  let freeShippingOrders = 0;
+  let freeShippingItems = 0;
+  let freeShippingWaived = 0;
 
   // Seed every day in range (not just days with sales) so the trend line
   // doesn't skip gaps.
@@ -679,6 +683,16 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
           discountGiven += (item.oldPrice - item.price) * item.qty;
         }
       }
+
+      // Free-shipping promo: a Pudo order with its fee waived to 0 is only
+      // ever waived by pudoDeliveryFee once totalQty hits the threshold, so
+      // method+fee===0 is a reliable signal — no separate qty re-check needed.
+      if (order.delivery?.method === "pudo" && order.delivery.fee === 0) {
+        const orderQty = order.items.reduce((s, i) => s + i.qty, 0);
+        freeShippingOrders += 1;
+        freeShippingItems += orderQty;
+        freeShippingWaived += pudoStandardFee(orderQty);
+      }
     }
   }
 
@@ -694,6 +708,12 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
     itemsSoldOnDiscount: discountItemsSold,
     revenueFromDiscounted: discountRevenue,
     discountGiven,
+  };
+
+  const freeShippingImpact: FreeShippingImpact = {
+    ordersWithFreeShipping: freeShippingOrders,
+    itemsInThoseOrders: freeShippingItems,
+    shippingRevenueWaived: freeShippingWaived,
   };
 
   // Resolve current category for each product that actually sold, in one query.
@@ -742,6 +762,7 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
     bySize,
     trend,
     discountImpact,
+    freeShippingImpact,
   };
 }
 
