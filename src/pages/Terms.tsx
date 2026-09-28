@@ -27,7 +27,8 @@ export default function Terms() {
       <Section title="Delivery">
         <p>We deliver anywhere in South Africa via Pudo smart locker — you choose the locker nearest
           you at checkout. Delivery is R150 per parcel of up to 3 items; larger orders are priced per
-          extra parcel (e.g. 4–6 items is R300), shown at checkout before you pay.</p>
+          extra parcel (e.g. 4–6 items is R300), shown at checkout before you pay. <strong>Buy 2 or more
+          items and delivery is free</strong> — this is applied automatically at checkout.</p>
         <p>
           Delivery typically takes 5–7 working days from payment confirmation. Delays can happen with
           courier partners beyond our control — we'll keep you updated if this happens.

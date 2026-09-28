@@ -125,8 +125,21 @@ export interface Order {
  */
 export const PUDO_ITEMS_PER_PARCEL = 3;
 export const PUDO_FEE_PER_PARCEL = 150;
-export function pudoDeliveryFee(totalQty: number): number {
+// Free-shipping promo: buy this many items (any category) or more and the
+// Pudo fee is waived entirely. A separate constant/function from the base
+// per-parcel pricing below so reporting can show "what would this have cost
+// without the promo" without the two rules getting tangled together.
+export const FREE_SHIPPING_MIN_ITEMS = 2;
+
+/** Standard per-parcel Pudo pricing, before the free-shipping promo below. */
+export function pudoStandardFee(totalQty: number): number {
   return Math.ceil(Math.max(1, totalQty) / PUDO_ITEMS_PER_PARCEL) * PUDO_FEE_PER_PARCEL;
+}
+
+/** What's actually charged — free once the cart hits FREE_SHIPPING_MIN_ITEMS. */
+export function pudoDeliveryFee(totalQty: number): number {
+  if (totalQty >= FREE_SHIPPING_MIN_ITEMS) return 0;
+  return pudoStandardFee(totalQty);
 }
 
 /** Where a paid order sits in the fulfilment pipeline — derived, not stored. */

@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Copy, CreditCard, Crown, Loader2, Lock, PackageOpen } from 'lucide-react';
 import { useShop } from '@/lib/shop';
 import { trpc } from '@/providers/trpc';
-import { clearCart, formatPrice, formatAddress, pudoDeliveryFee, PUDO_ITEMS_PER_PARCEL, PUDO_FEE_PER_PARCEL } from '@/lib/store';
+import { clearCart, formatPrice, formatAddress, pudoDeliveryFee, PUDO_ITEMS_PER_PARCEL, PUDO_FEE_PER_PARCEL, FREE_SHIPPING_MIN_ITEMS } from '@/lib/store';
 import type { Order, OrderDelivery, PudoLockerRef } from '@/lib/store';
 import PudoLockerPicker from '@/components/checkout/PudoLockerPicker';
 import { BUSINESS, waLink } from '@/config/business';
@@ -514,11 +514,14 @@ export default function Checkout() {
               <PackageOpen className="h-5 w-5 text-rose-500 shrink-0" />
               <span className="flex-1">
                 <span className="block text-[14px] font-semibold text-ink-900">
-                  Pudo Locker Pickup — {formatPrice(pudoDeliveryFee(totalQty))} <span className="ml-1 rounded-full bg-gold-400/15 border border-gold-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold-500">Recommended</span>
+                  Pudo Locker Pickup — {pudoDeliveryFee(totalQty) === 0 ? <span className="text-[#1F8A5B]">FREE</span> : formatPrice(pudoDeliveryFee(totalQty))} <span className="ml-1 rounded-full bg-gold-400/15 border border-gold-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold-500">Recommended</span>
                 </span>
                 <span className="block text-[12px] text-ink-500">
-                  Collect from a smart locker near you · 5–7 working days · {formatPrice(PUDO_FEE_PER_PARCEL)} per {PUDO_ITEMS_PER_PARCEL} items
+                  Collect from a smart locker near you · 5–7 working days · Free shipping on {FREE_SHIPPING_MIN_ITEMS}+ items, otherwise {formatPrice(PUDO_FEE_PER_PARCEL)} per {PUDO_ITEMS_PER_PARCEL} items
                 </span>
+                {totalQty === FREE_SHIPPING_MIN_ITEMS - 1 && (
+                  <span className="block mt-0.5 text-[11px] font-semibold text-gold-500">Add 1 more item to get free shipping!</span>
+                )}
               </span>
             </label>
             {delivery === 'pudo' && (
