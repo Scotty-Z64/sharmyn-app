@@ -8,6 +8,7 @@ import { imageReadErrorMessage, MAX_UPLOAD_BYTES } from '@/lib/image-upload-erro
 import { loadImg, drawSandBackdrop, drawWordmark, PRODUCT_TEMPLATE_SRC, WORDMARK_SRC } from '@/lib/studio-visuals';
 import { removeBackgroundClient } from '@/lib/bg-removal';
 import { Thumb } from './bits';
+import CropStep, { cropDataUrl } from './CropStep';
 
 // ---------- AI Photo Polish — client-side background removal + compositing ----------
 // Both steps run entirely in the browser (WASM model + a 1080×1080 canvas) —
@@ -221,6 +222,12 @@ export default function ProductFormModal({
   const [cutoutSrc, setCutoutSrc] = useState<string | null>(null);
   const [cutoutMode, setCutoutMode] = useState(true);
   const [sizeScale, setSizeScale] = useState(1);
+  // A worn/lifestyle photo has no pixel boundary between "shoe" and the leg
+  // it's attached to, so background removal keeps both. Cropping tightly to
+  // just the shoe BEFORE removal sidesteps that — the model never sees the
+  // leg. cropSrc holds the photo awaiting that decision; null = no crop step
+  // showing (either not started yet, or just skipped/confirmed).
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
 
   const runPolish = async (imageOverride?: string) => {
     const src = imageOverride ?? d.image;
@@ -276,6 +283,20 @@ export default function ProductFormModal({
     }
   };
 
+  const onCropConfirm = async (rect: { x: number; y: number; w: number; h: number }) => {
+    if (!cropSrc) return;
+    const cropped = await cropDataUrl(cropSrc, rect);
+    setCropSrc(null);
+    set('image', cropped);
+    void runPolish(cropped);
+  };
+  const onCropSkip = () => {
+    if (!cropSrc) return;
+    const src = cropSrc;
+    setCropSrc(null);
+    void runPolish(src);
+  };
+
   // Re-composite locally whenever the size slider moves — no network call.
   const onSizeScale = async (next: number) => {
     setSizeScale(next);
@@ -301,12 +322,14 @@ export default function ProductFormModal({
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext('2d');
-        if (!ctx) { const raw = String(reader.result); set('image', raw); void runPolish(raw); return; }
+        if (!ctx) { const raw = String(reader.result); set('image', raw); setCropSrc(raw); return; }
         ctx.drawImage(img, 0, 0, w, h);
         const compressed = canvas.toDataURL('image/jpeg', 0.8);
         set('image', compressed);
-        // Auto-composite onto the branded backdrop the moment a photo is chosen.
-        void runPolish(compressed);
+        // Offer a crop step before polishing — skipping it (one click) behaves
+        // exactly like the old auto-polish-immediately flow, so a clean
+        // product-on-table photo still only takes one extra click.
+        setCropSrc(compressed);
       };
       img.onerror = () => setImgErr(imageReadErrorMessage(f));
       img.src = String(reader.result);
@@ -439,10 +462,15 @@ export default function ProductFormModal({
                     Remove image
                   </button>
                 )}
-                {d.image && !polished && (
+                {cropSrc && (
+                  <div className="pt-1">
+                    <CropStep src={cropSrc} onConfirm={(rect) => void onCropConfirm(rect)} onSkip={onCropSkip} />
+                  </div>
+                )}
+                {d.image && !polished && !cropSrc && (
                   <div className="space-y-2 pt-1">
                     <p className="text-[11px] text-ink-500">
-                      Works best on photos of just the product (on a table, in-hand). A photo of it being worn will keep the leg/hand in — use "Studio frame" instead for those.
+                      Works best on photos of just the product (on a table, in-hand). A photo of it being worn will keep the leg/hand in unless you crop tightly to just the shoe first.
                     </p>
                     <button type="button" onClick={() => runPolish()} disabled={polishing}
                       title="Remove background & place on the Sharmyn studio backdrop"
@@ -450,7 +478,11 @@ export default function ProductFormModal({
                       {polishing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                       {polishing ? (polishPct != null ? `Downloading… ${polishPct}%` : 'Polishing…') : '✨ Polish photo'}
                     </button>
-                    <div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      <button type="button" onClick={() => setCropSrc(d.image)} disabled={polishing}
+                        className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
+                        Crop photo (worn/cluttered shot)
+                      </button>
                       <button type="button" onClick={runStudioFrame} disabled={polishing}
                         className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
                         Studio frame (no background removal)
@@ -459,6 +491,12 @@ export default function ProductFormModal({
                     {polishing && <p className="text-[11px] text-ink-500">The first photo on a new device can take up to a minute — it's downloading the background-removal model once. After that it's fast.</p>}
                     {polishNote && <p className="text-[11px] text-ink-500">{polishNote}</p>}
                   </div>
+                )}
+                {d.image && polished && !cropSrc && (
+                  <button type="button" onClick={() => { setCropSrc(d.image); setPolished(null); setPolishNote(''); }}
+                    className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
+                    Not quite right? Crop and re-polish
+                  </button>
                 )}
               </div>
             </div>
