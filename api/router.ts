@@ -551,7 +551,7 @@ export const appRouter = createRouter({
         return { ok: true };
       }),
 
-    // ---- AI photo polish (remove.bg; gated on REMOVE_BG_API_KEY) — paid
+    // ---- AI photo polish (Photoroom; gated on PHOTOROOM_API_KEY) — paid
     // alternate to the free in-browser tool, so a batch of stock loading
     // never has to stop dead if one method is acting up. ----
     photoPolishConfig: publicQuery.input(z.object({ token: adminToken })).query(({ input }) => {

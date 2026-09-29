@@ -11,11 +11,12 @@ import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { Thumb } from './bits';
 import CropStep, { cropDataUrl } from './CropStep';
+import EraseStep from './EraseStep';
 
 // ---------- AI Photo Polish — two background-removal methods ----------
 // Free (default): runs entirely in the browser (WASM model + a 1080×1080
 // canvas) — no server round-trip, no API key, no per-image cost.
-// remove.bg (paid alternate): a server call, gated on REMOVE_BG_API_KEY —
+// Photoroom (paid alternate): a server call, gated on PHOTOROOM_API_KEY —
 // offered as a one-click fallback so a batch of stock-loading never has to
 // stop dead if the free tool is acting up on a given photo/device.
 
@@ -218,7 +219,7 @@ export default function ProductFormModal({
   const fileRef = useRef<HTMLInputElement>(null);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((p) => ({ ...p, [k]: v }));
 
-  // remove.bg — paid alternate to the free in-browser tool below.
+  // Photoroom — paid alternate to the free in-browser tool below.
   const { token } = usePortal();
   const polishCfg = trpc.shop.photoPolishConfig.useQuery({ token }, { retry: false });
   const polishMut = trpc.shop.polishProductImage.useMutation();
@@ -247,6 +248,18 @@ export default function ProductFormModal({
   // leg. cropSrc holds the photo awaiting that decision; null = no crop step
   // showing (either not started yet, or just skipped/confirmed).
   const [cropSrc, setCropSrc] = useState<string | null>(null);
+  // Manual touch-up: some photos (e.g. a product sitting directly on a
+  // similarly-toned surface) genuinely confuse every model tried — free,
+  // high-quality, even Photoroom can misjudge one. Rather than keep chasing
+  // a fully-automatic fix for every such case, this lets a person just erase
+  // whatever the model got wrong directly, in a few seconds, no re-running
+  // anything. eraseSrc holds the cutout awaiting that touch-up.
+  const [eraseSrc, setEraseSrc] = useState<string | null>(null);
+  const onEraseConfirm = async (erased: string) => {
+    setCutoutSrc(erased);
+    setEraseSrc(null);
+    setPolished(await compositeStudio(erased, cutoutMode, sizeScale));
+  };
 
   const runPolish = async (imageOverride?: string, highQuality = false) => {
     const src = imageOverride ?? d.image;
@@ -289,7 +302,7 @@ export default function ProductFormModal({
     }
   };
 
-  /** Same as runPolish, but via remove.bg instead of the in-browser model —
+  /** Same as runPolish, but via Photoroom instead of the in-browser model —
    * a one-click alternate if the free tool is stuck or giving a bad result
    * on a given photo/device, so a batch of stock-loading never has to stop. */
   const runPolishRemoteBg = async (imageOverride?: string) => {
@@ -307,10 +320,10 @@ export default function ProductFormModal({
     } catch (e) {
       const msg = (e as { message?: string } | null)?.message ?? '';
       setPolishNote(
-        msg.includes('QUOTA') ? 'remove.bg is out of credits right now — top up the key, or use the free "Polish photo" instead.'
-        : msg.includes('BUSY') ? 'remove.bg is busy right now — wait a moment and try again, or use the free "Polish photo" instead.'
-        : msg.includes('NOT_CONFIGURED') ? 'remove.bg needs an API key — ask your developer to activate it.'
-        : 'remove.bg failed — please try again, or use the free "Polish photo" instead.'
+        msg.includes('QUOTA') ? 'Photoroom is out of credits right now — top up the plan, or use the free "Polish photo" instead.'
+        : msg.includes('BUSY') ? 'Photoroom is busy right now — wait a moment and try again, or use the free "Polish photo" instead.'
+        : msg.includes('NOT_CONFIGURED') ? 'Photoroom needs an API key — ask your developer to activate it.'
+        : 'Photoroom failed — please try again, or use the free "Polish photo" instead.'
       );
     } finally {
       setPolishing(false);
@@ -335,7 +348,7 @@ export default function ProductFormModal({
   };
 
   // Cropping only prepares the source photo — it never picks an engine.
-  // After confirming/skipping, Ben still sees both "remove.bg" and "free"
+  // After confirming/skipping, Ben still sees both "Photoroom" and "free"
   // buttons and chooses explicitly.
   const onCropConfirm = async (rect: { x: number; y: number; w: number; h: number }) => {
     if (!cropSrc) return;
@@ -374,7 +387,7 @@ export default function ProductFormModal({
         ctx.drawImage(img, 0, 0, w, h);
         const compressed = canvas.toDataURL('image/jpeg', 0.8);
         set('image', compressed);
-        // Nothing runs automatically — Ben picks remove.bg or the free tool
+        // Nothing runs automatically — Ben picks Photoroom or the free tool
         // explicitly (below) before anything starts downloading/processing.
       };
       img.onerror = () => setImgErr(imageReadErrorMessage(f));
@@ -399,7 +412,7 @@ export default function ProductFormModal({
   const [angleCutoutMode, setAngleCutoutMode] = useState(true);
   const [angleScale, setAngleScale] = useState(1);
   // Compressed (optionally cropped) angle photo awaiting an engine choice —
-  // nothing runs until "remove.bg" or "free" is clicked explicitly.
+  // nothing runs until "Photoroom" or "free" is clicked explicitly.
   const [angleRawSrc, setAngleRawSrc] = useState<string | null>(null);
   // Same worn-shoe problem as the cover photo can happen on an angle shot too.
   const [angleCropSrc, setAngleCropSrc] = useState<string | null>(null);
@@ -422,7 +435,7 @@ export default function ProductFormModal({
     }
   };
 
-  /** Same as polishAngle, but via remove.bg — one-click alternate if the
+  /** Same as polishAngle, but via Photoroom — one-click alternate if the
    * free tool struggles on a given angle photo. */
   const polishAngleRemoteBg = async (compressed: string) => {
     setAngleErr('');
@@ -437,10 +450,10 @@ export default function ProductFormModal({
     } catch (e) {
       const msg = (e as { message?: string } | null)?.message ?? '';
       setAngleErr(
-        msg.includes('QUOTA') ? 'remove.bg is out of credits right now — top up the key, or use the free polish instead.'
-        : msg.includes('BUSY') ? 'remove.bg is busy right now — wait a moment and try again.'
-        : msg.includes('NOT_CONFIGURED') ? 'remove.bg needs an API key — ask your developer to activate it.'
-        : 'remove.bg failed on that photo — please try again, or use the free polish instead.'
+        msg.includes('QUOTA') ? 'Photoroom is out of credits right now — top up the plan, or use the free polish instead.'
+        : msg.includes('BUSY') ? 'Photoroom is busy right now — wait a moment and try again.'
+        : msg.includes('NOT_CONFIGURED') ? 'Photoroom needs an API key — ask your developer to activate it.'
+        : 'Photoroom failed on that photo — please try again, or use the free polish instead.'
       );
     } finally {
       setAngleUploading(false);
@@ -469,6 +482,16 @@ export default function ProductFormModal({
     setAngleScale(next);
     if (!angleCutoutSrc || !anglePreview) return;
     const polished = await compositeStudio(angleCutoutSrc, angleCutoutMode, next);
+    setAnglePreview({ ...anglePreview, polished });
+  };
+
+  // Same manual touch-up as the cover photo — see eraseSrc above.
+  const [angleEraseSrc, setAngleEraseSrc] = useState<string | null>(null);
+  const onAngleEraseConfirm = async (erased: string) => {
+    setAngleCutoutSrc(erased);
+    setAngleEraseSrc(null);
+    if (!anglePreview) return;
+    const polished = await compositeStudio(erased, angleCutoutMode, angleScale);
     setAnglePreview({ ...anglePreview, polished });
   };
 
@@ -583,10 +606,10 @@ export default function ProductFormModal({
                     <div className="flex flex-col gap-2">
                       {remoteBgEnabled && (
                         <button type="button" onClick={() => void runPolishRemoteBg()} disabled={polishing}
-                          title="Remove background via remove.bg"
+                          title="Remove background via Photoroom"
                           className="inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 disabled:opacity-60">
                           {polishing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                          {polishing ? 'Polishing…' : 'Polish via remove.bg'}
+                          {polishing ? 'Polishing…' : 'Polish via Photoroom'}
                         </button>
                       )}
                       <button type="button" onClick={() => runPolish()} disabled={polishing}
@@ -611,12 +634,19 @@ export default function ProductFormModal({
                     {polishNote && <p className="text-[11px] text-ink-500">{polishNote}</p>}
                   </div>
                 )}
-                {d.image && polished && !cropSrc && (
+                {d.image && polished && !cropSrc && !eraseSrc && (
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {cutoutMode && cutoutSrc && (
+                      <button type="button" onClick={() => setEraseSrc(cutoutSrc)}
+                        title="Manually erase any bit of background the AI kept — drag over it, done in seconds, works no matter how tricky the photo is"
+                        className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
+                        Background stuck to the cutout? Erase it by hand
+                      </button>
+                    )}
                     <button type="button" onClick={() => { setCropSrc(d.image); setPolished(null); setPolishNote(''); }}
-                      title="Fixes a chunk of the background (e.g. the surface the product is sitting on) getting pulled into the cutout — crop tightly to just the product and re-run"
+                      title="Or re-run background removal on a tighter crop — sometimes fixes it without manual touch-up"
                       className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
-                      Background stuck to the cutout? Crop and re-polish
+                      Crop and re-polish instead
                     </button>
                     <button type="button" onClick={() => void runPolish(undefined, true)} disabled={polishing}
                       title="Slower, bigger download — sharper edges on fine detail, but won't separate the product from a background it's already merged with (crop for that instead)"
@@ -626,7 +656,7 @@ export default function ProductFormModal({
                     {remoteBgEnabled && (
                       <button type="button" onClick={() => void runPolishRemoteBg()} disabled={polishing}
                         className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
-                        Try remove.bg instead
+                        Try Photoroom instead
                       </button>
                     )}
                   </div>
@@ -634,9 +664,16 @@ export default function ProductFormModal({
               </div>
             </div>
 
+            {/* Manual touch-up */}
+            {eraseSrc && (
+              <div className="mt-4 rounded-2xl border border-blush-100 bg-blush-50/50 p-4">
+                <EraseStep src={eraseSrc} onConfirm={(erased) => void onEraseConfirm(erased)} onCancel={() => setEraseSrc(null)} />
+              </div>
+            )}
+
             {/* Before / after */}
             <AnimatePresence>
-              {polished && (
+              {polished && !eraseSrc && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
                   className="mt-4 rounded-2xl border border-blush-100 bg-blush-50/50 p-4">
                   <div className="grid grid-cols-2 gap-3">
@@ -703,7 +740,7 @@ export default function ProductFormModal({
             </div>
             <input ref={angleFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void onAngleFile(e)} />
             <p className="mt-1.5 text-[11px] text-ink-500">
-              Upload each angle on its own (worn, top-down, sole, etc.) — choose remove.bg or the free tool for each one, same as the main photo.
+              Upload each angle on its own (worn, top-down, sole, etc.) — choose Photoroom or the free tool for each one, same as the main photo.
             </p>
             {angleErr && <p className="mt-1 text-[11px] text-rose-600">{angleErr}</p>}
 
@@ -713,7 +750,7 @@ export default function ProductFormModal({
                 <img src={angleRawSrc} alt="" className="w-20 aspect-[4/5] object-cover rounded-xl border border-blush-100 bg-white" />
                 {remoteBgEnabled && d.images.length >= 1 && (
                   <p className="text-[11px] text-ink-500">
-                    The free tool runs its AI model in this browser tab, which genuinely gets slower/less reliable the more photos it processes in one sitting — remove.bg doesn't have that limit, since each photo is a fresh server call. Worth using remove.bg for this one if it's not the first photo of the session.
+                    The free tool runs its AI model in this browser tab, which genuinely gets slower/less reliable the more photos it processes in one sitting — Photoroom doesn't have that limit, since each photo is a fresh server call. Worth using Photoroom for this one if it's not the first photo of the session.
                   </p>
                 )}
                 <div className="flex flex-col gap-2">
@@ -721,7 +758,7 @@ export default function ProductFormModal({
                     <button type="button" onClick={() => void polishAngleRemoteBg(angleRawSrc)} disabled={angleUploading}
                       className="inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 disabled:opacity-60">
                       {angleUploading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      Polish via remove.bg
+                      Polish via Photoroom
                     </button>
                   )}
                   <button type="button" onClick={() => void polishAngle(angleRawSrc)} disabled={angleUploading}
@@ -750,9 +787,16 @@ export default function ProductFormModal({
               </div>
             )}
 
+            {/* Manual touch-up for the angle currently being added */}
+            {angleEraseSrc && (
+              <div className="mt-3 rounded-2xl border border-blush-100 bg-blush-50/50 p-4">
+                <EraseStep src={angleEraseSrc} onConfirm={(erased) => void onAngleEraseConfirm(erased)} onCancel={() => setAngleEraseSrc(null)} />
+              </div>
+            )}
+
             {/* Before / after for the angle currently being added */}
             <AnimatePresence>
-              {anglePreview && !angleCropSrc && (
+              {anglePreview && !angleCropSrc && !angleEraseSrc && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
                   className="mt-3 rounded-2xl border border-blush-100 bg-blush-50/50 p-4">
                   <div className="grid grid-cols-2 gap-3">
@@ -785,10 +829,17 @@ export default function ProductFormModal({
                     </button>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    {angleCutoutMode && angleCutoutSrc && (
+                      <button type="button" onClick={() => setAngleEraseSrc(angleCutoutSrc)}
+                        title="Manually erase any bit of background the AI kept — drag over it, done in seconds, works no matter how tricky the photo is"
+                        className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
+                        Background stuck to the cutout? Erase it by hand
+                      </button>
+                    )}
                     <button type="button" onClick={() => { setAngleCropSrc(anglePreview.original); setAnglePreview(null); }}
-                      title="Fixes a chunk of the background (e.g. the surface the product is sitting on) getting pulled into the cutout — crop tightly to just the product and re-run"
+                      title="Or re-run background removal on a tighter crop — sometimes fixes it without manual touch-up"
                       className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
-                      Background stuck to the cutout? Crop and re-polish
+                      Crop and re-polish instead
                     </button>
                     <button type="button" onClick={() => void polishAngle(anglePreview.original, true)} disabled={angleUploading}
                       title="Slower, bigger download — sharper edges on fine detail, but won't separate the product from a background it's already merged with (crop for that instead)"
@@ -798,7 +849,7 @@ export default function ProductFormModal({
                     {remoteBgEnabled && (
                       <button type="button" onClick={() => void polishAngleRemoteBg(anglePreview.original)} disabled={angleUploading}
                         className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
-                        Try remove.bg instead
+                        Try Photoroom instead
                       </button>
                     )}
                   </div>
