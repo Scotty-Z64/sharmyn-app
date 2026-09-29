@@ -24,6 +24,12 @@ import { removeBackground } from '@imgly/background-removal';
 export interface WorkerRequest {
   dataUrl: string;
   publicPath?: string;
+  // 'isnet_fp16' (default, ~84MB) is fast but can misread a busy/dark
+  // background as part of the product on tricky photos. 'isnet' (~168MB,
+  // full precision) segments more accurately at the cost of a bigger
+  // download and slower inference — offered as an explicit alternate for
+  // photos the fast model gets wrong, not the default.
+  model?: 'isnet_fp16' | 'isnet';
 }
 
 export type WorkerResponse =
@@ -32,11 +38,12 @@ export type WorkerResponse =
   | { type: 'error'; message: string };
 
 self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
-  const { dataUrl, publicPath } = e.data;
+  const { dataUrl, publicPath, model } = e.data;
   try {
     const blob = await removeBackground(dataUrl, {
       output: { format: 'image/png' },
       publicPath,
+      model,
       progress: (_key, current, total) => {
         const msg: WorkerResponse = { type: 'progress', current, total };
         self.postMessage(msg);

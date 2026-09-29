@@ -32,6 +32,10 @@ import type { WorkerRequest, WorkerResponse } from './bg-removal.worker';
 // another, and callers' existing catch-and-fall-back-to-the-raw-photo logic
 // kicks in instead of hanging forever.
 const TIMEOUT_MS = 45_000;
+// The high-quality model is ~2x the download (168MB vs 84MB) and slower to
+// run, so it needs real headroom — the fast-model ceiling above would trip
+// on it routinely, especially on the first use per browser.
+const TIMEOUT_MS_HQ = 90_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -50,6 +54,59 @@ function loadImageEl(src: string): Promise<HTMLImageElement> {
     img.onerror = () => reject(new Error('image-load-failed'));
     img.src = src;
   });
+}
+
+/** Finds every connected blob of non-transparent pixels (8-connectivity, so
+ * a thin diagonal join like a shoelace doesn't split one object into two)
+ * and zeroes the alpha of every pixel outside the single largest one.
+ * Mutates `data` in place. Iterative flood-fill (not recursive) so a large
+ * blob can't blow the call stack. */
+function keepLargestOpaqueIsland(data: Uint8ClampedArray, w: number, h: number) {
+  const n = w * h;
+  const visited = new Uint8Array(n);
+  const label = new Int32Array(n).fill(-1);
+  const queue = new Int32Array(n);
+  const isFg = (idx: number) => data[idx * 4 + 3] > 0;
+
+  let bestLabel = -1;
+  let bestSize = 0;
+  let nextLabel = 0;
+
+  for (let start = 0; start < n; start++) {
+    if (visited[start] || !isFg(start)) continue;
+    let qHead = 0;
+    let qTail = 0;
+    queue[qTail++] = start;
+    visited[start] = 1;
+    const thisLabel = nextLabel++;
+    let size = 0;
+    while (qHead < qTail) {
+      const idx = queue[qHead++];
+      label[idx] = thisLabel;
+      size++;
+      const x = idx % w;
+      const y = (idx / w) | 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          if (nx < 0 || nx >= w) continue;
+          const nIdx = ny * w + nx;
+          if (!visited[nIdx] && isFg(nIdx)) {
+            visited[nIdx] = 1;
+            queue[qTail++] = nIdx;
+          }
+        }
+      }
+    }
+    if (size > bestSize) { bestSize = size; bestLabel = thisLabel; }
+  }
+
+  for (let idx = 0; idx < n; idx++) {
+    if (label[idx] !== bestLabel) data[idx * 4 + 3] = 0;
+  }
 }
 
 // The model returns a cutout at the SOURCE photo's full frame size — just
@@ -71,6 +128,17 @@ function loadImageEl(src: string): Promise<HTMLImageElement> {
 // confidence floor — both so the crop box reflects only the product, and so
 // those pixels are fully transparent (invisible) rather than a ghost smear.
 //
+// A DIFFERENT failure (the one Ben actually hit: a chunk of the dark table/
+// stool the product was photographed on, confidently marked as foreground by
+// the model, surviving as a speckled blob physically separate from the
+// product) isn't a confidence problem — the model was "sure" about those
+// pixels too, just wrong. Verified empirically: both the fast and the full-
+// precision model produced the same disconnected blob on the same photo, so
+// a bigger model doesn't fix it either. What DOES distinguish it from the
+// real product is that it's not attached to it — so keep only the largest
+// connected blob of surviving pixels and drop every other island, regardless
+// of how confident the model was about it.
+//
 // Runs on the main thread (not the worker) — it's lightweight canvas work,
 // not the AI inference that's actually driving the memory growth, and it
 // needs the final PNG as a data URL for the rest of the app either way.
@@ -87,12 +155,16 @@ async function trimToOpaqueBounds(dataUrl: string, marginFraction = 0.05): Promi
   const { data } = imageData;
 
   const ALPHA_THRESHOLD = 128;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] <= ALPHA_THRESHOLD) data[i] = 0;
+  }
+  keepLargestOpaqueIsland(data, w, h);
+
   let minX = w, minY = h, maxX = -1, maxY = -1;
   for (let y = 0; y < h; y++) {
     const rowStart = y * w * 4;
     for (let x = 0; x < w; x++) {
-      const ai = rowStart + x * 4 + 3;
-      if (data[ai] <= ALPHA_THRESHOLD) { data[ai] = 0; continue; }
+      if (data[rowStart + x * 4 + 3] === 0) continue;
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;
       if (y < minY) minY = y;
@@ -129,6 +201,7 @@ export type BgRemovalProgress = (current: number, total: number) => void;
 function runInWorker(
   worker: Worker,
   dataUrl: string,
+  model: 'isnet_fp16' | 'isnet',
   onProgress?: BgRemovalProgress
 ): Promise<{ buffer: ArrayBuffer; mime: string }> {
   return new Promise((resolve, reject) => {
@@ -151,6 +224,7 @@ function runInWorker(
     };
     const req: WorkerRequest = {
       dataUrl,
+      model,
       // Self-hosted in prod (see scripts/copy-imgly-model.js + the
       // /imgly-models/* route in api/boot.ts) — IMG.LY's own CDN sends no
       // Cache-Control on these ~95MB files, so the browser has no guarantee
@@ -175,16 +249,20 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 /** Strip the background from a photo (data URL in, transparent PNG data URL out,
  * tightly cropped to the product with a small margin). Never hangs longer than
- * TIMEOUT_MS — see note above. Optional onProgress reports model download
- * progress (current/total bytes) so callers can show real feedback instead of
- * a static spinner during the (up to ~40MB) first-use download. */
-export async function removeBackgroundClient(dataUrl: string, onProgress?: BgRemovalProgress): Promise<string> {
+ * TIMEOUT_MS (or TIMEOUT_MS_HQ for the high-quality model) — see note above.
+ * Optional onProgress reports model download progress (current/total bytes)
+ * so callers can show real feedback instead of a static spinner during the
+ * first-use download. Pass highQuality when the fast model has already
+ * mis-segmented a photo (e.g. included background it shouldn't have) — it
+ * trades a bigger download and slower run for better edge accuracy. */
+export async function removeBackgroundClient(dataUrl: string, onProgress?: BgRemovalProgress, highQuality = false): Promise<string> {
   const worker = new Worker(new URL('./bg-removal.worker.ts', import.meta.url), { type: 'module' });
+  const model = highQuality ? 'isnet' : 'isnet_fp16';
   let result: { buffer: ArrayBuffer; mime: string };
   try {
     result = await withTimeout(
-      runInWorker(worker, dataUrl, onProgress),
-      TIMEOUT_MS,
+      runInWorker(worker, dataUrl, model, onProgress),
+      highQuality ? TIMEOUT_MS_HQ : TIMEOUT_MS,
       'Background removal timed out — the image model may be slow to load on this connection.'
     );
   } finally {

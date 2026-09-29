@@ -248,7 +248,7 @@ export default function ProductFormModal({
   // showing (either not started yet, or just skipped/confirmed).
   const [cropSrc, setCropSrc] = useState<string | null>(null);
 
-  const runPolish = async (imageOverride?: string) => {
+  const runPolish = async (imageOverride?: string, highQuality = false) => {
     const src = imageOverride ?? d.image;
     if (!src || polishing) return;
     setPolishNote('');
@@ -256,7 +256,7 @@ export default function ProductFormModal({
     setPolished(null);
     setPolishPct(null);
     try {
-      const imageData = await removeBackgroundClient(src, onPolishProgress);
+      const imageData = await removeBackgroundClient(src, onPolishProgress, highQuality);
       setCutoutSrc(imageData);
       setCutoutMode(true);
       setSizeScale(1);
@@ -404,11 +404,11 @@ export default function ProductFormModal({
   // Same worn-shoe problem as the cover photo can happen on an angle shot too.
   const [angleCropSrc, setAngleCropSrc] = useState<string | null>(null);
 
-  const polishAngle = async (compressed: string) => {
+  const polishAngle = async (compressed: string, highQuality = false) => {
     setAngleErr('');
     setAngleUploading(true);
     try {
-      const src = await removeBackgroundClient(compressed);
+      const src = await removeBackgroundClient(compressed, undefined, highQuality);
       const finalImg = await compositeStudio(src, true, 1);
       setAngleCutoutSrc(src);
       setAngleCutoutMode(true);
@@ -612,6 +612,11 @@ export default function ProductFormModal({
                 )}
                 {d.image && polished && !cropSrc && (
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    <button type="button" onClick={() => void runPolish(undefined, true)} disabled={polishing}
+                      title="Slower, bigger download — segments more accurately on busy/dark backgrounds the fast model can misread"
+                      className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
+                      {polishing ? 'Polishing…' : 'Cutout not clean? Try high quality (free, slower)'}
+                    </button>
                     {remoteBgEnabled && (
                       <button type="button" onClick={() => void runPolishRemoteBg()} disabled={polishing}
                         className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
@@ -777,6 +782,11 @@ export default function ProductFormModal({
                     </button>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    <button type="button" onClick={() => void polishAngle(anglePreview.original, true)} disabled={angleUploading}
+                      title="Slower, bigger download — segments more accurately on busy/dark backgrounds the fast model can misread"
+                      className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
+                      {angleUploading ? 'Polishing…' : 'Cutout not clean? Try high quality (free, slower)'}
+                    </button>
                     {remoteBgEnabled && (
                       <button type="button" onClick={() => void polishAngleRemoteBg(anglePreview.original)} disabled={angleUploading}
                         className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">

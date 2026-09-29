@@ -6,10 +6,13 @@
 // (see the /imgly-models/* route in api/boot.ts) so a repeat "polish photo"
 // never re-downloads them.
 //
-// Only mirrors the 3 resources the app actually uses (isnet_fp16 model +
-// the non-WebGPU threaded WASM runtime, matching bg-removal.ts's config) —
-// not the full CDN, which also hosts unused model variants (isnet,
-// isnet_quint8) and the WebGPU/jsep runtime build.
+// Mirrors the resources the app actually uses: both model tiers offered in
+// the portal (isnet_fp16 — fast, default; isnet — full precision, ~2x the
+// size, offered as a "high quality" alternate for photos the fast model
+// mis-segments, e.g. a product shot against a busy/dark background) plus the
+// non-WebGPU threaded WASM runtime (matching bg-removal.ts's config) — not
+// the full CDN, which also hosts an unused low-quality variant (isnet_quint8)
+// and the WebGPU/jsep runtime build.
 import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,6 +21,7 @@ const PACKAGE_VERSION = "1.7.0"; // must match @imgly/background-removal in pack
 const CDN_BASE = `https://staticimgly.com/@imgly/background-removal-data/${PACKAGE_VERSION}/dist/`;
 const NEEDED_KEYS = [
   "/models/isnet_fp16",
+  "/models/isnet",
   "/onnxruntime-web/ort-wasm-simd-threaded.wasm",
   "/onnxruntime-web/ort-wasm-simd-threaded.mjs",
 ];
