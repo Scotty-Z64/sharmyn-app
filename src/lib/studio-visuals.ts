@@ -45,13 +45,23 @@ export function drawWordmark(ctx: CanvasRenderingContext2D, w: number, h: number
 }
 
 /** Soft elliptical contact shadow under a product cutout — the single detail
- * that makes a cutout read as "placed in a scene" instead of "pasted on top." */
+ * that makes a cutout read as "placed in a scene" instead of "pasted on top."
+ * Built from a radial gradient, not ctx.filter('blur(...)') — canvas filters
+ * are GPU-composited and have a real history of rendering corrupted/torn
+ * output on some mobile browser+GPU combinations; a gradient produces the
+ * same soft edge with a canvas primitive supported everywhere. */
 export function drawProductShadow(ctx: CanvasRenderingContext2D, centerX: number, bottomY: number, w: number, h: number) {
+  const rx = w * 0.36;
+  const ry = Math.max(10, h * 0.035);
   ctx.save();
-  ctx.filter = `blur(${Math.max(10, h * 0.03)}px)`;
-  ctx.fillStyle = 'rgba(40,25,15,0.22)';
+  ctx.translate(centerX, bottomY);
+  ctx.scale(1, ry / rx);
+  const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+  gradient.addColorStop(0, 'rgba(40,25,15,0.22)');
+  gradient.addColorStop(1, 'rgba(40,25,15,0)');
+  ctx.fillStyle = gradient;
   ctx.beginPath();
-  ctx.ellipse(centerX, bottomY, w * 0.36, Math.max(10, h * 0.035), 0, 0, Math.PI * 2);
+  ctx.arc(0, 0, rx, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }

@@ -89,18 +89,27 @@ async function compositeStudio(src: string, cutout: boolean, userScale = 1): Pro
     const h = img.height * scale;
     const x = (W - w) / 2;
     const y = bottomY - h;
-    // Soft elliptical shadow under the product.
+    // Soft elliptical shadow under the product — a radial gradient, not
+    // ctx.filter('blur(...)'). Canvas filters are GPU-composited and have a
+    // real history of producing corrupted/torn output on some mobile
+    // browser+GPU combinations; a gradient gets the same soft edge with a
+    // canvas primitive that's supported everywhere.
+    const shadowRX = w * 0.38;
+    const shadowRY = Math.max(18, h * 0.045);
     ctx.save();
-    ctx.filter = 'blur(24px)';
-    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.translate(W / 2, y + h * 0.94);
+    ctx.scale(1, shadowRY / shadowRX);
+    const shadowGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, shadowRX);
+    shadowGradient.addColorStop(0, 'rgba(0,0,0,0.18)');
+    shadowGradient.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = shadowGradient;
     ctx.beginPath();
-    ctx.ellipse(W / 2, y + h * 0.94, w * 0.38, Math.max(18, h * 0.045), 0, 0, Math.PI * 2);
+    ctx.arc(0, 0, shadowRX, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
-    ctx.save();
-    ctx.filter = 'brightness(1.04) contrast(1.05)';
+    // No brightness/contrast ctx.filter here either — same mobile-GPU risk,
+    // and it was a minor cosmetic boost, not essential.
     ctx.drawImage(img, x, y, w, h);
-    ctx.restore();
   } else {
     // Studio frame: photo inside a rounded ivory card with shadow.
     // Card confined to the upper portion of the canvas, same as the cutout
@@ -145,7 +154,6 @@ async function compositeStudio(src: string, cutout: boolean, userScale = 1): Pro
     ctx.save();
     roundRect(cx, cy, cw, ch);
     ctx.clip();
-    ctx.filter = 'brightness(1.04) contrast(1.05)';
     ctx.drawImage(img, cx + cardPad, cy + cardPad, w, h);
     ctx.restore();
     ctx.save();

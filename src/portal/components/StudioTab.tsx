@@ -142,10 +142,10 @@ function drawProductFit(
   const w = photo.width * scale, h = photo.height * scale;
   const x = centerX - w / 2, y = bottomY - h;
   drawProductShadow(ctx, centerX, bottomY - h * 0.03, w, h);
-  ctx.save();
-  ctx.filter = 'brightness(1.03) contrast(1.04)';
+  // No brightness/contrast ctx.filter — GPU-composited canvas filters have a
+  // real history of producing corrupted/torn output on some mobile
+  // browser+GPU combinations; it was a minor cosmetic boost, not essential.
   ctx.drawImage(photo, x, y, w, h);
-  ctx.restore();
   return { x, y, w, h };
 }
 
