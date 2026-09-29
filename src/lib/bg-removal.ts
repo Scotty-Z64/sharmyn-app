@@ -135,6 +135,16 @@ async function removeBackgroundClientInner(dataUrl: string, onProgress?: BgRemov
     // reliability without giving up quality.
     output: { format: 'image/png' },
     progress: onProgress ? (_key, current, total) => onProgress(current, total) : undefined,
+    // Self-hosted in prod (see scripts/copy-imgly-model.js + the
+    // /imgly-models/* route in api/boot.ts) — IMG.LY's own CDN sends no
+    // Cache-Control on these ~95MB files, so the browser has no guarantee
+    // it keeps them cached between photos. Serving them ourselves with a
+    // long-lived Cache-Control turns "slow every time" into "slow once".
+    // Dev keeps using IMG.LY's CDN directly (undefined = library default)
+    // since `npm run dev` never runs the copy step. Must be an absolute URL
+    // (the library does `new URL(file, publicPath)`, which requires a real
+    // base) — window.location.origin so it works on any domain.
+    publicPath: import.meta.env.PROD ? `${window.location.origin}/imgly-models/` : undefined,
   });
   const cutout = await blobToDataUrl(blob);
   return trimToOpaqueBounds(cutout);

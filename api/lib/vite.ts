@@ -9,6 +9,15 @@ type App = Hono<{ Bindings: HttpBindings }>;
 export function serveStaticFiles(app: App) {
   const distPath = path.resolve(import.meta.dirname, "../dist/public");
 
+  // Self-hosted AI model + WASM runtime (see scripts/copy-imgly-model.js) —
+  // content-addressed by hash, so a given URL's bytes never change. Safe to
+  // cache "forever"; this is the whole point of self-hosting them instead of
+  // relying on IMG.LY's CDN, which sends no Cache-Control at all.
+  app.use("/imgly-models/*", async (c, next) => {
+    await next();
+    c.res.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  });
+
   app.use("*", serveStatic({ root: "./dist/public" }));
 
   app.notFound((c) => {
