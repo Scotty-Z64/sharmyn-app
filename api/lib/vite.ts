@@ -18,6 +18,22 @@ export function serveStaticFiles(app: App) {
     c.res.headers.set("Cache-Control", "public, max-age=31536000, immutable");
   });
 
+  // A page with Cross-Origin-Embedder-Policy: require-corp (see /manage
+  // below) can only spawn a Worker whose OWN script response also carries a
+  // matching COEP header — browsers enforce this on worker creation itself,
+  // not just on the resources it later fetches. Without this, the free
+  // photo-polish worker (src/lib/bg-removal.worker.ts) silently failed to
+  // even start inside the owner portal, surfacing as a blank/sanitized
+  // worker.onerror with no message — reproducible only under /manage's COEP,
+  // which a plain dev/test route never has, so it never showed up in testing
+  // there. Applied to all hashed assets (not just the worker chunk) since
+  // it's a harmless, standard header for a script/style response to carry
+  // regardless of who loads it.
+  app.use("/assets/*", async (c, next) => {
+    await next();
+    c.res.headers.set("Cross-Origin-Embedder-Policy", "require-corp");
+  });
+
   app.use("*", serveStatic({ root: "./dist/public" }));
 
   app.notFound((c) => {
