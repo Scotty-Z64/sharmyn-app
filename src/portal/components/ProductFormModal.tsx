@@ -322,19 +322,16 @@ export default function ProductFormModal({
     }
   };
 
+  // Cropping only prepares the source photo — it never picks an engine.
+  // After confirming/skipping, Ben still sees both "remove.bg" and "free"
+  // buttons and chooses explicitly.
   const onCropConfirm = async (rect: { x: number; y: number; w: number; h: number }) => {
     if (!cropSrc) return;
     const cropped = await cropDataUrl(cropSrc, rect);
     setCropSrc(null);
     set('image', cropped);
-    void runPolish(cropped);
   };
-  const onCropSkip = () => {
-    if (!cropSrc) return;
-    const src = cropSrc;
-    setCropSrc(null);
-    void runPolish(src);
-  };
+  const onCropSkip = () => { setCropSrc(null); };
 
   // Re-composite locally whenever the size slider moves — no network call.
   const onSizeScale = async (next: number) => {
@@ -361,14 +358,12 @@ export default function ProductFormModal({
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext('2d');
-        if (!ctx) { const raw = String(reader.result); set('image', raw); void runPolish(raw); return; }
+        if (!ctx) { const raw = String(reader.result); set('image', raw); return; }
         ctx.drawImage(img, 0, 0, w, h);
         const compressed = canvas.toDataURL('image/jpeg', 0.8);
         set('image', compressed);
-        // Auto-composite onto the branded backdrop the moment a photo is chosen,
-        // same as always — cropping is an optional retry step (below, once the
-        // result is visible), not something that has to happen first.
-        void runPolish(compressed);
+        // Nothing runs automatically — Ben picks remove.bg or the free tool
+        // explicitly (below) before anything starts downloading/processing.
       };
       img.onerror = () => setImgErr(imageReadErrorMessage(f));
       img.src = String(reader.result);
@@ -391,8 +386,10 @@ export default function ProductFormModal({
   const [angleCutoutSrc, setAngleCutoutSrc] = useState<string | null>(null);
   const [angleCutoutMode, setAngleCutoutMode] = useState(true);
   const [angleScale, setAngleScale] = useState(1);
-  // Same worn-shoe problem as the cover photo can happen on an angle shot too
-  // — offered as a retry here rather than a forced first step, same reasoning.
+  // Compressed (optionally cropped) angle photo awaiting an engine choice —
+  // nothing runs until "remove.bg" or "free" is clicked explicitly.
+  const [angleRawSrc, setAngleRawSrc] = useState<string | null>(null);
+  // Same worn-shoe problem as the cover photo can happen on an angle shot too.
   const [angleCropSrc, setAngleCropSrc] = useState<string | null>(null);
 
   const polishAngle = async (compressed: string) => {
@@ -452,7 +449,8 @@ export default function ProductFormModal({
       setAngleErr(imageReadErrorMessage(f));
       return;
     }
-    await polishAngle(compressed);
+    // Nothing runs automatically — show the engine choice below.
+    setAngleRawSrc(compressed);
   };
 
   const onAngleScale = async (next: number) => {
@@ -462,18 +460,30 @@ export default function ProductFormModal({
     setAnglePreview({ ...anglePreview, polished });
   };
 
+  // Cropping only prepares the source photo — it never picks an engine.
+  // Works both before the first attempt (source = angleRawSrc) and as a
+  // retry after a result (source = anglePreview.original, set by the
+  // trigger button below) — either way it lands back on the same "pick an
+  // engine" choice with the cropped photo as the source.
   const onAngleCropConfirm = async (rect: { x: number; y: number; w: number; h: number }) => {
     if (!angleCropSrc) return;
     const cropped = await cropDataUrl(angleCropSrc, rect);
     setAngleCropSrc(null);
-    await polishAngle(cropped);
+    setAnglePreview(null);
+    setAngleRawSrc(cropped);
   };
-  const onAngleCropSkip = () => { setAngleCropSrc(null); };
+  const onAngleCropSkip = () => {
+    if (!angleCropSrc) return;
+    setAngleRawSrc(angleCropSrc);
+    setAngleCropSrc(null);
+    setAnglePreview(null);
+  };
 
   const confirmAngle = () => {
     if (!anglePreview) return;
     setD((p) => ({ ...p, images: [...p.images, anglePreview.polished] }));
     setAnglePreview(null);
+    setAngleRawSrc(null);
   };
 
   const removeAngle = (idx: number) => {
@@ -549,23 +559,23 @@ export default function ProductFormModal({
                 {d.image && !polished && !cropSrc && (
                   <div className="space-y-2 pt-1">
                     <p className="text-[11px] text-ink-500">
-                      Works best on photos of just the product (on a table, in-hand). A photo of it being worn will keep the leg/hand in unless you crop tightly to just the shoe first.
+                      Choose how to remove the background — nothing runs until you pick one. Works best on photos of just the product; a photo of it being worn will keep the leg/hand in unless you crop tightly to just the shoe first.
                     </p>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col gap-2">
+                      {remoteBgEnabled && (
+                        <button type="button" onClick={() => void runPolishRemoteBg()} disabled={polishing}
+                          title="Remove background via remove.bg"
+                          className="inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 disabled:opacity-60">
+                          {polishing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                          {polishing ? 'Polishing…' : 'Polish via remove.bg'}
+                        </button>
+                      )}
                       <button type="button" onClick={() => runPolish()} disabled={polishing}
                         title="Remove background & place on the Sharmyn studio backdrop — free, runs on this device"
-                        className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-gold-400 text-gold-500 text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-blush-50 disabled:opacity-60">
+                        className="inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-full border border-gold-400 text-gold-500 text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-blush-50 disabled:opacity-60">
                         {polishing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                         {polishing ? (polishPct != null ? `Downloading… ${polishPct}%` : 'Polishing…') : '✨ Polish photo (free)'}
                       </button>
-                      {remoteBgEnabled && (
-                        <button type="button" onClick={() => void runPolishRemoteBg()} disabled={polishing}
-                          title="Remove background via remove.bg — paid, use if the free tool is stuck or giving a bad result"
-                          className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-blush-200 text-ink-900 text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-blush-50 disabled:opacity-60">
-                          {polishing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                          Polish via remove.bg
-                        </button>
-                      )}
                     </div>
                     <div className="flex flex-wrap gap-x-3 gap-y-1">
                       <button type="button" onClick={() => setCropSrc(d.image)} disabled={polishing}
@@ -583,16 +593,16 @@ export default function ProductFormModal({
                 )}
                 {d.image && polished && !cropSrc && (
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    <button type="button" onClick={() => { setCropSrc(d.image); setPolished(null); setPolishNote(''); }}
-                      className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
-                      Not quite right? Crop and re-polish
-                    </button>
                     {remoteBgEnabled && (
                       <button type="button" onClick={() => void runPolishRemoteBg()} disabled={polishing}
                         className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
                         Try remove.bg instead
                       </button>
                     )}
+                    <button type="button" onClick={() => { setCropSrc(d.image); setPolished(null); setPolishNote(''); }}
+                      className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
+                      Not quite right? Crop and re-polish
+                    </button>
                   </div>
                 )}
               </div>
@@ -653,7 +663,7 @@ export default function ProductFormModal({
                   </button>
                 </div>
               ))}
-              {d.images.length < MAX_ANGLES && !anglePreview && (
+              {d.images.length < MAX_ANGLES && !anglePreview && !angleRawSrc && (
                 <button type="button" onClick={() => angleFileRef.current?.click()} disabled={angleUploading}
                   className="w-20 h-24 rounded-xl border-2 border-dashed border-rose-300 bg-blush-50 grid place-items-center hover:bg-blush-100 transition disabled:opacity-60">
                   {angleUploading
@@ -667,13 +677,50 @@ export default function ProductFormModal({
             </div>
             <input ref={angleFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void onAngleFile(e)} />
             <p className="mt-1.5 text-[11px] text-ink-500">
-              Upload each angle on its own (worn, top-down, sole, etc.) — each one is auto-polished onto the studio backdrop automatically.
+              Upload each angle on its own (worn, top-down, sole, etc.) — choose remove.bg or the free tool for each one, same as the main photo.
             </p>
             {angleErr && <p className="mt-1 text-[11px] text-rose-600">{angleErr}</p>}
 
+            {/* Engine choice for the angle photo just chosen — nothing runs until picked */}
+            {angleRawSrc && !anglePreview && !angleCropSrc && (
+              <div className="mt-3 rounded-2xl border border-blush-100 bg-blush-50/50 p-4 space-y-2">
+                <img src={angleRawSrc} alt="" className="w-20 aspect-[4/5] object-cover rounded-xl border border-blush-100 bg-white" />
+                <div className="flex flex-col gap-2">
+                  {remoteBgEnabled && (
+                    <button type="button" onClick={() => void polishAngleRemoteBg(angleRawSrc)} disabled={angleUploading}
+                      className="inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 disabled:opacity-60">
+                      {angleUploading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      Polish via remove.bg
+                    </button>
+                  )}
+                  <button type="button" onClick={() => void polishAngle(angleRawSrc)} disabled={angleUploading}
+                    className="inline-flex items-center justify-center gap-1.5 h-11 px-4 rounded-full border border-gold-400 text-gold-500 text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-blush-50 disabled:opacity-60">
+                    {angleUploading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    ✨ Polish photo (free)
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  <button type="button" onClick={() => setAngleCropSrc(angleRawSrc)} disabled={angleUploading}
+                    className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
+                    Crop photo (worn/cluttered shot)
+                  </button>
+                  <button type="button" onClick={() => setAngleRawSrc(null)} disabled={angleUploading}
+                    className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {angleCropSrc && (
+              <div className="mt-3 rounded-2xl border border-blush-100 bg-blush-50/50 p-4">
+                <CropStep src={angleCropSrc} onConfirm={(rect) => void onAngleCropConfirm(rect)} onSkip={onAngleCropSkip} />
+              </div>
+            )}
+
             {/* Before / after for the angle currently being added */}
             <AnimatePresence>
-              {anglePreview && (
+              {anglePreview && !angleCropSrc && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
                   className="mt-3 rounded-2xl border border-blush-100 bg-blush-50/50 p-4">
                   <div className="grid grid-cols-2 gap-3">
@@ -700,30 +747,23 @@ export default function ProductFormModal({
                       className="flex-1 h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400">
                       Add this angle
                     </button>
-                    <button type="button" onClick={() => setAnglePreview(null)}
+                    <button type="button" onClick={() => { setAnglePreview(null); setAngleRawSrc(null); }}
                       className="flex-1 h-11 rounded-full border border-blush-200 text-ink-900 text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-white">
                       Discard
                     </button>
                   </div>
-                  {!angleCropSrc && (
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-                      <button type="button" onClick={() => setAngleCropSrc(anglePreview.original)}
-                        className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
-                        Not quite right? Crop and re-polish
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    {remoteBgEnabled && (
+                      <button type="button" onClick={() => void polishAngleRemoteBg(anglePreview.original)} disabled={angleUploading}
+                        className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
+                        Try remove.bg instead
                       </button>
-                      {remoteBgEnabled && (
-                        <button type="button" onClick={() => void polishAngleRemoteBg(anglePreview.original)} disabled={angleUploading}
-                          className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
-                          Try remove.bg instead
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {angleCropSrc && (
-                    <div className="mt-3">
-                      <CropStep src={angleCropSrc} onConfirm={(rect) => void onAngleCropConfirm(rect)} onSkip={onAngleCropSkip} />
-                    </div>
-                  )}
+                    )}
+                    <button type="button" onClick={() => { setAngleCropSrc(anglePreview.original); setAnglePreview(null); }}
+                      className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
+                      Not quite right? Crop and re-polish
+                    </button>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
