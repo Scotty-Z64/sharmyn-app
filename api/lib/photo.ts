@@ -38,7 +38,16 @@ export async function polishImage(dataUrl: string): Promise<string> {
 
   const form = new FormData();
   form.append("image_file_b64", b64);
-  form.append("size", "auto");
+  // "auto" (the previous value here) tells remove.bg to use the highest
+  // resolution it can afford — 1 full credit per image, per their own API
+  // docs. "preview" (their default if this param is omitted entirely) caps
+  // output at 0.25 megapixels for 0.25 credits per image — a quarter of the
+  // cost. That's still far more than enough: the source photo is already
+  // compressed to ~800px before it ever reaches this function, and the
+  // result only ever gets composited into a web-sized product photo, never
+  // printed. This alone should turn $9 of credits into ~35 photos instead
+  // of ~8 — set this back to "auto" only if the output visibly looks soft.
+  form.append("size", "preview");
   form.append("format", "png");
   // Crop tight to the product itself — without this, remove.bg returns the
   // cutout at the original photo's full frame size (just with a transparent
