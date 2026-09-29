@@ -5,9 +5,16 @@ import PDFDocument from "pdfkit";
 import { inArray } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { products } from "@db/schema";
+import { getProductImageRaw } from "../queries/shop";
 import type { Order } from "@contracts/types";
 import { BUSINESS } from "../../src/config/business";
 import { INK, GOLD, SOFT, drawLetterhead } from "./pdf-brand";
+
+/** Decode a "data:image/...;base64,..." URL to raw bytes for doc.image(). */
+function dataUrlToBuffer(dataUrl: string): Buffer | null {
+  const m = /^data:[^;,]+(?:;charset=[^;,]+)?;base64,(.+)$/s.exec(dataUrl);
+  return m ? Buffer.from(m[1], "base64") : null;
+}
 
 function addBusinessDays(from: Date, days: number): Date {
   const d = new Date(from);
@@ -32,6 +39,15 @@ export async function buildInvoicePdf(order: Order): Promise<Buffer> {
     : [];
   const refById = new Map(rows.map((r) => [r.id, r.refNumber]));
 
+  // Current product photo, not a historical snapshot — this is for Ben to
+  // visually confirm what to order from the supplier, so the CURRENT photo
+  // is what's actually useful (unlike price, which is snapshotted).
+  const imageById = new Map<string, Buffer | null>();
+  for (const id of productIds) {
+    const raw = await getProductImageRaw(id, null);
+    imageById.set(id, raw ? dataUrlToBuffer(raw) : null);
+  }
+
   const paidOn = new Date();
   const earliestDelivery = addBusinessDays(paidOn, 5);
   const latestDelivery = addBusinessDays(paidOn, 7);
@@ -55,26 +71,41 @@ export async function buildInvoicePdf(order: Order): Promise<Buffer> {
     if (order.customer.phone) { doc.text(order.customer.phone, 50, y); y += 14; }
     if (order.customer.address) { doc.text(`${order.customer.address}, ${order.customer.city}`, 50, y, { width: 260 }); y += 14; }
 
-    // Items table
+    // Items table — a product photo per row so Ben can visually confirm
+    // what to order from the supplier without cross-referencing the
+    // catalog, and a fixed row height (not dependent on text wrapping) so
+    // the size — on its own line, not crammed into the name — never gets
+    // clipped or overlapped by the next row.
     const tableTop = 220;
     doc.fillColor(GOLD).fontSize(9).font("Helvetica-Bold");
-    doc.text("REF #", 50, tableTop);
-    doc.text("ITEM", 110, tableTop);
+    doc.text("REF #", 100, tableTop);
+    doc.text("ITEM", 140, tableTop);
     doc.text("QTY", 360, tableTop, { width: 40, align: "right" });
     doc.text("PRICE", 410, tableTop, { width: 60, align: "right" });
     doc.text("SUBTOTAL", 475, tableTop, { width: 70, align: "right" });
     doc.moveTo(50, tableTop + 16).lineTo(545, tableTop + 16).strokeColor("#E8DCD5").stroke();
 
-    let rowY = tableTop + 26;
-    doc.font("Helvetica").fontSize(10).fillColor(INK);
+    const ROW_H = 50;
+    let rowY = tableTop + 24;
     for (const item of order.items) {
       const ref = refById.get(item.productId);
-      doc.text(ref ? `#${ref}` : "—", 50, rowY);
-      doc.text(item.size ? `${item.name} (Size ${item.size})` : item.name, 110, rowY, { width: 240 });
-      doc.text(String(item.qty), 360, rowY, { width: 40, align: "right" });
-      doc.text(`R${item.price}`, 410, rowY, { width: 60, align: "right" });
-      doc.text(`R${item.price * item.qty}`, 475, rowY, { width: 70, align: "right" });
-      rowY += 20;
+      const img = imageById.get(item.productId);
+      if (img) {
+        try { doc.image(img, 50, rowY, { fit: [40, 40] }); } catch { /* corrupt/unreadable photo — skip, rest of the row still renders */ }
+      }
+      const textY = rowY + 12;
+      doc.font("Helvetica").fontSize(10).fillColor(INK);
+      doc.text(ref ? `#${ref}` : "—", 100, textY, { width: 36 });
+      doc.text(item.name, 140, textY, { width: 210, height: 14, ellipsis: true, lineBreak: false });
+      if (item.size) {
+        doc.font("Helvetica-Bold").fontSize(9).fillColor(GOLD).text(`Size ${item.size}`, 140, textY + 14);
+      }
+      doc.font("Helvetica").fontSize(10).fillColor(INK);
+      doc.text(String(item.qty), 360, textY, { width: 40, align: "right" });
+      doc.text(`R${item.price}`, 410, textY, { width: 60, align: "right" });
+      doc.text(`R${item.price * item.qty}`, 475, textY, { width: 70, align: "right" });
+      rowY += ROW_H;
+      if (rowY > 700) { doc.addPage(); rowY = 50; }
     }
 
     doc.moveTo(50, rowY + 4).lineTo(545, rowY + 4).strokeColor("#E8DCD5").stroke();

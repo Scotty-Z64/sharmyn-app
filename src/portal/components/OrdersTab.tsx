@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertTriangle, ChevronDown, MapPin, PackageCheck, PackageOpen, Pencil, Repeat, Truck, XCircle } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Download, MapPin, PackageCheck, PackageOpen, Pencil, Repeat, Truck, XCircle } from 'lucide-react';
 import type { Order, OrderStatus, Product } from '@/portal/lib/utils-shop';
 import { formatPrice } from '@/portal/lib/utils-shop';
 import { fulfilmentStage } from '@contracts/types';
@@ -627,7 +627,7 @@ function OrderCard({ order }: { order: Order }) {
 type PipelineFilter = 'all' | 'today' | FulfilmentStage | 'missed';
 
 export default function OrdersTab() {
-  const { orders, focusOrderId, setFocusOrderId } = usePortal();
+  const { orders, focusOrderId, setFocusOrderId, token } = usePortal();
   const [filter, setFilter] = useState<OrderStatus | 'all'>('all');
   const [pipeline, setPipeline] = useState<PipelineFilter>('all');
 
@@ -681,6 +681,10 @@ export default function OrdersTab() {
             <AlertTriangle size={12} /> Missed · {missedCount}
           </button>
         )}
+        <a href={`/api/order-list.pdf?token=${encodeURIComponent(token)}`} target="_blank" rel="noreferrer"
+          className="h-9 px-3.5 rounded-full text-[10.5px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap transition-colors shrink-0 border bg-white border-gold-400 text-gold-500 hover:bg-[#FBF3E2] flex items-center gap-1.5">
+          <Download size={12} /> Order list
+        </a>
       </div>
 
       {focusOrderId && (

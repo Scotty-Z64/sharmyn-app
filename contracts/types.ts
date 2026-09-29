@@ -4,7 +4,7 @@ export type Category = "sneakers" | "shoes" | "jewellery" | "handbags" | "clothi
 /** Sneaker/shoe brand or style, customer-facing filter — flat list (Adidas sub-styles included). */
 export const SHOE_BRANDS = [
   "Nike", "Puma", "New Balance", "Converse", "Lacoste",
-  "Adidas Samba", "Adidas Sneaker", "Adidas Gazelle",
+  "Adidas Samba", "Sneaker", "Adidas Gazelle",
 ] as const;
 export type ShoeBrand = (typeof SHOE_BRANDS)[number];
 /** Categories that track per-size stock and show a size picker at checkout. */

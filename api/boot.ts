@@ -183,6 +183,30 @@ app.get("/api/report.pdf", async (c) => {
   });
 });
 
+// Supplier order list PDF — admin-only. Uses the "inline" disposition
+// (unlike the sales report's "attachment") so it opens in a new tab ready
+// to print, since that's the actual use case Ben asked for.
+app.get("/api/order-list.pdf", async (c) => {
+  const token = c.req.query("token") ?? "";
+  const { assertAdminToken } = await import("./lib/admin");
+  try {
+    assertAdminToken(token);
+  } catch {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const { listOrders } = await import("./queries/shop");
+  const { buildOrderListPdf } = await import("./lib/order-list-pdf");
+  const orders = await listOrders();
+  const pdf = await buildOrderListPdf(orders);
+  return new Response(pdf, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="sharmyn-order-list.pdf"`,
+      "Cache-Control": "private, no-store",
+    },
+  });
+});
+
 // Product photo bytes — decoupled from the products list so that list/detail
 // responses stay small (a few KB of JSON) no matter how many products exist
 // or how big their photos are. listProducts()/adminProducts hand out this
