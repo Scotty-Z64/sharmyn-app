@@ -277,7 +277,11 @@ export default function ProductFormModal({
           setPolishNote('Polish failed — please try again, or use Studio frame instead.');
         }
       } else {
-        setPolishNote('Polish failed — please try again, or use Studio frame instead.');
+        // Surface the real error instead of a generic message — a silent
+        // "Polish failed" with no detail is undiagnosable from a screenshot;
+        // this is exactly what's needed to tell a WASM/memory failure on a
+        // specific device apart from a network blip or a bundling bug.
+        setPolishNote(`Polish failed${msg ? ` — ${msg.slice(0, 160)}` : ''} — please try again, or use Studio frame instead.`);
       }
     } finally {
       setPolishing(false);

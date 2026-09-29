@@ -138,7 +138,17 @@ function runInWorker(
       if (msg.type === 'done') { resolve({ buffer: msg.buffer, mime: msg.mime }); return; }
       reject(new Error(msg.message));
     };
-    worker.onerror = (e) => reject(new Error(e.message || 'worker-error'));
+    worker.onerror = (e) => {
+      // Fires for failures the worker's own try/catch never gets a chance to
+      // handle — e.g. the module script itself failing to load or parse —
+      // so e.message alone is often just "Script error." with no detail.
+      // Include filename/line so a report from a device we can't reproduce
+      // on (no console access) still says something diagnosable.
+      const detail = [e.message, e.filename ? `${e.filename}:${e.lineno}:${e.colno}` : null]
+        .filter(Boolean)
+        .join(' @ ');
+      reject(new Error(detail || 'worker-error'));
+    };
     const req: WorkerRequest = {
       dataUrl,
       // Self-hosted in prod (see scripts/copy-imgly-model.js + the
