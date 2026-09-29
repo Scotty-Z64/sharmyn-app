@@ -501,7 +501,14 @@ export default function ProductFormModal({
     if (d.availability === 'back-soon' && d.backDate && d.backUntil && d.backUntil < d.backDate) {
       setErr('"Available until" must be after "Back in stock on".'); return;
     }
-    onSave(d);
+    // A polished result (cover photo and/or an angle) sitting in its preview,
+    // never explicitly confirmed via "Use polished" / "Add this angle", used
+    // to just get silently dropped on save — d.image/d.images were only ever
+    // updated by those buttons. Ben ran Polish because he wanted that result;
+    // hitting Save with it still on screen means "yes, use it", not "discard
+    // it and save the raw upload instead".
+    const finalImages = anglePreview ? [...d.images, anglePreview.polished] : d.images;
+    onSave({ ...d, image: polished ?? d.image, images: finalImages });
   };
 
   const input = 'w-full h-12 px-4 rounded-xl border border-blush-100 bg-blush-50/50 text-sm text-ink-900 focus:outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-300/40 transition';
