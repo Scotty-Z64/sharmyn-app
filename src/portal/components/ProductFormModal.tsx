@@ -700,6 +700,11 @@ export default function ProductFormModal({
             {angleRawSrc && !anglePreview && !angleCropSrc && (
               <div className="mt-3 rounded-2xl border border-blush-100 bg-blush-50/50 p-4 space-y-2">
                 <img src={angleRawSrc} alt="" className="w-20 aspect-[4/5] object-cover rounded-xl border border-blush-100 bg-white" />
+                {remoteBgEnabled && d.images.length >= 1 && (
+                  <p className="text-[11px] text-ink-500">
+                    The free tool runs its AI model in this browser tab, which genuinely gets slower/less reliable the more photos it processes in one sitting — remove.bg doesn't have that limit, since each photo is a fresh server call. Worth using remove.bg for this one if it's not the first photo of the session.
+                  </p>
+                )}
                 <div className="flex flex-col gap-2">
                   {remoteBgEnabled && (
                     <button type="button" onClick={() => void polishAngleRemoteBg(angleRawSrc)} disabled={angleUploading}

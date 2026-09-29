@@ -6,14 +6,29 @@
 export const PRODUCT_TEMPLATE_SRC = '/product-template.jpg?v=3';
 export const WORDMARK_SRC = '/sh-wordmark.png?v=1';
 
+// Every composite call (cover photo, each extra angle, every Studio post)
+// used to create a brand new <img> and re-decode the same two static assets
+// from scratch — on a memory-constrained mobile device, loading several
+// angles back-to-back in one sitting could plausibly compound that churn
+// (reported symptom: the first photo composites fine, later ones in the
+// same session come out corrupted). Load each distinct src once and reuse
+// the same decoded element for the rest of the session.
+const imgCache = new Map<string, Promise<HTMLImageElement>>();
+
 export function loadImg(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
+  const cached = imgCache.get(src);
+  if (cached) return cached;
+  const promise = new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('load'));
     img.src = src;
   });
+  // Don't cache a failed load — the next call should get a fresh attempt.
+  promise.catch(() => imgCache.delete(src));
+  imgCache.set(src, promise);
+  return promise;
 }
 
 /** Cover-fit the sand-texture backdrop photo onto a canvas of any size/aspect. */
