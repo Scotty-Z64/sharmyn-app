@@ -26,4 +26,10 @@ export default defineConfig({
     outDir: path.resolve(__dirname, "dist/public"),
     emptyOutDir: true,
   },
+  // The bg-removal Web Worker (src/lib/bg-removal.worker.ts) dynamically
+  // imports @imgly/background-removal, which itself code-splits — Rollup
+  // can't code-split into the default IIFE worker format, only ES modules.
+  worker: {
+    format: "es",
+  },
 });

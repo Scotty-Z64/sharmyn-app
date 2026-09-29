@@ -2,19 +2,35 @@
 // no per-image cost). Replaces the old remove.bg server round-trip, which
 // depended on an external account staying funded with credits.
 //
-// The model + wasm files are fetched on first use from IMG.LY's CDN and
+// The model + wasm files are fetched on first use from IMG.LY's CDN (or our
+// own self-hosted mirror in prod, see scripts/copy-imgly-model.js) and
 // cached by the browser afterwards; this only runs in the portal (product
 // photos / Studio), never on the storefront, so the one-time download cost
 // is a non-issue for customers.
+//
+// Runs in a fresh, disposable Web Worker per photo (see bg-removal.worker.ts)
+// — not on the main thread. The underlying WASM/ONNX runtime only ever
+// grows its memory across calls (checked the library's own source: there's
+// no public reset/dispose API), which is why processing several product
+// photos back-to-back used to get progressively slower and, on a memory-
+// constrained phone, could plausibly corrupt output (measured: processing
+// time climbing 25s -> 29s -> 39s across 3 sequential photos in one
+// session, even though the 3rd — smallest — source image should have been
+// the fastest if size were the only factor). A Worker is its own isolated
+// memory space; terminating it after every single photo gives a hard,
+// guaranteed reset each time, regardless of what the library does
+// internally — the actual fix, not a workaround.
 
-// The model download (~80MB, first use per browser only) or the underlying
-// Web Worker can stall or die silently on a slow/flaky connection — no
-// network error, no rejection, the awaiting promise just never settles.
-// Without a hard ceiling, that reads as "the system hangs" and blocks the
-// whole product form, since every caller awaits this before doing anything
-// else. Race it against a timeout so it always eventually settles one way
-// or another, and callers' existing catch-and-fall-back-to-the-raw-photo
-// logic kicks in instead of hanging forever.
+import type { WorkerRequest, WorkerResponse } from './bg-removal.worker';
+
+// The model download (~80MB, first use per browser only) or the worker
+// itself can stall or die silently on a slow/flaky connection — no network
+// error, no rejection, the awaiting promise just never settles. Without a
+// hard ceiling, that reads as "the system hangs" and blocks the whole
+// product form, since every caller awaits this before doing anything else.
+// Race it against a timeout so it always eventually settles one way or
+// another, and callers' existing catch-and-fall-back-to-the-raw-photo logic
+// kicks in instead of hanging forever.
 const TIMEOUT_MS = 45_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
@@ -24,25 +40,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
       (v) => { clearTimeout(timer); resolve(v); },
       (e) => { clearTimeout(timer); reject(e); }
     );
-  });
-}
-
-let removeBackgroundFn: typeof import('@imgly/background-removal').removeBackground | null = null;
-
-async function getRemoveBackground() {
-  if (!removeBackgroundFn) {
-    const mod = await import('@imgly/background-removal');
-    removeBackgroundFn = mod.removeBackground;
-  }
-  return removeBackgroundFn;
-}
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error('blob-read-failed'));
-    reader.readAsDataURL(blob);
   });
 }
 
@@ -73,6 +70,10 @@ function loadImageEl(src: string): Promise<HTMLImageElement> {
 // composited onto the studio backdrop. Hard-zero anything below a real
 // confidence floor — both so the crop box reflects only the product, and so
 // those pixels are fully transparent (invisible) rather than a ghost smear.
+//
+// Runs on the main thread (not the worker) — it's lightweight canvas work,
+// not the AI inference that's actually driving the memory growth, and it
+// needs the final PNG as a data URL for the rest of the app either way.
 async function trimToOpaqueBounds(dataUrl: string, marginFraction = 0.05): Promise<string> {
   const img = await loadImageEl(dataUrl);
   const w = img.width, h = img.height;
@@ -121,33 +122,45 @@ async function trimToOpaqueBounds(dataUrl: string, marginFraction = 0.05): Promi
 
 export type BgRemovalProgress = (current: number, total: number) => void;
 
-async function removeBackgroundClientInner(dataUrl: string, onProgress?: BgRemovalProgress): Promise<string> {
-  const removeBackground = await getRemoveBackground();
-  const blob = await removeBackground(dataUrl, {
-    // isnet_fp16 (the library default, ~80MB) — briefly tried the smaller
-    // quantized isnet_quint8 model to help with slow downloads, but its
-    // segmentation confidence is visibly noisier on a low-contrast subject
-    // (e.g. a white shoe on a pale background): a real product photo came
-    // back with a broad blotchy "splatter" halo around the product instead
-    // of a clean edge. Output correctness matters more than shaving the
-    // download in half, so back to the better model — the timeout below and
-    // the noise floor in trimToOpaqueBounds are the actual right levers for
-    // reliability without giving up quality.
-    output: { format: 'image/png' },
-    progress: onProgress ? (_key, current, total) => onProgress(current, total) : undefined,
-    // Self-hosted in prod (see scripts/copy-imgly-model.js + the
-    // /imgly-models/* route in api/boot.ts) — IMG.LY's own CDN sends no
-    // Cache-Control on these ~95MB files, so the browser has no guarantee
-    // it keeps them cached between photos. Serving them ourselves with a
-    // long-lived Cache-Control turns "slow every time" into "slow once".
-    // Dev keeps using IMG.LY's CDN directly (undefined = library default)
-    // since `npm run dev` never runs the copy step. Must be an absolute URL
-    // (the library does `new URL(file, publicPath)`, which requires a real
-    // base) — window.location.origin so it works on any domain.
-    publicPath: import.meta.env.PROD ? `${window.location.origin}/imgly-models/` : undefined,
+/** Wires up an ALREADY-CREATED worker's messages to a Promise. Doesn't own
+ * the worker's lifecycle — the caller creates it and is responsible for
+ * terminate()ing it (in a finally, so a timeout racing this promise still
+ * guarantees cleanup instead of leaving an abandoned worker running). */
+function runInWorker(
+  worker: Worker,
+  dataUrl: string,
+  onProgress?: BgRemovalProgress
+): Promise<{ buffer: ArrayBuffer; mime: string }> {
+  return new Promise((resolve, reject) => {
+    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
+      const msg = e.data;
+      if (msg.type === 'progress') { onProgress?.(msg.current, msg.total); return; }
+      if (msg.type === 'done') { resolve({ buffer: msg.buffer, mime: msg.mime }); return; }
+      reject(new Error(msg.message));
+    };
+    worker.onerror = (e) => reject(new Error(e.message || 'worker-error'));
+    const req: WorkerRequest = {
+      dataUrl,
+      // Self-hosted in prod (see scripts/copy-imgly-model.js + the
+      // /imgly-models/* route in api/boot.ts) — IMG.LY's own CDN sends no
+      // Cache-Control on these ~95MB files, so the browser has no guarantee
+      // it keeps them cached between photos. Must be an absolute URL (the
+      // library does `new URL(file, publicPath)`) — window.location.origin
+      // so it works on any domain. Dev keeps using IMG.LY's CDN directly.
+      publicPath: import.meta.env.PROD ? `${window.location.origin}/imgly-models/` : undefined,
+    };
+    worker.postMessage(req);
   });
-  const cutout = await blobToDataUrl(blob);
-  return trimToOpaqueBounds(cutout);
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const CHUNK = 0x8000; // avoid a giant single call to String.fromCharCode
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
 }
 
 /** Strip the background from a photo (data URL in, transparent PNG data URL out,
@@ -156,9 +169,20 @@ async function removeBackgroundClientInner(dataUrl: string, onProgress?: BgRemov
  * progress (current/total bytes) so callers can show real feedback instead of
  * a static spinner during the (up to ~40MB) first-use download. */
 export async function removeBackgroundClient(dataUrl: string, onProgress?: BgRemovalProgress): Promise<string> {
-  return withTimeout(
-    removeBackgroundClientInner(dataUrl, onProgress),
-    TIMEOUT_MS,
-    'Background removal timed out — the image model may be slow to load on this connection.'
-  );
+  const worker = new Worker(new URL('./bg-removal.worker.ts', import.meta.url), { type: 'module' });
+  let result: { buffer: ArrayBuffer; mime: string };
+  try {
+    result = await withTimeout(
+      runInWorker(worker, dataUrl, onProgress),
+      TIMEOUT_MS,
+      'Background removal timed out — the image model may be slow to load on this connection.'
+    );
+  } finally {
+    // Always — success, error, or timeout — so a slow/stuck call never
+    // leaves an abandoned worker (and its WASM memory) running in the
+    // background. This is the actual point of the whole worker approach.
+    worker.terminate();
+  }
+  const cutout = `data:${result.mime};base64,${arrayBufferToBase64(result.buffer)}`;
+  return trimToOpaqueBounds(cutout);
 }
