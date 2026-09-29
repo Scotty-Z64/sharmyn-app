@@ -578,7 +578,7 @@ export default function ProductFormModal({
                 {d.image && !polished && !cropSrc && (
                   <div className="space-y-2 pt-1">
                     <p className="text-[11px] text-ink-500">
-                      Choose how to remove the background — nothing runs until you pick one. Works best on photos of just the product; a photo of it being worn will keep the leg/hand in unless you crop tightly to just the shoe first.
+                      Choose how to remove the background — nothing runs until you pick one. Works best on photos of just the product against a surface that contrasts with it. A worn photo will keep the leg/hand in, and a product sitting directly on a similarly-dark/light surface can pull that surface in too — crop tightly to just the product first to fix either case.
                     </p>
                     <div className="flex flex-col gap-2">
                       {remoteBgEnabled && (
@@ -598,8 +598,9 @@ export default function ProductFormModal({
                     </div>
                     <div className="flex flex-wrap gap-x-3 gap-y-1">
                       <button type="button" onClick={() => setCropSrc(d.image)} disabled={polishing}
+                        title="Also fixes a product sitting on a same-tone surface (e.g. a dark shoe on a dark table), not just worn/cluttered shots"
                         className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
-                        Crop photo (worn/cluttered shot)
+                        Crop photo (worn, cluttered, or similar-tone background)
                       </button>
                       <button type="button" onClick={runStudioFrame} disabled={polishing}
                         className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
@@ -612,10 +613,15 @@ export default function ProductFormModal({
                 )}
                 {d.image && polished && !cropSrc && (
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    <button type="button" onClick={() => { setCropSrc(d.image); setPolished(null); setPolishNote(''); }}
+                      title="Fixes a chunk of the background (e.g. the surface the product is sitting on) getting pulled into the cutout — crop tightly to just the product and re-run"
+                      className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
+                      Background stuck to the cutout? Crop and re-polish
+                    </button>
                     <button type="button" onClick={() => void runPolish(undefined, true)} disabled={polishing}
-                      title="Slower, bigger download — segments more accurately on busy/dark backgrounds the fast model can misread"
+                      title="Slower, bigger download — sharper edges on fine detail, but won't separate the product from a background it's already merged with (crop for that instead)"
                       className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
-                      {polishing ? 'Polishing…' : 'Cutout not clean? Try high quality (free, slower)'}
+                      {polishing ? 'Polishing…' : 'Edges look rough? Try high quality (free, slower)'}
                     </button>
                     {remoteBgEnabled && (
                       <button type="button" onClick={() => void runPolishRemoteBg()} disabled={polishing}
@@ -623,10 +629,6 @@ export default function ProductFormModal({
                         Try remove.bg instead
                       </button>
                     )}
-                    <button type="button" onClick={() => { setCropSrc(d.image); setPolished(null); setPolishNote(''); }}
-                      className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
-                      Not quite right? Crop and re-polish
-                    </button>
                   </div>
                 )}
               </div>
@@ -730,8 +732,9 @@ export default function ProductFormModal({
                 </div>
                 <div className="flex flex-wrap gap-x-3 gap-y-1">
                   <button type="button" onClick={() => setAngleCropSrc(angleRawSrc)} disabled={angleUploading}
+                    title="Also fixes a product sitting on a same-tone surface (e.g. a dark shoe on a dark table), not just worn/cluttered shots"
                     className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
-                    Crop photo (worn/cluttered shot)
+                    Crop photo (worn, cluttered, or similar-tone background)
                   </button>
                   <button type="button" onClick={() => setAngleRawSrc(null)} disabled={angleUploading}
                     className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
@@ -782,10 +785,15 @@ export default function ProductFormModal({
                     </button>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    <button type="button" onClick={() => { setAngleCropSrc(anglePreview.original); setAnglePreview(null); }}
+                      title="Fixes a chunk of the background (e.g. the surface the product is sitting on) getting pulled into the cutout — crop tightly to just the product and re-run"
+                      className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
+                      Background stuck to the cutout? Crop and re-polish
+                    </button>
                     <button type="button" onClick={() => void polishAngle(anglePreview.original, true)} disabled={angleUploading}
-                      title="Slower, bigger download — segments more accurately on busy/dark backgrounds the fast model can misread"
+                      title="Slower, bigger download — sharper edges on fine detail, but won't separate the product from a background it's already merged with (crop for that instead)"
                       className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900 disabled:opacity-60">
-                      {angleUploading ? 'Polishing…' : 'Cutout not clean? Try high quality (free, slower)'}
+                      {angleUploading ? 'Polishing…' : 'Edges look rough? Try high quality (free, slower)'}
                     </button>
                     {remoteBgEnabled && (
                       <button type="button" onClick={() => void polishAngleRemoteBg(anglePreview.original)} disabled={angleUploading}
@@ -793,10 +801,6 @@ export default function ProductFormModal({
                         Try remove.bg instead
                       </button>
                     )}
-                    <button type="button" onClick={() => { setAngleCropSrc(anglePreview.original); setAnglePreview(null); }}
-                      className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-500 underline hover:text-ink-900">
-                      Not quite right? Crop and re-polish
-                    </button>
                   </div>
                 </motion.div>
               )}
