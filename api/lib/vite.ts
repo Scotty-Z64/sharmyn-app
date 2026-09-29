@@ -20,6 +20,21 @@ export function serveStaticFiles(app: App) {
     }
     const indexPath = path.resolve(distPath, "index.html");
     const content = fs.readFileSync(indexPath, "utf-8");
+    // Owner portal only: enables crossOriginIsolated, which unlocks
+    // onnxruntime-web's multi-threaded WASM backend for the AI
+    // background-removal tool (product photo polish, Studio) — single-
+    // threaded CPU inference is several times slower. Scoped to /manage so
+    // it can never affect the storefront/checkout pages or their payment-
+    // gateway redirects. Safe cross-origin-wise: IMG.LY's CDN (where the
+    // ONNX model + WASM runtime are fetched from) already serves those
+    // files with `Cross-Origin-Resource-Policy: cross-origin`, so COEP
+    // doesn't block them.
+    if (c.req.path === "/manage" || c.req.path.startsWith("/manage/")) {
+      return c.html(content, 200, {
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Embedder-Policy": "require-corp",
+      });
+    }
     return c.html(content);
   });
 }
