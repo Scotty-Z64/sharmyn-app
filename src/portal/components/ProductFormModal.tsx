@@ -7,6 +7,7 @@ import { CATEGORIES, SHOE_BRANDS, isSizedCategory, formatPrice, discountPercent 
 import { imageReadErrorMessage, MAX_UPLOAD_BYTES } from '@/lib/image-upload-errors';
 import { loadImg, drawSandBackdrop, drawWordmark, PRODUCT_TEMPLATE_SRC, WORDMARK_SRC } from '@/lib/studio-visuals';
 import { removeBackgroundClient } from '@/lib/bg-removal';
+import { detectLikelyHandInCutout } from '@/lib/hand-detect';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { Thumb } from './bits';
@@ -260,6 +261,11 @@ export default function ProductFormModal({
     setEraseSrc(null);
     setPolished(await compositeStudio(erased, cutoutMode, sizeScale));
   };
+  // Flags when a cutout likely still has a hand in it (see hand-detect.ts) —
+  // a hand touching the product confuses every engine tried (free, high
+  // quality, Photoroom) the same way, so this catches it automatically
+  // instead of relying on remembering "crop out the hand first" every time.
+  const [handWarning, setHandWarning] = useState(false);
 
   const runPolish = async (imageOverride?: string, highQuality = false) => {
     const src = imageOverride ?? d.image;
@@ -268,12 +274,14 @@ export default function ProductFormModal({
     setPolishing(true);
     setPolished(null);
     setPolishPct(null);
+    setHandWarning(false);
     try {
       const imageData = await removeBackgroundClient(src, onPolishProgress, highQuality);
       setCutoutSrc(imageData);
       setCutoutMode(true);
       setSizeScale(1);
       setPolished(await compositeStudio(imageData, true, 1));
+      void detectLikelyHandInCutout(imageData).then(setHandWarning);
     } catch (e) {
       const msg = (e as { message?: string } | null)?.message ?? '';
       if (msg.includes('timed out')) {
@@ -311,11 +319,13 @@ export default function ProductFormModal({
     setPolishNote('');
     setPolishing(true);
     setPolished(null);
+    setHandWarning(false);
     try {
       const { imageData } = await polishMut.mutateAsync({ token, imageData: src });
       setCutoutSrc(imageData);
       setCutoutMode(true);
       setSizeScale(1);
+      void detectLikelyHandInCutout(imageData).then(setHandWarning);
       setPolished(await compositeStudio(imageData, true, 1));
     } catch (e) {
       const msg = (e as { message?: string } | null)?.message ?? '';
@@ -416,10 +426,13 @@ export default function ProductFormModal({
   const [angleRawSrc, setAngleRawSrc] = useState<string | null>(null);
   // Same worn-shoe problem as the cover photo can happen on an angle shot too.
   const [angleCropSrc, setAngleCropSrc] = useState<string | null>(null);
+  // Same automatic hand check as the cover photo (see handWarning above).
+  const [angleHandWarning, setAngleHandWarning] = useState(false);
 
   const polishAngle = async (compressed: string, highQuality = false) => {
     setAngleErr('');
     setAngleUploading(true);
+    setAngleHandWarning(false);
     try {
       const src = await removeBackgroundClient(compressed, undefined, highQuality);
       const finalImg = await compositeStudio(src, true, 1);
@@ -427,6 +440,7 @@ export default function ProductFormModal({
       setAngleCutoutMode(true);
       setAngleScale(1);
       setAnglePreview({ original: compressed, polished: finalImg });
+      void detectLikelyHandInCutout(src).then(setAngleHandWarning);
     } catch (e) {
       const msg = (e as { message?: string } | null)?.message ?? '';
       setAngleErr(`Could not process that photo — please try again. ${msg ? `(${msg.slice(0, 120)})` : ''}`);
@@ -440,6 +454,7 @@ export default function ProductFormModal({
   const polishAngleRemoteBg = async (compressed: string) => {
     setAngleErr('');
     setAngleUploading(true);
+    setAngleHandWarning(false);
     try {
       const { imageData: src } = await polishMut.mutateAsync({ token, imageData: compressed });
       const finalImg = await compositeStudio(src, true, 1);
@@ -447,6 +462,7 @@ export default function ProductFormModal({
       setAngleCutoutMode(true);
       setAngleScale(1);
       setAnglePreview({ original: compressed, polished: finalImg });
+      void detectLikelyHandInCutout(src).then(setAngleHandWarning);
     } catch (e) {
       const msg = (e as { message?: string } | null)?.message ?? '';
       setAngleErr(
@@ -686,6 +702,17 @@ export default function ProductFormModal({
                       <figcaption className="mt-1 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">Polished</figcaption>
                     </figure>
                   </div>
+                  {handWarning && (
+                    <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                      <p className="text-[11px] text-amber-900">
+                        This looks like it might still include a hand or finger holding the product — that's why it can look like it's floating. Crop tightly to just the product and try again for a cleaner result.
+                      </p>
+                      <button type="button" onClick={() => { setCropSrc(d.image); setPolished(null); setPolishNote(''); setHandWarning(false); }}
+                        className="mt-2 h-9 px-4 rounded-full bg-amber-600 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-amber-500">
+                        Crop now
+                      </button>
+                    </div>
+                  )}
                   <div className="mt-3">
                     <div className="flex items-center justify-between">
                       <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">Size in frame</label>
@@ -809,6 +836,17 @@ export default function ProductFormModal({
                       <figcaption className="mt-1 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">Polished</figcaption>
                     </figure>
                   </div>
+                  {angleHandWarning && (
+                    <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                      <p className="text-[11px] text-amber-900">
+                        This looks like it might still include a hand or finger holding the product — that's why it can look like it's floating. Crop tightly to just the product and try again for a cleaner result.
+                      </p>
+                      <button type="button" onClick={() => { setAngleCropSrc(anglePreview.original); setAnglePreview(null); setAngleHandWarning(false); }}
+                        className="mt-2 h-9 px-4 rounded-full bg-amber-600 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-amber-500">
+                        Crop now
+                      </button>
+                    </div>
+                  )}
                   <div className="mt-3">
                     <div className="flex items-center justify-between">
                       <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">Size in frame</label>
