@@ -34,7 +34,7 @@ export default function Privacy() {
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>Pudo</strong> — locker name/city, for locker deliveries</li>
           <li><strong>Our courier partner</strong> — name, phone, and address, for door deliveries</li>
-          <li><strong>Our payment gateway</strong> (Stitch/Payfast/Yoco) — for processing online payments</li>
+          <li><strong>Our payment gateway</strong> (Stitch/Ozow/Payfast/Yoco) — for processing online payments</li>
           <li><strong>Resend</strong> (our email provider) — to send order and invoice emails</li>
         </ul>
         <p>We never sell your information to anyone.</p>

@@ -43,6 +43,7 @@ import {
   refundOrderOnline,
 } from "./lib/payments";
 import { stitchEnabled, createStitchPaymentLink, getStitchLink, stitchLinkPaysOrder } from "./lib/stitch";
+import { ozowEnabled, createOzowPayment, checkOzowPayment } from "./lib/ozow";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
 import { publishToInstagram } from "./lib/meta";
 import {
@@ -198,7 +199,7 @@ export const appRouter = createRouter({
         }
       }),
 
-    // ---- online payments (Stitch / Payfast / Yoco) ----
+    // ---- online payments (Stitch / Ozow / Payfast / Yoco) ----
     paymentConfig: publicQuery.query(() => ({ enabled: paymentsEnabled() })),
     createPayment: publicQuery
       .input(z.object({ orderId: z.string() }))
@@ -217,6 +218,14 @@ export const appRouter = createRouter({
           const { paymentLinkId, redirectUrl } = await createStitchPaymentLink(order, requestOrigin(ctx.req));
           await setOrderPaymentGateway(order.id, "stitch");
           await setOrderPaymentRef(order.id, paymentLinkId);
+          return { alreadyPaid: false as const, redirectUrl };
+        }
+        if (gateway === "ozow") {
+          // Payment request id goes in paymentRef — status checks and refunds
+          // look the money up (the transaction under it) from that.
+          const { paymentId, redirectUrl } = await createOzowPayment(order, requestOrigin(ctx.req));
+          await setOrderPaymentGateway(order.id, "ozow");
+          await setOrderPaymentRef(order.id, paymentId);
           return { alreadyPaid: false as const, redirectUrl };
         }
         await setOrderPaymentGateway(order.id, gateway);
@@ -271,6 +280,31 @@ export const appRouter = createRouter({
             return { paymentStatus: updated?.paymentStatus ?? "paid", order: updated ? toPublicOrder(updated) : null };
           }
           if (link.status === "EXPIRED" || link.status === "CANCELLED") {
+            await markOrderPaymentFailed(order.id);
+            return { paymentStatus: "failed" as const, order: null };
+          }
+          return { paymentStatus: order.paymentStatus, order: null };
+        }
+
+        if (order.paymentGateway === "ozow") {
+          // Ask Ozow directly (never trust the redirect's query string). Bank
+          // confirmation can lag the customer's return by a few seconds, so
+          // poll briefly while the transaction is still in flight.
+          if (!ozowEnabled() || !order.paymentRef) return { paymentStatus: order.paymentStatus, order: null };
+          let outcome = await checkOzowPayment(order.paymentRef, order);
+          for (let attempt = 0; attempt < 3 && (outcome.state === "pending" || outcome.state === "none"); attempt++) {
+            await new Promise((r) => setTimeout(r, 1500));
+            outcome = await checkOzowPayment(order.paymentRef, order);
+          }
+          if (outcome.state === "paid") {
+            const updated = await markOrderPaid(order.id, order.paymentRef, "ozow");
+            if (updated) {
+              void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
+              sendInvoiceOnce(updated);
+            }
+            return { paymentStatus: updated?.paymentStatus ?? "paid", order: updated ? toPublicOrder(updated) : null };
+          }
+          if (outcome.state === "failed") {
             await markOrderPaymentFailed(order.id);
             return { paymentStatus: "failed" as const, order: null };
           }

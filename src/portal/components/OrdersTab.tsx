@@ -237,7 +237,7 @@ function OrderCard({ order }: { order: Order }) {
   const exchangesQuery = trpc.shop.listExchanges.useQuery({ token, orderId: order.id }, { enabled: open && order.paymentStatus === 'paid' });
   const stepIdx = STEPS.indexOf(order.status);
   // Gateways whose refunds we can trigger through their API (Yoco, Stitch).
-  const gatewayLabel = order.paymentGateway === 'stitch' ? 'Stitch' : 'Yoco';
+  const gatewayLabel = order.paymentGateway === 'stitch' ? 'Stitch' : order.paymentGateway === 'ozow' ? 'Ozow' : 'Yoco';
 
   const setStatus = async (s: OrderStatus) => {
     if (s === order.status || setStatusMut.isPending) return;
@@ -284,7 +284,7 @@ function OrderCard({ order }: { order: Order }) {
   // through Yoco; Payfast refunds aren't API-driven on a standard merchant
   // account, so those (and cash/EFT) fall back to markRefunded once the
   // owner has refunded however it was actually paid.
-  const canRefundOnline = (order.paymentGateway === 'yoco' || order.paymentGateway === 'stitch') && !!order.paymentRef;
+  const canRefundOnline = (order.paymentGateway === 'yoco' || order.paymentGateway === 'stitch' || order.paymentGateway === 'ozow') && !!order.paymentRef;
   const refundOnline = async () => {
     if (refundOnlineMut.isPending) return;
     try {

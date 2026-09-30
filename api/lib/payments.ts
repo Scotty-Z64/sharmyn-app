@@ -1,12 +1,15 @@
-// Gateway-agnostic online payments. Three gateways are wired in: Stitch
-// Express (hosted payment links + Svix webhook, see stitch.ts), Yoco (hosted
-// checkout API) and Payfast (signed-redirect + ITN webhook). Whichever is
-// configured becomes the active gateway for new checkouts; if several are
-// set, Stitch wins, then Payfast, then Yoco. Each PAID order remembers which
-// gateway it went through (Order.paymentGateway) so refunds/verification
+// Gateway-agnostic online payments. Four gateways are wired in: Stitch
+// Express (hosted payment links + Svix webhook, see stitch.ts), Ozow (instant
+// EFT via the One API, see ozow.ts), Yoco (hosted checkout API) and Payfast
+// (signed-redirect + ITN webhook). Whichever is configured becomes the active
+// gateway for new checkouts. If several are set, PAYMENT_GATEWAY (e.g.
+// "ozow") picks one explicitly; otherwise Stitch wins, then Payfast, then
+// Yoco, then Ozow (EFT only, so the last resort). Each PAID order remembers
+// which gateway it went through (Order.paymentGateway) so refunds/verification
 // route to the right place — switching gateways never strands old orders.
 import type { Order, PaymentGateway } from "@contracts/types";
 import { stitchEnabled, refundStitchLink } from "./stitch";
+import { ozowEnabled, refundOzowPayment } from "./ozow";
 
 const YOCO_API = "https://payments.yoco.com/api/checkouts";
 
@@ -18,17 +21,30 @@ export function payfastEnabled(): boolean {
   return !!(process.env.PAYFAST_MERCHANT_ID && process.env.PAYFAST_MERCHANT_KEY);
 }
 
-export { stitchEnabled };
+export { stitchEnabled, ozowEnabled };
 
 export function paymentsEnabled(): boolean {
-  return stitchEnabled() || payfastEnabled() || yocoEnabled();
+  return stitchEnabled() || ozowEnabled() || payfastEnabled() || yocoEnabled();
 }
 
-/** Which gateway a NEW checkout should use. Stitch, then Payfast, then Yoco. */
+const GATEWAY_READY: Record<PaymentGateway, () => boolean> = {
+  stitch: stitchEnabled,
+  ozow: ozowEnabled,
+  payfast: payfastEnabled,
+  yoco: yocoEnabled,
+};
+
+/**
+ * Which gateway a NEW checkout should use. PAYMENT_GATEWAY wins when it names
+ * a gateway that is actually configured; otherwise Stitch, Payfast, Yoco, Ozow.
+ */
 export function activeGateway(): PaymentGateway | null {
+  const chosen = process.env.PAYMENT_GATEWAY?.trim().toLowerCase() as PaymentGateway | undefined;
+  if (chosen && GATEWAY_READY[chosen]?.()) return chosen;
   if (stitchEnabled()) return "stitch";
   if (payfastEnabled()) return "payfast";
   if (yocoEnabled()) return "yoco";
+  if (ozowEnabled()) return "ozow";
   return null;
 }
 
@@ -37,7 +53,8 @@ export function canRefundOnline(order: Order): boolean {
   if (!order.paymentRef) return false;
   return (
     (order.paymentGateway === "yoco" && yocoEnabled()) ||
-    (order.paymentGateway === "stitch" && stitchEnabled())
+    (order.paymentGateway === "stitch" && stitchEnabled()) ||
+    (order.paymentGateway === "ozow" && ozowEnabled())
   );
 }
 
@@ -46,6 +63,7 @@ export async function refundOrderOnline(order: Order): Promise<{ refunded: boole
   if (!order.paymentRef) throw new Error("REFUND_FAILED:no payment reference");
   const cents = Math.round(order.total * 100);
   if (order.paymentGateway === "stitch") return refundStitchLink(order.paymentRef, cents);
+  if (order.paymentGateway === "ozow") return refundOzowPayment(order.paymentRef, cents);
   if (order.paymentGateway === "yoco") return refundYocoCheckout(order.paymentRef, cents);
   throw new Error("REFUND_FAILED:gateway has no API refund");
 }

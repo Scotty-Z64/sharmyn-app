@@ -162,6 +162,104 @@ app.post("/api/webhooks/stitch", async (c) => {
   return c.json({ ok: true });
 });
 
+// Ozow One API webhook (Svix-signed `transaction.complete`). Same rules as the
+// Stitch one: the signature proves the sender, the body is only a HINT about
+// which order to look at, and payment truth comes from asking Ozow's API for
+// the transactions under the order's payment request. A bad/missing signature
+// gets a 401 (Svix retries, so a mis-set secret self-heals once fixed);
+// everything after that answers 200 and logs instead of erroring. Note that
+// `transaction.complete` also fires for FAILED transactions, so an event that
+// doesn't show a successful payment is simply ignored.
+app.post("/api/webhooks/ozow", async (c) => {
+  const raw = await c.req.text();
+  const { verifyOzowWebhook, getOzowTransaction, checkOzowPayment, ozowEnabled } = await import("./lib/ozow");
+  const ok = verifyOzowWebhook(raw, {
+    id: c.req.header("svix-id"),
+    timestamp: c.req.header("svix-timestamp"),
+    signature: c.req.header("svix-signature"),
+  });
+  if (!ok) {
+    console.error("[ozow-webhook] rejected: missing or invalid signature (is OZOW_WEBHOOK_SECRET set?)");
+    return c.json({ error: "invalid signature" }, 401);
+  }
+
+  try {
+    const event = JSON.parse(raw) as unknown;
+    // Structure only (never values — they contain payer details), logged even
+    // before Ozow is switched on so a test payment reveals the real payload shape.
+    const shape = (n: unknown, d = 0): unknown =>
+      n && typeof n === "object" && d < 3
+        ? Object.fromEntries(Object.entries(n as Record<string, unknown>).map(([k, v]) => [k, shape(v, d + 1)]))
+        : typeof n;
+    console.log("[ozow-webhook] event shape:", JSON.stringify(shape(event)));
+    if (!ozowEnabled()) return c.json({ ok: true });
+
+    // Collect hints from anywhere in the payload: merchant references and transaction ids.
+    const refs = new Set<string>();
+    const ids = new Set<string>();
+    const walk = (node: unknown, depth = 0): void => {
+      if (depth > 6 || node === null || typeof node !== "object") return;
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        if (typeof v === "string") {
+          if (/^(merchantReference|reference)$/i.test(k)) refs.add(v);
+          else if (/(^id$|transactionId)/i.test(k)) ids.add(v);
+        } else walk(v, depth + 1);
+      }
+    };
+    walk(event);
+
+    const { findOrder, markOrderPaid, markInvoiceSent } = await import("./queries/shop");
+    const { notifyOwner, sendInvoice } = await import("./lib/notify");
+
+    // 1. Find the order: by merchant reference first, else by looking each id up on Ozow.
+    let order = null as Awaited<ReturnType<typeof findOrder>>;
+    for (const r of refs) {
+      order = await findOrder(r);
+      if (order) break;
+    }
+    if (!order) {
+      for (const id of ids) {
+        try {
+          const tx = await getOzowTransaction(id);
+          if (tx?.merchantReference) order = await findOrder(tx.merchantReference);
+          if (order) break;
+        } catch {
+          /* not a transaction id — try the next hint */
+        }
+      }
+    }
+    if (!order) {
+      console.error("[ozow-webhook] could not match event to an order");
+      return c.json({ ok: true });
+    }
+    if (order.paymentStatus === "paid") return c.json({ ok: true }); // idempotent
+    if (order.paymentGateway !== "ozow" || !order.paymentRef) {
+      console.error(`[ozow-webhook] ${order.id} is not an Ozow order — ignoring`);
+      return c.json({ ok: true });
+    }
+
+    // 2. Confirm with Ozow's own answer for this order's payment request.
+    const outcome = await checkOzowPayment(order.paymentRef, order);
+    if (outcome.state === "paid") {
+      const updated = await markOrderPaid(order.id, order.paymentRef, "ozow");
+      if (updated) {
+        void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
+        if (!updated.invoiceSentAt) {
+          void markInvoiceSent(updated.id).catch((e) => console.error("[invoice] failed to flag sent:", e));
+          void sendInvoice(updated).catch((e) => console.error("[invoice] send failed:", e));
+        }
+      }
+      return c.json({ ok: true });
+    }
+    console.error(`[ozow-webhook] no successful transaction yet for ${order.id} (state ${outcome.state})`);
+    // In flight or not yet visible — most likely a race, so answer 503 and let Svix redeliver.
+    if (outcome.state === "pending" || outcome.state === "none") return c.json({ error: "not yet confirmed" }, 503);
+  } catch (e) {
+    console.error("[ozow-webhook] error:", e);
+  }
+  return c.json({ ok: true });
+});
+
 // Payfast ITN (Instant Transaction Notification) — the authoritative payment
 // confirmation path for Payfast, independent of the customer's browser
 // redirect. Always answers 200 fast (Payfast retries aggressively on
