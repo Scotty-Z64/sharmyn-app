@@ -59,6 +59,109 @@ app.post("/api/webhooks/yoco", async (c) => {
   return c.json({ ok: true });
 });
 
+// Stitch Express webhook (Svix-signed). The signature proves the request is
+// from Stitch, but the body is only a HINT about which order to look at —
+// payment truth always comes from asking the API for the payment link
+// (status PAID, right merchant reference, right amount), so a malformed or
+// replayed event can't mark anything paid on its own. A bad/missing signature
+// gets a 401 (Svix retries, so a mis-set secret self-heals once fixed);
+// everything after that answers 200 and logs instead of erroring.
+app.post("/api/webhooks/stitch", async (c) => {
+  const raw = await c.req.text();
+  const { verifyStitchWebhook, getStitchLink, stitchLinkPaysOrder, stitchEnabled } = await import("./lib/stitch");
+  const ok = verifyStitchWebhook(raw, {
+    id: c.req.header("svix-id"),
+    timestamp: c.req.header("svix-timestamp"),
+    signature: c.req.header("svix-signature"),
+  });
+  if (!ok) {
+    console.error("[stitch-webhook] rejected: missing or invalid signature (is STITCH_WEBHOOK_SECRET set?)");
+    return c.json({ error: "invalid signature" }, 401);
+  }
+
+  try {
+    const event = JSON.parse(raw) as unknown;
+    // Structure only (never values — they contain payer details), logged even
+    // before Stitch is switched on so a test payment reveals the real payload shape.
+    const shape = (n: unknown, d = 0): unknown =>
+      n && typeof n === "object" && d < 3
+        ? Object.fromEntries(Object.entries(n as Record<string, unknown>).map(([k, v]) => [k, shape(v, d + 1)]))
+        : typeof n;
+    console.log("[stitch-webhook] event shape:", JSON.stringify(shape(event)));
+    if (!stitchEnabled()) return c.json({ ok: true });
+
+    // Collect hints from anywhere in the payload: merchant references and link/payment ids.
+    const refs = new Set<string>();
+    const ids = new Set<string>();
+    const walk = (node: unknown, depth = 0): void => {
+      if (depth > 6 || node === null || typeof node !== "object") return;
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        if (typeof v === "string") {
+          if (/^(merchantReference|reference)$/i.test(k)) refs.add(v);
+          else if (/(^id$|paymentLinkId|paymentLinkShortId|shortId|payment_id|linkId)/i.test(k)) ids.add(v);
+        } else walk(v, depth + 1);
+      }
+    };
+    walk(event);
+
+    const { findOrder, markOrderPaid, markInvoiceSent } = await import("./queries/shop");
+    const { notifyOwner, sendInvoice } = await import("./lib/notify");
+
+    // 1. Find the order: by merchant reference first, else by looking each id up on Stitch.
+    let order = null as Awaited<ReturnType<typeof findOrder>>;
+    for (const r of refs) {
+      order = await findOrder(r);
+      if (order) break;
+    }
+    if (!order) {
+      for (const id of ids) {
+        try {
+          const l = await getStitchLink(id);
+          order = await findOrder(l.merchantReference);
+          if (order) break;
+        } catch {
+          /* not a payment-link id — try the next hint */
+        }
+      }
+    }
+    if (!order) {
+      console.error("[stitch-webhook] could not match event to an order");
+      return c.json({ ok: true });
+    }
+    if (order.paymentStatus === "paid") return c.json({ ok: true }); // idempotent
+
+    // 2. Confirm with Stitch. Check the link we recorded AND any link the
+    //    event named — a customer may pay an earlier link after a retry.
+    const candidates = new Set<string>([...(order.paymentRef ? [order.paymentRef] : []), ...ids]);
+    for (const id of candidates) {
+      let link;
+      try {
+        link = await getStitchLink(id);
+      } catch {
+        continue;
+      }
+      if (!stitchLinkPaysOrder(link, order)) continue;
+      const updated = await markOrderPaid(order.id, link.id, "stitch");
+      if (updated) {
+        void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
+        if (!updated.invoiceSentAt) {
+          void markInvoiceSent(updated.id).catch((e) => console.error("[invoice] failed to flag sent:", e));
+          void sendInvoice(updated).catch((e) => console.error("[invoice] send failed:", e));
+        }
+      }
+      return c.json({ ok: true });
+    }
+    console.error(`[stitch-webhook] no PAID matching link found for ${order.id} (total ${order.total})`);
+    // A "paid" event whose payment the API doesn't show as PAID *yet* is most
+    // likely just a race — answer 503 so Svix redelivers instead of dropping it.
+    const evType = String((event as { type?: unknown; event?: unknown })?.type ?? (event as { event?: unknown })?.event ?? "");
+    if (/paid/i.test(evType)) return c.json({ error: "not yet confirmed" }, 503);
+  } catch (e) {
+    console.error("[stitch-webhook] error:", e);
+  }
+  return c.json({ ok: true });
+});
+
 // Payfast ITN (Instant Transaction Notification) — the authoritative payment
 // confirmation path for Payfast, independent of the customer's browser
 // redirect. Always answers 200 fast (Payfast retries aggressively on

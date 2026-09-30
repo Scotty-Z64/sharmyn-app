@@ -38,9 +38,11 @@ import {
   yocoEnabled,
   createYocoCheckout,
   verifyYocoCheckout,
-  refundYocoCheckout,
   buildPayfastRedirect,
+  canRefundOnline,
+  refundOrderOnline,
 } from "./lib/payments";
+import { stitchEnabled, createStitchPaymentLink, getStitchLink, stitchLinkPaysOrder } from "./lib/stitch";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
 import { publishToInstagram } from "./lib/meta";
 import {
@@ -196,7 +198,7 @@ export const appRouter = createRouter({
         }
       }),
 
-    // ---- online payments (Yoco / Payfast) ----
+    // ---- online payments (Stitch / Payfast / Yoco) ----
     paymentConfig: publicQuery.query(() => ({ enabled: paymentsEnabled() })),
     createPayment: publicQuery
       .input(z.object({ orderId: z.string() }))
@@ -207,6 +209,15 @@ export const appRouter = createRouter({
         const gateway = activeGateway();
         if (!gateway) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PAYMENTS_NOT_CONFIGURED" });
+        }
+        if (gateway === "stitch") {
+          // Creates (or reuses a still-open) hosted payment link. The link id
+          // goes in paymentRef — it's what every later status check and
+          // refund is made against.
+          const { paymentLinkId, redirectUrl } = await createStitchPaymentLink(order, requestOrigin(ctx.req));
+          await setOrderPaymentGateway(order.id, "stitch");
+          await setOrderPaymentRef(order.id, paymentLinkId);
+          return { alreadyPaid: false as const, redirectUrl };
         }
         await setOrderPaymentGateway(order.id, gateway);
         if (gateway === "payfast") {
@@ -234,6 +245,37 @@ export const appRouter = createRouter({
           return { paymentStatus: order.paymentStatus, order: toPublicOrder(order) };
         }
         if (!paymentsEnabled()) return { paymentStatus: order.paymentStatus, order: null }; // no-op when disabled
+
+        if (order.paymentGateway === "stitch") {
+          // Ask Stitch directly (never trust the redirect's query string).
+          // Poll briefly: the customer can land back here a beat before the
+          // payment finishes registering on Stitch's side.
+          if (!stitchEnabled() || !order.paymentRef) return { paymentStatus: order.paymentStatus, order: null };
+          let link = await getStitchLink(order.paymentRef);
+          for (let attempt = 0; attempt < 3 && link.status === "PENDING"; attempt++) {
+            await new Promise((r) => setTimeout(r, 1500));
+            link = await getStitchLink(order.paymentRef);
+          }
+          if (link.status === "PAID") {
+            if (!stitchLinkPaysOrder(link, order)) {
+              console.error(
+                `[payments] stitch confirmPayment mismatch for ${order.id}: ref=${link.merchantReference} amount=${link.amountCents} expected=${Math.round(order.total * 100)}`
+              );
+              return { paymentStatus: order.paymentStatus, order: null };
+            }
+            const updated = await markOrderPaid(order.id, link.id, "stitch");
+            if (updated) {
+              void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
+              sendInvoiceOnce(updated);
+            }
+            return { paymentStatus: updated?.paymentStatus ?? "paid", order: updated ? toPublicOrder(updated) : null };
+          }
+          if (link.status === "EXPIRED" || link.status === "CANCELLED") {
+            await markOrderPaymentFailed(order.id);
+            return { paymentStatus: "failed" as const, order: null };
+          }
+          return { paymentStatus: order.paymentStatus, order: null };
+        }
 
         if (order.paymentGateway === "payfast") {
           for (let attempt = 0; attempt < 5 && order.paymentStatus !== "paid"; attempt++) {
@@ -487,9 +529,9 @@ export const appRouter = createRouter({
         if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
         void notifyCustomer("order_cancelled", order).catch((e) => console.error("[notify]", e));
 
-        if (order.refundStatus === "pending" && order.paymentGateway === "yoco" && order.paymentRef && yocoEnabled()) {
+        if (order.refundStatus === "pending" && canRefundOnline(order)) {
           try {
-            const { refunded } = await refundYocoCheckout(order.paymentRef, Math.round(order.total * 100));
+            const { refunded } = await refundOrderOnline(order);
             if (refunded) {
               const refundedOrder = await setRefundStatus(order.id, "refunded");
               if (refundedOrder) order = refundedOrder;
@@ -523,18 +565,18 @@ export const appRouter = createRouter({
         assertAdminToken(input.token);
         const order = await findOrder(input.id);
         if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
-        if (!yocoEnabled()) {
+        if (!paymentsEnabled()) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PAYMENTS_NOT_CONFIGURED" });
         }
-        if (order.paymentGateway !== "yoco" || !order.paymentRef || order.paymentStatus !== "paid") {
+        if (!canRefundOnline(order) || order.paymentStatus !== "paid") {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: "NOT_A_YOCO_PAYMENT — refund this one manually (via the Payfast dashboard, or setRefundStatus once refunded however it was actually paid).",
+            message: "NOT_REFUNDABLE_ONLINE — refund this one manually (via the Payfast dashboard, or setRefundStatus once refunded however it was actually paid).",
           });
         }
-        const { refunded, status } = await refundYocoCheckout(order.paymentRef, Math.round(order.total * 100));
+        const { refunded, status } = await refundOrderOnline(order);
         if (!refunded) {
-          throw new TRPCError({ code: "BAD_GATEWAY", message: `Yoco did not accept the refund (status: ${status})` });
+          throw new TRPCError({ code: "BAD_GATEWAY", message: `The gateway did not accept the refund (status: ${status})` });
         }
         const updated = await setRefundStatus(order.id, "refunded");
         return updated;

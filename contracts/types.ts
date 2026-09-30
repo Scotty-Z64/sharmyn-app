@@ -22,7 +22,7 @@ export function discountPercent(price: number, oldPrice?: number | null): number
 export type Availability = "in-stock" | "sold-out" | "back-soon";
 export type OrderStatus = "pending" | "processing" | "shipped" | "delivered" | "cancelled";
 export type PaymentStatus = "unpaid" | "paid" | "failed";
-export type PaymentGateway = "yoco" | "payfast";
+export type PaymentGateway = "yoco" | "payfast" | "stitch";
 export type RefundStatus = "none" | "pending" | "refunded";
 export type DeliveryMethod = "pudo" | "door" | "collect";
 
