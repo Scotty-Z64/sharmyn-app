@@ -353,6 +353,46 @@ export default function Checkout() {
             <ProofUpload orderId={placed.id} email={placed.customer.email} />
           )}
 
+          {/* What they ordered — with the photos, so they can see at a glance it's right */}
+          <div className="mt-6 mx-auto max-w-sm rounded-2xl border border-gold-400/40 bg-white p-5 text-left shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-gold-500">Your order</p>
+            <ul className="mt-2 divide-y divide-blush-100">
+              {placed.items.map((item, i) => {
+                const product = products.find((p) => p.id === item.productId);
+                return (
+                  <li key={`${item.productId}-${item.size ?? ''}-${i}`} className="flex items-center gap-3 py-3">
+                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-blush-100 bg-blush-50 grid place-items-center">
+                      {product?.image ? (
+                        <img src={product.image} alt={item.name} loading="lazy" className="h-full w-full object-cover" />
+                      ) : (
+                        <img src="/logo-crown.svg" alt="" className="h-8 w-8 opacity-50" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[14px] font-medium text-ink-900 leading-snug">{item.name}</p>
+                      <p className="mt-0.5 text-[12px] text-ink-500">
+                        {item.size ? `Size ${item.size} · ` : ''}Qty {item.qty}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-[14px] font-semibold text-ink-900">{formatPrice(item.price * item.qty)}</p>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-1 border-t border-blush-100 pt-3 text-[13px] text-ink-500 space-y-1">
+              {placed.delivery && (
+                <div className="flex justify-between">
+                  <span>{placed.delivery.method === 'pudo' ? 'Pudo locker delivery' : placed.delivery.method === 'door' ? 'Door delivery' : 'Collect in Joburg'}</span>
+                  <span>{placed.delivery.fee === 0 ? 'Free' : formatPrice(placed.delivery.fee)}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-baseline text-ink-900">
+                <span className="font-semibold uppercase tracking-[0.14em] text-[12px]">Total</span>
+                <span className="font-display text-xl font-semibold">{formatPrice(placed.total)}</span>
+              </div>
+            </div>
+          </div>
+
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
             <a
               href={waLink(BUSINESS.whatsapp, waText)}

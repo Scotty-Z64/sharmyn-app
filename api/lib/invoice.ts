@@ -12,12 +12,7 @@ import { getProductImageRaw } from "../queries/shop";
 import type { Order } from "@contracts/types";
 import { BANK, BUSINESS, UNPAID_HOLD_HOURS, bankConfigured } from "../../src/config/business";
 import { INK, GOLD, SOFT, drawLetterhead } from "./pdf-brand";
-
-/** Decode a "data:image/...;base64,..." URL to raw bytes for doc.image(). */
-function dataUrlToBuffer(dataUrl: string): Buffer | null {
-  const m = /^data:[^;,]+(?:;charset=[^;,]+)?;base64,(.+)$/s.exec(dataUrl);
-  return m ? Buffer.from(m[1], "base64") : null;
-}
+import { dataUrlToBuffer, drawProductThumb } from "./pdf-image";
 
 function addBusinessDays(from: Date, days: number): Date {
   const d = new Date(from);
@@ -34,21 +29,33 @@ function formatDate(d: Date): string {
   return d.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
 }
 
-/** Builds the invoice PDF as a Buffer. */
-export async function buildInvoicePdf(order: Order): Promise<Buffer> {
-  const productIds = [...new Set(order.items.map((i) => i.productId))];
-  const rows = productIds.length
-    ? await getDb().select({ id: products.id, refNumber: products.refNumber }).from(products).where(inArray(products.id, productIds))
-    : [];
-  const refById = new Map(rows.map((r) => [r.id, r.refNumber]));
+/** Product ref numbers and photos for the order's items. Normally read from the database; tests pass them in. */
+export interface InvoiceProductData {
+  refById: Map<string, number | null>;
+  imageById: Map<string, Buffer | null>;
+}
 
-  // Current product photo, not a historical snapshot — this is for Ben to
-  // visually confirm what to order from the supplier, so the CURRENT photo
-  // is what's actually useful (unlike price, which is snapshotted).
-  const imageById = new Map<string, Buffer | null>();
-  for (const id of productIds) {
-    const raw = await getProductImageRaw(id, null);
-    imageById.set(id, raw ? dataUrlToBuffer(raw) : null);
+/** Builds the invoice PDF as a Buffer. */
+export async function buildInvoicePdf(order: Order, preloaded?: InvoiceProductData): Promise<Buffer> {
+  const productIds = [...new Set(order.items.map((i) => i.productId))];
+  let refById: Map<string, number | null>;
+  let imageById: Map<string, Buffer | null>;
+  if (preloaded) {
+    ({ refById, imageById } = preloaded);
+  } else {
+    const rows = productIds.length
+      ? await getDb().select({ id: products.id, refNumber: products.refNumber }).from(products).where(inArray(products.id, productIds))
+      : [];
+    refById = new Map(rows.map((r) => [r.id, r.refNumber]));
+
+    // Current product photo, not a historical snapshot — it lets the customer (and
+    // Ben) see at a glance which item is which, so the CURRENT photo is what's
+    // useful (unlike price, which is snapshotted).
+    imageById = new Map<string, Buffer | null>();
+    for (const id of productIds) {
+      const raw = await getProductImageRaw(id, null);
+      imageById.set(id, raw ? dataUrlToBuffer(raw) : null);
+    }
   }
 
   // Dated by when payment was confirmed (the order moving to Processing), so a
@@ -91,27 +98,25 @@ export async function buildInvoicePdf(order: Order): Promise<Buffer> {
     // clipped or overlapped by the next row.
     const tableTop = 220;
     doc.fillColor(GOLD).fontSize(9).font("Helvetica-Bold");
-    doc.text("REF #", 100, tableTop);
-    doc.text("ITEM", 140, tableTop);
+    doc.text("REF #", 118, tableTop);
+    doc.text("ITEM", 156, tableTop);
     doc.text("QTY", 360, tableTop, { width: 40, align: "right" });
     doc.text("PRICE", 410, tableTop, { width: 60, align: "right" });
     doc.text("SUBTOTAL", 475, tableTop, { width: 70, align: "right" });
     doc.moveTo(50, tableTop + 16).lineTo(545, tableTop + 16).strokeColor("#E8DCD5").stroke();
 
-    const ROW_H = 50;
+    const ROW_H = 62;
+    const THUMB = 54;
     let rowY = tableTop + 24;
     for (const item of order.items) {
       const ref = refById.get(item.productId);
-      const img = imageById.get(item.productId);
-      if (img) {
-        try { doc.image(img, 50, rowY, { fit: [40, 40] }); } catch { /* corrupt/unreadable photo — skip, rest of the row still renders */ }
-      }
-      const textY = rowY + 12;
+      drawProductThumb(doc, imageById.get(item.productId), 50, rowY, THUMB);
+      const textY = rowY + 8;
       doc.font("Helvetica").fontSize(10).fillColor(INK);
-      doc.text(ref ? `#${ref}` : "—", 100, textY, { width: 36 });
-      doc.text(item.name, 140, textY, { width: 210, height: 14, ellipsis: true, lineBreak: false });
+      doc.text(ref ? `#${ref}` : "—", 118, textY, { width: 34 });
+      doc.text(item.name, 156, textY, { width: 194, height: 26, ellipsis: true }); // up to two lines
       if (item.size) {
-        doc.font("Helvetica-Bold").fontSize(9).fillColor(GOLD).text(`Size ${item.size}`, 140, textY + 14);
+        doc.font("Helvetica-Bold").fontSize(9).fillColor(GOLD).text(`Size ${item.size}`, 156, textY + 30);
       }
       doc.font("Helvetica").fontSize(10).fillColor(INK);
       doc.text(String(item.qty), 360, textY, { width: 40, align: "right" });

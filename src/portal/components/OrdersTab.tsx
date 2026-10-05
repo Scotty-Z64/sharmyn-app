@@ -798,7 +798,7 @@ export default function OrdersTab() {
         )}
         <a href={`/api/order-list.pdf?token=${encodeURIComponent(token)}`} target="_blank" rel="noreferrer"
           className="h-9 px-3.5 rounded-full text-[10.5px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap transition-colors shrink-0 border bg-white border-gold-400 text-gold-500 hover:bg-[#FBF3E2] flex items-center gap-1.5">
-          <Download size={12} /> Order list
+          <Download size={12} /> Supplier order list
         </a>
       </div>
 
