@@ -17,9 +17,9 @@ export const BUSINESS = {
 // back to "we'll WhatsApp you payment details" instead of showing blanks.
 export const BANK = {
   bankName: 'FNB',
-  accountHolder: '',
-  accountNumber: '',
-  accountType: '', // e.g. 'Cheque / Current'
+  accountHolder: 'Sharmyn (Pty) Ltd',
+  accountNumber: '63227227188',
+  accountType: 'Gold Business Account',
   branchCode: '250655', // FNB universal branch code
 };
 
@@ -39,6 +39,8 @@ export const eftInstructionsText = (orderId: string, total: number): string =>
     ...(BANK.accountType ? [`Account type: ${BANK.accountType}`] : []),
     `Branch code: ${BANK.branchCode}`,
     `Reference: ${orderId}`,
+    '',
+    `IMPORTANT: please use ${orderId} as your payment reference — it is how we match your payment to your order.`,
     '',
     `Once paid, WhatsApp your proof of payment to ${BUSINESS.whatsapp} quoting order ${orderId} and we'll send your invoice.`,
   ].join('\n');

@@ -316,6 +316,11 @@ export default function Checkout() {
 
           {payByEft && (
             <div className="mt-6 mx-auto max-w-sm rounded-2xl border border-gold-400/40 bg-blush-50 p-6 text-left shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
+              <div className="mb-4 rounded-xl border border-gold-500 bg-white p-3 text-center">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-rose-600">Important — use this as your payment reference</p>
+                <p className="mt-1 font-display text-2xl font-semibold tracking-[0.1em] text-ink-900">{placed.id}</p>
+                <p className="mt-1 text-[12px] text-ink-500">Without it we can&rsquo;t match your payment to your order.</p>
+              </div>
               <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-gold-500">Pay by EFT</p>
               <p className="mt-1 font-display text-2xl font-semibold text-ink-900">{formatPrice(placed.total)}</p>
               <dl className="mt-4 divide-y divide-gold-400/20">
@@ -339,7 +344,7 @@ export default function Checkout() {
                 ))}
               </dl>
               <p className="mt-3 text-[12px] text-ink-500">
-                Please use <strong>{placed.id}</strong> as your payment reference so we can match your payment. We hold your order for {UNPAID_HOLD_HOURS} hours.
+                We hold your order for {UNPAID_HOLD_HOURS} hours.
               </p>
             </div>
           )}
@@ -453,7 +458,7 @@ export default function Checkout() {
         {wantsOnlinePay
           ? 'Secure card / instant EFT payment. Your order is confirmed as soon as payment clears.'
           : bankConfigured()
-            ? 'Pay by EFT. Our banking details appear right after you place your order.'
+            ? 'Pay by EFT. Our banking details and your payment reference appear right after you place your order — you must use that reference when you pay.'
             : 'We\u2019ll WhatsApp you our banking details to pay by EFT.'}
       </p>
       <p className="mt-2 text-[11px] text-ink-500 text-center">

@@ -167,7 +167,7 @@ export async function buildInvoicePdf(order: Order): Promise<Buffer> {
       col(65, rowY + 80, "Branch code", BANK.branchCode);
       col(290, rowY + 80, "Payment reference", order.id);
       doc.font("Helvetica").fontSize(8).fillColor(SOFT).text(
-        `Please use your order number as the payment reference, then WhatsApp your proof of payment to ${BUSINESS.whatsapp}. We hold your order for ${UNPAID_HOLD_HOURS} hours; delivery is 5–7 working days after payment.`,
+        `IMPORTANT: use ${order.id} as your payment reference, otherwise we cannot match your payment. Then upload or WhatsApp your proof of payment to ${BUSINESS.whatsapp}. We hold your order for ${UNPAID_HOLD_HOURS} hours; delivery is 5–7 working days after payment.`,
         65, rowY + 108, { width: 465 }
       );
     } else {
