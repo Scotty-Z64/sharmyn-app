@@ -8,7 +8,7 @@ import type { Exchange, FulfilmentStage } from '@contracts/types';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { ConfirmDialog, STATUS_STYLE, Thumb } from './bits';
-import { waLink, toIntlPhoneZA, bankConfigured, eftInstructionsText } from '@/config/business';
+import { waLink, toIntlPhoneZA, bankConfigured, eftInstructionsText, UNPAID_HOLD_HOURS } from '@/config/business';
 
 const MISSED_AFTER_DAYS = 3;
 
@@ -462,6 +462,16 @@ ${eftInstructionsText(order.id, order.total)}`
                     {confirmEftMut.isPending ? 'Confirming…' : 'Confirm EFT payment received'}
                   </button>
                   <p className="mt-2 text-[11px] text-ink-500">Only confirm once the money is showing in the FNB account. This marks the order paid and sends the invoice.</p>
+                  {(() => {
+                    const hoursLeft = Math.ceil(UNPAID_HOLD_HOURS - (Date.now() - new Date(order.createdAt).getTime()) / 3_600_000);
+                    return (
+                      <p className={`mt-1 text-[11px] font-medium ${hoursLeft <= 24 ? 'text-rose-600' : 'text-ink-500'}`}>
+                        {hoursLeft > 0
+                          ? `Held for ${hoursLeft} more hour${hoursLeft === 1 ? '' : 's'}, then cancelled automatically and the stock released.`
+                          : 'Hold time is up — this order will be cancelled automatically at the next sweep.'}
+                      </p>
+                    );
+                  })()}
                 </div>
               )}
 

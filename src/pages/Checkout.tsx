@@ -8,7 +8,7 @@ import { trpc } from '@/providers/trpc';
 import { clearCart, formatPrice, formatAddress, pudoDeliveryFee, PUDO_ITEMS_PER_PARCEL, PUDO_FEE_PER_PARCEL, FREE_SHIPPING_MIN_ITEMS } from '@/lib/store';
 import type { Order, OrderDelivery, PudoLockerRef } from '@/lib/store';
 import PudoLockerPicker from '@/components/checkout/PudoLockerPicker';
-import { BANK, BUSINESS, bankConfigured, waLink } from '@/config/business';
+import { BANK, BUSINESS, UNPAID_HOLD_HOURS, bankConfigured, waLink } from '@/config/business';
 import { WhatsAppIcon } from '@/components/WhatsAppFloat';
 
 const PROVINCES = [
@@ -36,7 +36,7 @@ function validate(f: FormState, needsAddress: boolean): Partial<Record<keyof For
   const errs: Partial<Record<keyof FormState, string>> = {};
   if (f.name.trim().length < 2) errs.name = 'Please enter your full name.';
   const digits = f.phone.replace(/\D/g, '');
-  if (digits.length < 10 || digits.length > 12) errs.phone = 'Enter a valid SA number (10+ digits).';
+  if (digits.length < 10 || digits.length > 12) errs.phone = 'Enter your WhatsApp number (10+ digits).';
   if (!f.email.trim()) errs.email = 'Please enter your email \u2014 we send your invoice and order updates there.';
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) errs.email = 'That email doesn\u2019t look right.';
   if (needsAddress) {
@@ -338,7 +338,7 @@ export default function Checkout() {
                 ))}
               </dl>
               <p className="mt-3 text-[12px] text-ink-500">
-                Please use <strong>{placed.id}</strong> as your payment reference so we can match your payment.
+                Please use <strong>{placed.id}</strong> as your payment reference so we can match your payment. We hold your order for {UNPAID_HOLD_HOURS} hours.
               </p>
             </div>
           )}
@@ -452,6 +452,9 @@ export default function Checkout() {
             : 'We\u2019ll WhatsApp you our banking details to pay by EFT.'}
       </p>
       <p className="mt-2 text-[11px] text-ink-500 text-center">
+        We&rsquo;ll WhatsApp your invoice, banking details and tracking number to the number above.
+      </p>
+      <p className="mt-2 text-[11px] text-ink-500 text-center">
         By placing this order, you agree to our{' '}
         <Link to="/terms" className="underline hover:text-gold-500">Terms of Sale</Link>,{' '}
         <Link to="/returns" className="underline hover:text-gold-500">Returns Policy</Link>, and{' '}
@@ -517,9 +520,10 @@ export default function Checkout() {
             </motion.div>
 
             <motion.div animate={errors.phone ? { x: [0, -6, 6, -4, 4, 0] } : undefined} transition={{ duration: 0.3 }}>
-              <label htmlFor="co-phone" className={labelCls}>Contact Number *</label>
+              <label htmlFor="co-phone" className={labelCls}>WhatsApp Number *</label>
               <input id="co-phone" type="tel" value={form.phone} onChange={(e) => setField('phone')(e.target.value)} placeholder="082 123 4567" className={inputCls(!!errors.phone)} autoComplete="tel" inputMode="tel" />
               {errors.phone && <p className={errCls}>{errors.phone}</p>}
+              <p className="mt-1 text-[11px] text-ink-500">We send your invoice and banking details to this WhatsApp number.</p>
             </motion.div>
 
             <motion.div animate={errors.email ? { x: [0, -6, 6, -4, 4, 0] } : undefined} transition={{ duration: 0.3 }}>
