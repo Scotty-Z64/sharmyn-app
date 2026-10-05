@@ -4,6 +4,7 @@ import type { Exchange, Order, Product } from "@contracts/types";
 import { insertNotification } from "../queries/shop";
 import { BUSINESS, bankConfigured, eftInstructionsText } from "../../src/config/business";
 import { sendPaymentReceivedWhatsApp } from "./whatsapp";
+import { sendEmail } from "./mailer";
 
 export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock" | "payment_proof";
 
@@ -82,24 +83,6 @@ function ownerEmailConfigured(): { apiKey: string; ownerEmail: string } | null {
   const ownerEmail = process.env.OWNER_EMAIL;
   if (!apiKey || !ownerEmail) return null;
   return { apiKey, ownerEmail };
-}
-
-function sendEmail(
-  apiKey: string,
-  to: string[],
-  subject: string,
-  text: string,
-  attachment?: { filename: string; content: string } | { filename: string; content: string }[] // content: base64
-): void {
-  // Resend's shared sandbox sender — works with no domain verification. Switch to a
-  // real @sharmyn.co.za address once that domain is verified in the Resend dashboard.
-  const body: Record<string, unknown> = { from: "Sharmyn Store <onboarding@resend.dev>", to, subject, text };
-  if (attachment) body.attachments = Array.isArray(attachment) ? attachment : [attachment];
-  fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).catch((e) => console.error("[notify] resend email failed:", e));
 }
 
 export async function notifyOwner(
