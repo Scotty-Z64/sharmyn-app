@@ -8,7 +8,7 @@ import { trpc } from '@/providers/trpc';
 import { clearCart, formatPrice, formatAddress, pudoDeliveryFee, PUDO_ITEMS_PER_PARCEL, PUDO_FEE_PER_PARCEL, FREE_SHIPPING_MIN_ITEMS } from '@/lib/store';
 import type { Order, OrderDelivery, PudoLockerRef } from '@/lib/store';
 import PudoLockerPicker from '@/components/checkout/PudoLockerPicker';
-import { BUSINESS, waLink } from '@/config/business';
+import { BANK, BUSINESS, bankConfigured, waLink } from '@/config/business';
 import { WhatsAppIcon } from '@/components/WhatsAppFloat';
 
 const PROVINCES = [
@@ -241,13 +241,38 @@ export default function Checkout() {
   const labelCls = 'block text-[12px] font-semibold uppercase tracking-[0.14em] text-ink-900 mb-1.5';
   const errCls = 'mt-1 text-[12px] font-medium text-rose-600';
 
+  const copyText = (label: string, value: string) => {
+    navigator.clipboard?.writeText(value).then(
+      () => toast(`${label} copied`),
+      () => toast(`Copy failed — long-press the ${label.toLowerCase()}`)
+    );
+  };
+
   // ---- Success state ----
   if (placed) {
-    const waText = [
-      `Hi ${BUSINESS.name}! I just placed order ${placed.id}:`,
-      ...placed.items.map((i) => `• ${i.name} x${i.qty} — ${formatPrice(i.price * i.qty)}`),
-      `Total: ${formatPrice(placed.total)}`,
-    ].join('\n');
+    // Unpaid + banking details on file = the manual EFT flow: show how to pay
+    // right here (and in the order email), and the WhatsApp button becomes
+    // "send proof of payment" so the owner can match it to the order.
+    const payByEft = placed.paymentStatus !== 'paid' && bankConfigured();
+    const waText = payByEft
+      ? [
+          `Hi ${BUSINESS.name}! Here is my proof of payment for order ${placed.id}.`,
+          `Amount paid: ${formatPrice(placed.total)}`,
+          `Name: ${placed.customer.name}`,
+        ].join('\n')
+      : [
+          `Hi ${BUSINESS.name}! I just placed order ${placed.id}:`,
+          ...placed.items.map((i) => `• ${i.name} x${i.qty} — ${formatPrice(i.price * i.qty)}`),
+          `Total: ${formatPrice(placed.total)}`,
+        ].join('\n');
+    const bankRows: [string, string, string | null][] = [
+      ['Bank', BANK.bankName, null],
+      ['Account name', BANK.accountHolder, null],
+      ['Account number', BANK.accountNumber, 'Account number'],
+      ...(BANK.accountType ? ([['Account type', BANK.accountType, null]] as [string, string, string | null][]) : []),
+      ['Branch code', BANK.branchCode, null],
+      ['Reference', placed.id, 'Reference'],
+    ];
     return (
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 md:py-24">
         <motion.div
@@ -271,7 +296,9 @@ export default function Checkout() {
             Thank you, {placed.customer.name.split(' ')[0]}!
           </h1>
           <p className="mt-3 text-ink-500 max-w-md mx-auto">
-            Your order is in. We&rsquo;ll send you updates as it moves: Pending &rarr; Processing &rarr; Shipped &rarr; Delivered.
+            {payByEft
+              ? 'Your order is reserved. Pay by EFT with the details below, then send us your proof of payment on WhatsApp — we’ll send your invoice as soon as the payment reflects.'
+              : 'Your order is in. We’ll send you updates as it moves: Pending → Processing → Shipped → Delivered.'}
           </p>
 
           <div className="mt-8 mx-auto max-w-sm rounded-2xl border border-gold-400/40 bg-white p-6 shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
@@ -286,6 +313,36 @@ export default function Checkout() {
             </button>
           </div>
 
+          {payByEft && (
+            <div className="mt-6 mx-auto max-w-sm rounded-2xl border border-gold-400/40 bg-blush-50 p-6 text-left shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
+              <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-gold-500">Pay by EFT</p>
+              <p className="mt-1 font-display text-2xl font-semibold text-ink-900">{formatPrice(placed.total)}</p>
+              <dl className="mt-4 divide-y divide-gold-400/20">
+                {bankRows.map(([label, value, copyLabel]) => (
+                  <div key={label} className="flex items-center justify-between gap-3 py-2.5">
+                    <dt className="text-[12px] uppercase tracking-[0.1em] text-ink-500">{label}</dt>
+                    <dd className="flex items-center gap-2 text-[14px] font-semibold text-ink-900 text-right">
+                      <span className="break-all">{value}</span>
+                      {copyLabel && (
+                        <button
+                          type="button"
+                          onClick={() => copyText(copyLabel, value)}
+                          aria-label={`Copy ${copyLabel.toLowerCase()}`}
+                          className="h-8 w-8 shrink-0 grid place-items-center rounded-full border border-rose-300 text-rose-600 hover:bg-blush-100 active:scale-95 transition"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="mt-3 text-[12px] text-ink-500">
+                Please use <strong>{placed.id}</strong> as your payment reference so we can match your payment.
+              </p>
+            </div>
+          )}
+
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
             <a
               href={waLink(BUSINESS.whatsapp, waText)}
@@ -293,7 +350,7 @@ export default function Checkout() {
               rel="noreferrer"
               className="inline-flex items-center justify-center gap-2 h-[52px] px-8 rounded-full bg-[#25D366] text-white text-[13px] font-semibold uppercase tracking-[0.14em] hover:bg-[#1FBE5B] active:scale-95 transition w-full sm:w-auto"
             >
-              <WhatsAppIcon className="h-4 w-4" /> Send order on WhatsApp
+              <WhatsAppIcon className="h-4 w-4" /> {payByEft ? 'Send proof of payment' : 'Send order on WhatsApp'}
             </a>
             <Link
               to={`/track?order=${placed.id}`}
@@ -390,7 +447,9 @@ export default function Checkout() {
         <Crown className="h-3.5 w-3.5 mt-0.5 shrink-0 text-gold-500" />
         {wantsOnlinePay
           ? 'Secure card / instant EFT payment. Your order is confirmed as soon as payment clears.'
-          : 'Pay via EFT, SnapScan or card on delivery. We\u2019ll confirm your order shortly.'}
+          : bankConfigured()
+            ? 'Pay by EFT. Our banking details appear right after you place your order.'
+            : 'We\u2019ll WhatsApp you our banking details to pay by EFT.'}
       </p>
       <p className="mt-2 text-[11px] text-ink-500 text-center">
         By placing this order, you agree to our{' '}
@@ -552,7 +611,9 @@ export default function Checkout() {
             </div>
           ) : (
             <p className="mt-3 rounded-xl border border-gold-400/40 bg-blush-50 px-4 py-3 text-[13px] text-ink-500">
-              Online card payments coming soon — pay on collection / we&rsquo;ll WhatsApp you payment details.
+              {bankConfigured()
+                ? 'Pay by EFT — you’ll get our FNB banking details as soon as you place your order, then send us your proof of payment on WhatsApp.'
+                : 'Pay by EFT — we’ll WhatsApp you our banking details once you place your order.'}
             </p>
           )}
 

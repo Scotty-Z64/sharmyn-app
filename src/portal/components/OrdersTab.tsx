@@ -8,7 +8,7 @@ import type { Exchange, FulfilmentStage } from '@contracts/types';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { ConfirmDialog, STATUS_STYLE, Thumb } from './bits';
-import { waLink, toIntlPhoneZA } from '@/config/business';
+import { waLink, toIntlPhoneZA, bankConfigured, eftInstructionsText } from '@/config/business';
 
 const MISSED_AFTER_DAYS = 3;
 
@@ -228,16 +228,18 @@ function OrderCard({ order }: { order: Order }) {
   const cancelMut = trpc.shop.adminCancelOrder.useMutation();
   const refundMut = trpc.shop.setRefundStatus.useMutation();
   const refundOnlineMut = trpc.shop.refundOrder.useMutation();
+  const confirmEftMut = trpc.shop.confirmEftPayment.useMutation();
   const supplierMut = trpc.shop.markSupplierOrdered.useMutation();
   const stockMut = trpc.shop.markStockReceived.useMutation();
   const unmarkMut = trpc.shop.unmarkFulfilmentStage.useMutation();
   const [open, setOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmEft, setConfirmEft] = useState(false);
   const [exchanging, setExchanging] = useState(false);
   const exchangesQuery = trpc.shop.listExchanges.useQuery({ token, orderId: order.id }, { enabled: open && order.paymentStatus === 'paid' });
   const stepIdx = STEPS.indexOf(order.status);
   // Gateways whose refunds we can trigger through their API (Yoco, Stitch).
-  const gatewayLabel = order.paymentGateway === 'stitch' ? 'Stitch' : order.paymentGateway === 'ozow' ? 'Ozow' : 'Yoco';
+  const gatewayLabel = order.paymentGateway === 'stitch' ? 'Stitch' : order.paymentGateway === 'ozow' ? 'Ozow' : order.paymentGateway === 'payfast' ? 'Payfast' : 'Yoco';
 
   const setStatus = async (s: OrderStatus) => {
     if (s === order.status || setStatusMut.isPending) return;
@@ -265,6 +267,20 @@ function OrderCard({ order }: { order: Order }) {
       }
     } catch {
       toast('Could not cancel order — try again');
+    }
+  };
+
+  // Manual EFT: the customer paid into the bank account and sent proof. One
+  // tap marks the order paid, moves it to Processing and emails the invoice.
+  const confirmEftPayment = async () => {
+    setConfirmEft(false);
+    if (confirmEftMut.isPending) return;
+    try {
+      await confirmEftMut.mutateAsync({ token, id: order.id });
+      refresh();
+      toast(`Order ${order.id} marked paid — invoice sent`);
+    } catch {
+      toast('Could not confirm payment — try again');
     }
   };
 
@@ -416,6 +432,36 @@ function OrderCard({ order }: { order: Order }) {
                       <p>{order.delivery.locker.address}, {order.delivery.locker.city}, {order.delivery.locker.province}</p>
                     </>
                   )}
+                </div>
+              )}
+
+              {/* awaiting EFT — send the banking details, then confirm once the money has landed */}
+              {order.paymentStatus !== 'paid' && order.status !== 'cancelled' && (
+                <div className="rounded-xl border border-gold-400/40 bg-blush-50 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500 mb-2">Awaiting payment (EFT)</p>
+                  {bankConfigured() && order.customer.phone && (
+                    <a
+                      href={waLink(
+                        toIntlPhoneZA(order.customer.phone),
+                        `Hi ${order.customer.name}! Thanks for your Sharmyn order ${order.id} 💛
+
+${eftInstructionsText(order.id, order.total)}`
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mb-2 w-full h-11 rounded-full bg-[#25D366] text-white text-[11px] font-semibold uppercase tracking-[0.1em] flex items-center justify-center gap-1.5 hover:bg-[#1FBE5B] transition-colors"
+                    >
+                      <WhatsAppIcon size={14} /> Send banking details via WhatsApp
+                    </a>
+                  )}
+                  <button
+                    onClick={() => setConfirmEft(true)}
+                    disabled={confirmEftMut.isPending}
+                    className="w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.1em] hover:bg-gold-400 transition-colors disabled:opacity-50"
+                  >
+                    {confirmEftMut.isPending ? 'Confirming…' : 'Confirm EFT payment received'}
+                  </button>
+                  <p className="mt-2 text-[11px] text-ink-500">Only confirm once the money is showing in the FNB account. This marks the order paid and sends the invoice.</p>
                 </div>
               )}
 
@@ -600,11 +646,20 @@ function OrderCard({ order }: { order: Order }) {
               )}
 
               <AnimatePresence>
+                {confirmEft && (
+                  <ConfirmDialog
+                    title={`Confirm payment for ${order.id}?`}
+                    body={`Only do this once ${formatPrice(order.total)} is showing in the bank account. The order moves to Processing and the invoice is sent to the customer.`}
+                    confirmLabel="Yes, payment received"
+                    onConfirm={() => void confirmEftPayment()}
+                    onCancel={() => setConfirmEft(false)}
+                  />
+                )}
                 {confirmCancel && (
                   <ConfirmDialog
                     title={`Cancel order ${order.id}?`}
                     body={order.paymentStatus === 'paid'
-                      ? (order.paymentGateway === 'yoco' || order.paymentGateway === 'stitch')
+                      ? (order.paymentGateway === 'yoco' || order.paymentGateway === 'stitch' || order.paymentGateway === 'ozow')
                         ? `Stock will be restored, and we'll try to refund it via ${gatewayLabel} automatically. If that doesn't go through, it'll be flagged "Refund due" for a one-click retry.`
                         : "Stock will be restored. It'll be flagged \"Refund due\" so you don't forget to refund it (via Payfast or however it was paid)."
                       : 'Stock will be restored and the order marked as cancelled.'}

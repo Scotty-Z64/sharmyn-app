@@ -27,7 +27,9 @@ export function paymentsEnabled(): boolean {
   return stitchEnabled() || ozowEnabled() || payfastEnabled() || yocoEnabled();
 }
 
-const GATEWAY_READY: Record<PaymentGateway, () => boolean> = {
+// Online gateways only — "eft" (manual bank transfer, confirmed by the owner) is never selectable here.
+type OnlineGateway = Exclude<PaymentGateway, "eft">;
+const GATEWAY_READY: Record<OnlineGateway, () => boolean> = {
   stitch: stitchEnabled,
   ozow: ozowEnabled,
   payfast: payfastEnabled,
@@ -38,8 +40,8 @@ const GATEWAY_READY: Record<PaymentGateway, () => boolean> = {
  * Which gateway a NEW checkout should use. PAYMENT_GATEWAY wins when it names
  * a gateway that is actually configured; otherwise Stitch, Payfast, Yoco, Ozow.
  */
-export function activeGateway(): PaymentGateway | null {
-  const chosen = process.env.PAYMENT_GATEWAY?.trim().toLowerCase() as PaymentGateway | undefined;
+export function activeGateway(): OnlineGateway | null {
+  const chosen = process.env.PAYMENT_GATEWAY?.trim().toLowerCase() as OnlineGateway | undefined;
   if (chosen && GATEWAY_READY[chosen]?.()) return chosen;
   if (stitchEnabled()) return "stitch";
   if (payfastEnabled()) return "payfast";

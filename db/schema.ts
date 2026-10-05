@@ -45,7 +45,7 @@ export const orders = mysqlTable("orders", {
   statusHistory: json("status_history").notNull(), // { status, at }[]
   paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("unpaid"), // unpaid | paid | failed
   paymentRef: varchar("payment_ref", { length: 64 }), // gateway checkout/payment id
-  paymentGateway: varchar("payment_gateway", { length: 10 }), // "yoco" | "payfast" | "stitch" | "ozow" | null — which gateway paymentRef belongs to
+  paymentGateway: varchar("payment_gateway", { length: 10 }), // "yoco" | "payfast" | "stitch" | "ozow" | "eft" | null — which gateway paymentRef belongs to
   refundStatus: varchar("refund_status", { length: 20 }).notNull().default("none"), // none | pending | refunded
   // Fulfilment pipeline — every paid order waits on the supplier before it can be packed.
   supplierOrderedAt: timestamp("supplier_ordered_at"), // owner clicked "Ordered from supplier"

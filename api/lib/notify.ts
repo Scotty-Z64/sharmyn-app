@@ -2,6 +2,7 @@
 // Email is fire-and-forget — failures are logged, never thrown.
 import type { Exchange, Order, Product } from "@contracts/types";
 import { insertNotification } from "../queries/shop";
+import { bankConfigured, eftInstructionsText } from "../../src/config/business";
 
 export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock";
 
@@ -162,7 +163,12 @@ function customerBody(type: CustomerEmailType, order: Order): string {
     type === "order_delivered"
       ? "\n\nWe'd love to know what you think — just reply to this email with your thoughts, or tag us on Instagram with a photo!"
       : "";
-  return [intro[type], "", `Order ${order.id}`, lines, "", `Total: R${order.total}`, "", track + reviewAsk].join("\n");
+  // Unpaid order + banking details on file → tell the customer exactly how to pay.
+  const payBlock =
+    type === "order_placed" && order.paymentStatus !== "paid" && bankConfigured()
+      ? ["", eftInstructionsText(order.id, order.total)]
+      : [];
+  return [intro[type], "", `Order ${order.id}`, lines, "", `Total: R${order.total}`, ...payBlock, "", track + reviewAsk].join("\n");
 }
 
 export async function notifyCustomer(type: CustomerEmailType, order: Order): Promise<void> {

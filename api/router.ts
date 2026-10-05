@@ -463,6 +463,24 @@ export const appRouter = createRouter({
         }
         return order;
       }),
+    // Manual EFT: the customer paid into the bank account and sent their proof
+    // of payment; the owner has seen it land and confirms here. Same effect as a
+    // gateway confirming — order becomes paid, moves to Processing, and the
+    // invoice is emailed once (sendInvoiceOnce guards against double-sends).
+    confirmEftPayment: publicQuery
+      .input(z.object({ token: adminToken, id: z.string() }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        const order = await findOrder(input.id);
+        if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+        if (order.status === "cancelled") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Order is cancelled" });
+        }
+        if (order.paymentStatus === "paid") return order;
+        const updated = await markOrderPaid(order.id, null, "eft");
+        if (updated) sendInvoiceOnce(updated);
+        return updated;
+      }),
     setTrackingNumber: publicQuery
       .input(z.object({ token: adminToken, id: z.string(), trackingNumber: z.string().nullable() }))
       .mutation(async ({ input }) => {
