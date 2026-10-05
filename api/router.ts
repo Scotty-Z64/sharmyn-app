@@ -44,6 +44,7 @@ import {
 } from "./lib/payments";
 import { stitchEnabled, createStitchPaymentLink, getStitchLink, stitchLinkPaysOrder } from "./lib/stitch";
 import { ozowEnabled, createOzowPayment, checkOzowPayment } from "./lib/ozow";
+import { sendOrderPaymentWhatsApp, sendShippedWhatsApp } from "./lib/whatsapp";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
 import { publishToInstagram } from "./lib/meta";
 import {
@@ -190,6 +191,10 @@ export const appRouter = createRouter({
           const order = await placeOrderTx(input.customer, input.items, input.delivery);
           void notifyOwner("new_order", order).catch((e) => console.error("[notify]", e));
           void notifyCustomer("order_placed", order).catch((e) => console.error("[notify]", e));
+          // Manual EFT: WhatsApp the customer the banking details and the invoice straight away.
+          if (!paymentsEnabled()) {
+            void sendOrderPaymentWhatsApp(order).catch((e) => console.error("[whatsapp] order payment message failed:", e));
+          }
           return order;
         } catch (e) {
           if (e instanceof Error && e.message.startsWith("OUT_OF_STOCK:")) {
@@ -460,6 +465,9 @@ export const appRouter = createRouter({
         if (order && (input.status === "shipped" || input.status === "delivered")) {
           const type = input.status === "shipped" ? "order_shipped" : "order_delivered";
           void notifyCustomer(type, order).catch((e) => console.error("[notify]", e));
+          if (input.status === "shipped") {
+            void sendShippedWhatsApp(order).catch((e) => console.error("[whatsapp] shipped message failed:", e));
+          }
         }
         return order;
       }),
@@ -485,7 +493,14 @@ export const appRouter = createRouter({
       .input(z.object({ token: adminToken, id: z.string(), trackingNumber: z.string().nullable() }))
       .mutation(async ({ input }) => {
         assertAdminToken(input.token);
-        return setTrackingNumber(input.id, input.trackingNumber);
+        const before = await findOrder(input.id);
+        const updated = await setTrackingNumber(input.id, input.trackingNumber);
+        // Already shipped but no waybill yet → this is the moment the customer can be told.
+        // (If the waybill came first, the "shipped" status change sends the message instead.)
+        if (updated && before && !before.trackingNumber && updated.trackingNumber && updated.status === "shipped") {
+          void sendShippedWhatsApp(updated).catch((e) => console.error("[whatsapp] shipped message failed:", e));
+        }
+        return updated;
       }),
     // ---- fulfilment pipeline: every paid order waits on the supplier ----
     markSupplierOrdered: publicQuery

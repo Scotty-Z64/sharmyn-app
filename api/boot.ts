@@ -341,20 +341,24 @@ app.post("/api/cron/backup", async (c) => {
 
 // Invoice PDF — shared with customers via WhatsApp/email link. The order id
 // is an unguessable 8-char random code (33^8 combinations), the same trust
-// level already used for the payment-result redirect; only paid orders have
-// an invoice, so unpaid/pending orders 404 here.
+// level already used for the payment-result redirect. One link, two states:
+// an unpaid order gets the invoice with the banking details and "awaiting
+// payment"; once paid, the same link serves the PAID invoice. Cancelled
+// orders 404.
 app.get("/api/invoice/:orderId", async (c) => {
   const orderId = c.req.param("orderId");
   const { findOrder } = await import("./queries/shop");
   const order = await findOrder(orderId);
-  if (!order || order.paymentStatus !== "paid") return c.json({ error: "Not Found" }, 404);
+  if (!order || order.status === "cancelled") return c.json({ error: "Not Found" }, 404);
+  const paid = order.paymentStatus === "paid";
   const { buildInvoicePdf } = await import("./lib/invoice");
   const pdf = await buildInvoicePdf(order);
   return new Response(pdf, {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="sharmyn-invoice-${order.id}.pdf"`,
-      "Cache-Control": "private, max-age=3600",
+      // The unpaid version must never be cached: the same link becomes the PAID invoice.
+      "Cache-Control": paid ? "private, max-age=3600" : "no-store",
     },
   });
 });

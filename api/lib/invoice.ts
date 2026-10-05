@@ -1,13 +1,16 @@
-// Auto-generated invoice PDF, sent to the customer the moment an order is
-// marked paid. Pulls product ref numbers live from the DB so the invoice
-// always shows the same "Item #14" the customer picked in the catalog.
+// Auto-generated invoice PDF. Two states of the same document: while the order
+// is unpaid it is the invoice WITH the banking details and "awaiting payment"
+// (sent to the customer the moment they place an EFT order); once the payment
+// is confirmed it becomes the PAID invoice with the delivery window. Pulls
+// product ref numbers live from the DB so the invoice always shows the same
+// "Item #14" the customer picked in the catalog.
 import PDFDocument from "pdfkit";
 import { inArray } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { products } from "@db/schema";
 import { getProductImageRaw } from "../queries/shop";
 import type { Order } from "@contracts/types";
-import { BUSINESS } from "../../src/config/business";
+import { BANK, BUSINESS, UNPAID_HOLD_HOURS, bankConfigured } from "../../src/config/business";
 import { INK, GOLD, SOFT, drawLetterhead } from "./pdf-brand";
 
 /** Decode a "data:image/...;base64,..." URL to raw bytes for doc.image(). */
@@ -50,8 +53,11 @@ export async function buildInvoicePdf(order: Order): Promise<Buffer> {
 
   // Dated by when payment was confirmed (the order moving to Processing), so a
   // link opened weeks later doesn't show today's date and a shifted delivery window.
+  const isPaid = order.paymentStatus === "paid";
   const processingAt = order.statusHistory.find((h) => h.status === "processing")?.at;
-  const paidOn = processingAt ? new Date(processingAt) : new Date();
+  const paidOn = isPaid
+    ? new Date(order.paidAt ?? processingAt ?? Date.now())
+    : new Date(order.createdAt); // unpaid: dated by when the order was placed
   const earliestDelivery = addBusinessDays(paidOn, 5);
   const latestDelivery = addBusinessDays(paidOn, 7);
 
@@ -63,7 +69,11 @@ export async function buildInvoicePdf(order: Order): Promise<Buffer> {
     doc.on("error", reject);
 
     // Letterhead — sand band + logo + invoice number/date
-    drawLetterhead(doc, "INVOICE", [`Invoice #: ${order.id}`, `Date: ${formatDate(paidOn)}`]);
+    drawLetterhead(doc, "INVOICE", [
+      `Invoice #: ${order.id}`,
+      `Date: ${formatDate(paidOn)}`,
+      ...(isPaid ? [] : ["Status: AWAITING PAYMENT"]),
+    ]);
 
     // Bill to
     doc.fillColor(GOLD).fontSize(9).font("Helvetica-Bold").text("BILLED TO", 50, 130);
@@ -121,37 +131,71 @@ export async function buildInvoicePdf(order: Order): Promise<Buffer> {
     doc.font("Helvetica-Bold").fontSize(12).fillColor(INK);
     doc.text("TOTAL", 410, rowY, { width: 60, align: "right" });
     doc.text(`R${order.total}`, 475, rowY, { width: 70, align: "right" });
-    if (order.paymentStatus === "paid") {
-      rowY += 20;
-      doc.font("Helvetica-Bold").fontSize(9).fillColor(GOLD).text(
-        order.paymentGateway === "eft" ? "PAID - EFT payment received, thank you" : "PAID - thank you",
-        50, rowY, { width: 495, align: "right" }
+    rowY += 20;
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(GOLD).text(
+      isPaid
+        ? order.paymentGateway === "eft" ? "PAID - EFT payment received, thank you" : "PAID - thank you"
+        : "AWAITING PAYMENT - please pay by EFT using the details below",
+      50, rowY, { width: 495, align: "right" }
+    );
+
+    rowY += 40;
+    if (rowY > 500) { doc.addPage(); rowY = 50; }
+    let boxH: number;
+    if (isPaid) {
+      // Expected delivery
+      boxH = 44;
+      doc.roundedRect(50, rowY, 495, boxH, 6).fillColor("#F3E9D4").fill();
+      doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text("Expected delivery", 65, rowY + 10);
+      doc.font("Helvetica").fontSize(10).fillColor(SOFT).text(
+        `Between ${formatDate(earliestDelivery)} and ${formatDate(latestDelivery)} (5–7 working days from payment).`,
+        65, rowY + 24, { width: 465 }
+      );
+    } else if (bankConfigured()) {
+      // How to pay — the banking details travel with the invoice
+      boxH = 138;
+      doc.roundedRect(50, rowY, 495, boxH, 6).fillColor("#F3E9D4").fill();
+      doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text("How to pay (EFT)", 65, rowY + 10);
+      const col = (x: number, y: number, label: string, value: string) => {
+        doc.fillColor(GOLD).font("Helvetica-Bold").fontSize(7).text(label.toUpperCase(), x, y);
+        doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text(value, x, y + 10, { width: 200 });
+      };
+      col(65, rowY + 28, "Bank", BANK.bankName);
+      col(290, rowY + 28, "Account number", BANK.accountNumber);
+      col(65, rowY + 54, "Account name", BANK.accountHolder);
+      col(290, rowY + 54, "Account type", BANK.accountType || "—");
+      col(65, rowY + 80, "Branch code", BANK.branchCode);
+      col(290, rowY + 80, "Payment reference", order.id);
+      doc.font("Helvetica").fontSize(8).fillColor(SOFT).text(
+        `Please use your order number as the payment reference, then WhatsApp your proof of payment to ${BUSINESS.whatsapp}. We hold your order for ${UNPAID_HOLD_HOURS} hours; delivery is 5–7 working days after payment.`,
+        65, rowY + 108, { width: 465 }
+      );
+    } else {
+      boxH = 44;
+      doc.roundedRect(50, rowY, 495, boxH, 6).fillColor("#F3E9D4").fill();
+      doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text("How to pay", 65, rowY + 10);
+      doc.font("Helvetica").fontSize(10).fillColor(SOFT).text(
+        `We will WhatsApp you our banking details. Use ${order.id} as your payment reference.`,
+        65, rowY + 24, { width: 465 }
       );
     }
 
-    // Expected delivery
-    rowY += 40;
-    if (rowY > 560) { doc.addPage(); rowY = 50; }
-    doc.roundedRect(50, rowY, 495, 44, 6).fillColor("#F3E9D4").fill();
-    doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text("Expected delivery", 65, rowY + 10);
-    doc.font("Helvetica").fontSize(10).fillColor(SOFT).text(
-      `Between ${formatDate(earliestDelivery)} and ${formatDate(latestDelivery)} (5–7 working days from today).`,
-      65, rowY + 24, { width: 465 }
-    );
-
     // Tracking — the courier waybill only exists once the parcel ships, so before
-    // that the invoice says when to expect it and where to look.
-    rowY += 56;
+    // that the invoice says it will follow and where to look. One line per fact so
+    // nothing wraps into the next.
+    rowY += boxH + 12;
     const trackUrl = `${BUSINESS.website.replace(/^https?:\/\//, "")}/track?order=${order.id}`;
-    doc.roundedRect(50, rowY, 495, 58, 6).fillColor("#F3E9D4").fill();
+    doc.roundedRect(50, rowY, 495, 72, 6).fillColor("#F3E9D4").fill();
     doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text("Order & tracking", 65, rowY + 10);
-    doc.font("Helvetica").fontSize(10).fillColor(SOFT).text(
+    doc.font("Helvetica").fontSize(10).fillColor(SOFT);
+    doc.text(`Order number: ${order.id}`, 65, rowY + 25, { width: 465 });
+    doc.text(
       order.trackingNumber
-        ? `Order number: ${order.id}    Courier tracking number: ${order.trackingNumber}`
-        : `Order number: ${order.id}    Your courier tracking number will be sent to you as soon as your parcel ships.`,
-      65, rowY + 24, { width: 465 }
+        ? `Courier tracking number: ${order.trackingNumber}`
+        : "Your courier tracking number will be sent to you as soon as your parcel ships.",
+      65, rowY + 39, { width: 465 }
     );
-    doc.fillColor(GOLD).text(`Track your order any time: ${trackUrl}`, 65, rowY + 42, { width: 465 });
+    doc.fillColor(GOLD).text(`Track your order any time: ${trackUrl}`, 65, rowY + 53, { width: 465 });
 
     // Footer
     doc.fillColor(SOFT).fontSize(9).font("Helvetica").text(

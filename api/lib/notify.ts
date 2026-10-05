@@ -3,6 +3,7 @@
 import type { Exchange, Order, Product } from "@contracts/types";
 import { insertNotification } from "../queries/shop";
 import { bankConfigured, eftInstructionsText } from "../../src/config/business";
+import { sendPaymentReceivedWhatsApp } from "./whatsapp";
 
 export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock";
 
@@ -180,11 +181,14 @@ export async function notifyCustomer(type: CustomerEmailType, order: Order): Pro
 }
 
 /**
- * Emails the auto-generated invoice PDF the moment an order is marked paid.
+ * Sends the paid invoice the moment an order is marked paid: by WhatsApp (when the
+ * Business API is configured) and by email (when Resend is).
  * Caller (router.ts) is responsible for the invoiceSentAt idempotency check —
  * this function always sends when called.
  */
 export async function sendInvoice(order: Order): Promise<void> {
+  // WhatsApp first and independent of email: it is the channel customers actually have.
+  void sendPaymentReceivedWhatsApp(order).catch((e) => console.error("[whatsapp] payment received message failed:", e));
   const to = order.customer.email?.trim();
   if (!to) return;
   const apiKey = process.env.RESEND_API_KEY;
