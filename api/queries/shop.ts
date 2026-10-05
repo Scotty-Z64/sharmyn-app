@@ -1,7 +1,9 @@
-import { eq, desc, sql, and, lt, gte, lte } from "drizzle-orm";
+import { eq, desc, sql, and, lt, gte, lte, inArray, ne } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { getDb } from "./connection";
-import { products, orders, notifications, siteSettings } from "@db/schema";
+import { products, orders, orderPayments, notifications, siteSettings } from "@db/schema";
+import { UNPAID_HOLD_HOURS } from "../../src/config/business";
+import { summarisePayments, summariseOutstanding } from "../lib/payment-summary";
 import { isSizedCategory, pudoDeliveryFee, pudoStandardFee } from "@contracts/types";
 import type {
   Product,
@@ -38,7 +40,7 @@ function deliveryFeeFor(method: OrderDeliveryInput["method"], totalQty: number):
   return method === "pudo" ? pudoDeliveryFee(totalQty) : DELIVERY_FEES[method];
 }
 
-const UNPAID_TTL_MS = 24 * 60 * 60 * 1000; // lazy sweep: cancel pending+unpaid after 24h
+const UNPAID_TTL_MS = UNPAID_HOLD_HOURS * 60 * 60 * 1000; // lazy sweep: cancel pending+unpaid after the hold window (shared with the checkout wording)
 
 /** Route product/image lookups: recognises our own served-photo URLs so
  * upsertProduct can tell "unchanged" from "actually a new value". */
@@ -77,7 +79,13 @@ function toProduct(row: typeof products.$inferSelect): Product {
   };
 }
 
-function toOrder(row: typeof orders.$inferSelect): Order {
+/** First time the order moved to Processing — the best paid-date we have for orders paid before the payments table existed. */
+function legacyPaidAt(row: typeof orders.$inferSelect): string {
+  const history = (row.statusHistory as { status: string; at: string }[] | null) ?? [];
+  return history.find((h) => h.status === "processing")?.at ?? row.createdAt.toISOString();
+}
+
+function toOrder(row: typeof orders.$inferSelect, receivedAt?: Date | null): Order {
   return {
     id: row.id,
     items: row.items as OrderItem[],
@@ -91,6 +99,7 @@ function toOrder(row: typeof orders.$inferSelect): Order {
     refundStatus: (row.refundStatus as RefundStatus) ?? "none",
     paymentRef: row.paymentRef ?? null,
     paymentGateway: (row.paymentGateway as Order["paymentGateway"]) ?? null,
+    paidAt: row.paymentStatus === "paid" ? (receivedAt ? receivedAt.toISOString() : legacyPaidAt(row)) : null,
     supplierOrderedAt: row.supplierOrderedAt ? row.supplierOrderedAt.toISOString() : null,
     stockReceivedAt: row.stockReceivedAt ? row.stockReceivedAt.toISOString() : null,
     invoiceSentAt: row.invoiceSentAt ? row.invoiceSentAt.toISOString() : null,
@@ -280,12 +289,78 @@ export async function bulkAdjustPrice(
   return { count: res?.[0]?.affectedRows ?? 0 };
 }
 
+// ---- payments received (cash-basis ledger) ----
+
+let paymentsTableReady: Promise<void> | null = null;
+
+/**
+ * Creates the order_payments table on first use and backfills it from orders
+ * already marked paid (received date = the order's creation date, which is
+ * when gateway payments cleared). Idempotent; a failure is retried next call
+ * and never blocks order handling — callers treat the ledger as best-effort.
+ */
+function ensurePaymentsTable(): Promise<void> {
+  paymentsTableReady ??= (async () => {
+    const db = getDb();
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS order_payments (
+      order_id VARCHAR(16) NOT NULL PRIMARY KEY,
+      method VARCHAR(10) NOT NULL,
+      amount INT NOT NULL,
+      received_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
+    await db.execute(sql`INSERT IGNORE INTO order_payments (order_id, method, amount, received_at)
+      SELECT id, COALESCE(payment_gateway, 'unknown'), total, created_at FROM orders WHERE payment_status = 'paid'`);
+  })().catch((e) => {
+    paymentsTableReady = null;
+    throw e;
+  });
+  return paymentsTableReady;
+}
+
+async function receivedAtByOrder(): Promise<Map<string, Date>> {
+  try {
+    await ensurePaymentsTable();
+    const rows = await getDb().select().from(orderPayments);
+    return new Map(rows.map((r) => [r.orderId, r.receivedAt]));
+  } catch (e) {
+    console.error("[payments] could not read the payments table:", e);
+    return new Map();
+  }
+}
+
+async function receivedAtFor(orderId: string): Promise<Date | null> {
+  try {
+    await ensurePaymentsTable();
+    const rows = await getDb().select().from(orderPayments).where(eq(orderPayments.orderId, orderId)).limit(1);
+    return rows[0]?.receivedAt ?? null;
+  } catch (e) {
+    console.error("[payments] could not read the payments table:", e);
+    return null;
+  }
+}
+
+/** Records that money for this order arrived now. Best-effort: never fails the payment itself. */
+async function recordPaymentReceived(orderId: string, method: string, amount: number): Promise<Date> {
+  const receivedAt = new Date();
+  try {
+    await ensurePaymentsTable();
+    await getDb()
+      .insert(orderPayments)
+      .values({ orderId, method, amount, receivedAt })
+      .onDuplicateKeyUpdate({ set: { orderId } }); // already recorded (duplicate webhook) — keep the first date
+  } catch (e) {
+    console.error("[payments] failed to record payment received for", orderId, e);
+  }
+  return receivedAt;
+}
+
 // ---- orders ----
 
 export async function listOrders(): Promise<Order[]> {
   await sweepStaleUnpaidOrders();
   const rows = await getDb().select().from(orders).orderBy(desc(orders.createdAt));
-  return rows.map(toOrder);
+  const received = await receivedAtByOrder();
+  return rows.map((r) => toOrder(r, received.get(r.id)));
 }
 
 export async function findOrder(id: string): Promise<Order | null> {
@@ -294,7 +369,8 @@ export async function findOrder(id: string): Promise<Order | null> {
     .from(orders)
     .where(sql`LOWER(${orders.id}) = LOWER(${id.trim()})`)
     .limit(1);
-  return rows[0] ? toOrder(rows[0]) : null;
+  if (!rows[0]) return null;
+  return toOrder(rows[0], rows[0].paymentStatus === "paid" ? await receivedAtFor(rows[0].id) : null);
 }
 
 /**
@@ -602,7 +678,16 @@ export async function markOrderPaid(
     .update(orders)
     .set({ paymentStatus: "paid", paymentRef: paymentRef ?? existing.paymentRef ?? null, paymentGateway: gateway, status, statusHistory })
     .where(eq(orders.id, id));
-  return { ...existing, paymentStatus: "paid", paymentRef: paymentRef ?? existing.paymentRef ?? null, paymentGateway: gateway, status, statusHistory };
+  const receivedAt = await recordPaymentReceived(id, gateway ?? "unknown", existing.total);
+  return {
+    ...existing,
+    paymentStatus: "paid",
+    paymentRef: paymentRef ?? existing.paymentRef ?? null,
+    paymentGateway: gateway,
+    paidAt: receivedAt.toISOString(),
+    status,
+    statusHistory,
+  };
 }
 
 /** Mark an order payment failed (keeps statusHistory untouched). */
@@ -655,8 +740,10 @@ const ALL_STATUSES: OrderStatus[] = ["pending", "processing", "shipped", "delive
 
 /**
  * Aggregates orders created in [from, to] (inclusive, server-local Date
- * boundaries — pass day-start/day-end). Revenue excludes cancelled orders;
- * paidRevenue is the subset actually marked paid. Product category comes
+ * boundaries — pass day-start/day-end). Revenue excludes cancelled orders and
+ * is by ORDER date. paidRevenue/paidProfit are cash basis: money RECEIVED in
+ * the range (by the payments ledger), whatever date the order was placed.
+ * outstanding is orders still awaiting payment right now. Product category comes
  * from the CURRENT product row, not a historical snapshot — if a product's
  * category changed since the order, older orders roll up under the new
  * category. Fine for a boutique's own read of "how did we do," not written
@@ -670,8 +757,6 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
 
   const byStatus = Object.fromEntries(ALL_STATUSES.map((s) => [s, 0])) as Record<OrderStatus, number>;
   let revenue = 0;
-  let paidRevenue = 0;
-  let paidProfit = 0;
   const productAgg = new Map<string, { name: string; qtySold: number; revenue: number; profit: number }>();
   const sizeAgg = new Map<string, { qtySold: number; revenue: number }>();
   let discountItemsSold = 0;
@@ -693,7 +778,6 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
     byStatus[order.status]++;
     if (order.status !== "cancelled") {
       revenue += order.total;
-      if (order.paymentStatus === "paid") paidRevenue += order.total;
 
       const day = order.createdAt.slice(0, 10);
       const bucket = trendMap.get(day) ?? { revenue: 0, orders: 0 };
@@ -703,7 +787,6 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
 
       for (const item of order.items) {
         const itemProfit = (item.price - (item.costPrice ?? 0)) * item.qty;
-        if (order.paymentStatus === "paid") paidProfit += itemProfit;
         const agg = productAgg.get(item.productId) ?? { name: item.name, qtySold: 0, revenue: 0, profit: 0 };
         agg.qtySold += item.qty;
         agg.revenue += item.price * item.qty;
@@ -787,6 +870,37 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
     .map(([category, v]) => ({ category, ...v }))
     .sort((a, b) => b.revenue - a.revenue);
 
+  // Cash basis: payments received in the range (their orders may be older), and
+  // what is still owed. If the payments table can't be read, fall back to the
+  // orders themselves (paid date = when they moved to Processing) so the report
+  // never shows a misleading R0 received.
+  let cash: ReturnType<typeof summarisePayments>;
+  try {
+    await ensurePaymentsTable();
+    const ledger = await getDb()
+      .select()
+      .from(orderPayments)
+      .where(and(gte(orderPayments.receivedAt, from), lte(orderPayments.receivedAt, to)));
+    const paidOrderRows = ledger.length
+      ? await getDb().select().from(orders).where(inArray(orders.id, ledger.map((l) => l.orderId)))
+      : [];
+    cash = summarisePayments(paidOrderRows.map((r) => toOrder(r)), ledger, from, to);
+  } catch (e) {
+    console.error("[report] could not read payments received, using order dates instead:", e);
+    const paid = (await getDb().select().from(orders).where(eq(orders.paymentStatus, "paid"))).map((r) => toOrder(r));
+    cash = summarisePayments(
+      paid,
+      paid.map((o) => ({ orderId: o.id, method: o.paymentGateway ?? "unknown", amount: o.total, receivedAt: new Date(o.paidAt ?? o.createdAt) })),
+      from,
+      to
+    );
+  }
+  const unpaidRows = await getDb()
+    .select()
+    .from(orders)
+    .where(and(ne(orders.paymentStatus, "paid"), ne(orders.status, "cancelled")));
+  const outstanding = summariseOutstanding(unpaidRows.map((r) => toOrder(r)), new Date());
+
   const orderCount = rows.length - byStatus.cancelled;
   return {
     from: from.toISOString(),
@@ -794,8 +908,11 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
     orderCount,
     revenue,
     avgOrderValue: orderCount > 0 ? Math.round(revenue / orderCount) : 0,
-    paidRevenue,
-    paidProfit,
+    paidRevenue: cash.paidRevenue,
+    paidProfit: cash.paidProfit,
+    refundedInRange: cash.refundedInRange,
+    receivedByMethod: cash.receivedByMethod,
+    outstanding,
     byStatus,
     topProducts,
     byCategory,

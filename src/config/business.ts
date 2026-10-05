@@ -23,6 +23,10 @@ export const BANK = {
   branchCode: '250655', // FNB universal branch code
 };
 
+// How long an order waiting for an EFT is held (stock reserved) before the
+// system cancels it and releases the stock. Long enough to cover a weekend.
+export const UNPAID_HOLD_HOURS = 72;
+
 export const bankConfigured = (): boolean => !!(BANK.accountHolder && BANK.accountNumber);
 
 /** Plain-text "how to pay by EFT" block, for WhatsApp messages and emails. The order number is the payment reference. */

@@ -12,6 +12,15 @@ const CATEGORY_LABEL: Record<Category, string> = {
   clothing: "Clothing",
 };
 
+const METHOD_LABEL: Record<string, string> = {
+  eft: "EFT (bank transfer)",
+  yoco: "Card (Yoco)",
+  payfast: "Payfast",
+  stitch: "Stitch",
+  ozow: "Ozow (instant EFT)",
+  unknown: "Other / earlier orders",
+};
+
 function fmt(n: number): string {
   return "R " + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
@@ -32,24 +41,50 @@ export async function buildReportPdf(report: SalesReport): Promise<Buffer> {
       `${formatDate(new Date(report.from))} — ${formatDate(new Date(report.to))}`,
     ]);
 
-    // Stat tiles
-    const stats: [string, string][] = [
-      ["Orders", String(report.orderCount)],
-      ["Revenue", fmt(report.revenue)],
-      ["Paid so far", fmt(report.paidRevenue)],
-      ["Paid profit", fmt(report.paidProfit)],
-      ["Avg order value", fmt(report.avgOrderValue)],
+    // Stat tiles — two rows of three. Money figures are cash basis: "received"
+    // follows the date the payment landed, "order value" the date it was placed.
+    const o = report.outstanding;
+    const stats: [string, string, string][] = [
+      ["Orders placed", String(report.orderCount), "by order date"],
+      ["Order value", fmt(report.revenue), "by order date, before payment"],
+      ["Money received", fmt(report.paidRevenue), "by the date it landed"],
+      ["Profit on money received", fmt(report.paidProfit), ""],
+      ["Awaiting payment", fmt(o.amount), `${o.count} order${o.count === 1 ? "" : "s"} as at today${o.overdueCount ? ` (${o.overdueCount} over 24h)` : ""}`],
+      ["Avg order value", fmt(report.avgOrderValue), ""],
     ];
-    let sx = 50;
-    const sw = 99;
-    for (const [label, value] of stats) {
-      doc.roundedRect(sx, 130, sw - 8, 54, 6).fillAndStroke("#FBF3E4", "#E8DCD5");
-      doc.fillColor(GOLD).fontSize(7).font("Helvetica-Bold").text(label.toUpperCase(), sx + 8, 140, { width: sw - 24 });
-      doc.fillColor(INK).fontSize(13).font("Helvetica-Bold").text(value, sx + 8, 156, { width: sw - 24 });
-      sx += sw;
+    const sw = 165;
+    stats.forEach(([label, value, note], i) => {
+      const sx = 50 + (i % 3) * sw;
+      const sy = 130 + Math.floor(i / 3) * 66;
+      doc.roundedRect(sx, sy, sw - 8, 58, 6).fillAndStroke("#FBF3E4", "#E8DCD5");
+      doc.fillColor(GOLD).fontSize(7).font("Helvetica-Bold").text(label.toUpperCase(), sx + 8, sy + 8, { width: sw - 24 });
+      doc.fillColor(INK).fontSize(14).font("Helvetica-Bold").text(value, sx + 8, sy + 22, { width: sw - 24 });
+      if (note) doc.fillColor(SOFT).fontSize(7).font("Helvetica").text(note, sx + 8, sy + 44, { width: sw - 24 });
+    });
+
+    let y = 276;
+    doc.fillColor(GOLD).fontSize(11).font("Helvetica-Bold").text("Money received, by how it was paid", 50, y);
+    y += 18;
+    doc.fillColor(INK).fontSize(10).font("Helvetica");
+    if (report.receivedByMethod.length === 0) {
+      doc.text("No payments received in this period.", 50, y, { width: 495 });
+      y += 15;
+    }
+    for (const m of report.receivedByMethod) {
+      doc.text(METHOD_LABEL[m.method] ?? m.method, 50, y, { width: 220 });
+      doc.text(`${m.count} payment${m.count === 1 ? "" : "s"}`, 280, y, { width: 90, align: "right" });
+      doc.text(fmt(m.amount), 380, y, { width: 90, align: "right" });
+      y += 15;
+    }
+    if (report.refundedInRange > 0) {
+      doc.fillColor(SOFT).fontSize(8).text(
+        `${fmt(report.refundedInRange)} received in this period on orders later cancelled or refunded is left out of the totals above.`,
+        50, y + 2, { width: 495 }
+      );
+      y += 16;
     }
 
-    let y = 205;
+    y += 14;
     doc.fillColor(GOLD).fontSize(11).font("Helvetica-Bold").text("Orders by status", 50, y);
     y += 18;
     doc.fillColor(INK).fontSize(10).font("Helvetica");

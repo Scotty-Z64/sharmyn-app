@@ -15,22 +15,29 @@ export function useStats() {
   const { products, orders } = usePortal();
   const units = products.reduce((s, p) => s + p.quantity, 0);
   const pending = orders.filter((o) => o.status === 'pending').length;
-  const revenue = orders.reduce((s, o) => s + o.total, 0);
+  // Money actually received: paid orders that weren't cancelled or refunded.
+  // (Used to add up every order, so unpaid and cancelled ones inflated it.)
+  const revenue = orders
+    .filter((o) => o.paymentStatus === 'paid' && o.status !== 'cancelled' && o.refundStatus !== 'refunded')
+    .reduce((s, o) => s + o.total, 0);
   const lowStock = products.filter((p) => p.quantity <= p.lowStockAt);
-  const paidOrders = orders.filter((o) => o.paymentStatus === 'paid').length;
-  const unpaidOrders = orders.filter((o) => o.paymentStatus === 'unpaid').length;
-  return { products, orders, units, pending, revenue, lowStock, paidOrders, unpaidOrders };
+  const paidOrders = orders.filter((o) => o.paymentStatus === 'paid' && o.status !== 'cancelled').length;
+  // Waiting for payment (e.g. an EFT that hasn't landed yet). A cancelled order owes nothing.
+  const unpaid = orders.filter((o) => o.paymentStatus === 'unpaid' && o.status !== 'cancelled');
+  const unpaidOrders = unpaid.length;
+  const unpaidAmount = unpaid.reduce((s, o) => s + o.total, 0);
+  return { products, orders, units, pending, revenue, lowStock, paidOrders, unpaidOrders, unpaidAmount };
 }
 
 export default function OverviewTab({ goTo }: { goTo: (t: 'products' | 'stock' | 'orders') => void }) {
-  const { products, orders, units, pending, revenue, lowStock, paidOrders, unpaidOrders } = useStats();
+  const { products, orders, units, pending, revenue, lowStock, paidOrders, unpaidOrders, unpaidAmount } = useStats();
   const { unreadCount } = usePortal();
 
   const stats = [
     { label: 'Total Products', value: products.length, icon: Package },
     { label: 'Units in Stock', value: units, icon: Boxes },
     { label: 'Pending Orders', value: pending, icon: Clock },
-    { label: 'Revenue', value: revenue, icon: ShoppingBag, prefix: 'R ' },
+    { label: 'Money received', value: revenue, icon: ShoppingBag, prefix: 'R ' },
   ];
 
   const recent = orders.slice(0, 5);
@@ -40,7 +47,9 @@ export default function OverviewTab({ goTo }: { goTo: (t: 'products' | 'stock' |
   // waybill actually assigned today). A mismatch means something paid today
   // hasn't made it into a parcel yet — or a parcel went out for an order
   // that wasn't actually marked paid, worth a second look either way.
-  const paidToday = orders.filter((o) => o.paymentStatus === 'paid' && isToday(o.createdAt));
+  // "Paid today" follows the day the money was RECEIVED — an EFT that lands today
+  // for yesterday's order counts today, not on the day it was placed.
+  const paidToday = orders.filter((o) => o.paymentStatus === 'paid' && o.status !== 'cancelled' && isToday(o.paidAt ?? o.createdAt));
   const packedToday = orders.filter((o) => o.trackingSetAt && isToday(o.trackingSetAt));
   const paidTodayTotal = paidToday.reduce((s, o) => s + o.total, 0);
   const packedTodayTotal = packedToday.reduce((s, o) => s + o.total, 0);
@@ -86,7 +95,7 @@ export default function OverviewTab({ goTo }: { goTo: (t: 'products' | 'stock' |
             {paidOrders} paid
           </span>
           <span className="h-7 px-3 rounded-full bg-blush-100 text-ink-500 text-[11px] font-semibold uppercase tracking-[0.08em] grid place-items-center">
-            {unpaidOrders} unpaid
+            {unpaidOrders} awaiting payment{unpaidOrders > 0 ? ' · ' + formatPrice(unpaidAmount) : ''}
           </span>
           <button onClick={() => goTo('orders')} className="ml-auto h-11 text-[11px] font-semibold uppercase tracking-[0.12em] text-rose-600 flex items-center gap-1">
             Orders <ArrowRight size={13} />

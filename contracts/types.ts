@@ -108,6 +108,7 @@ export interface Order {
   refundStatus: RefundStatus;
   paymentRef?: string | null; // gateway checkout/payment id
   paymentGateway?: PaymentGateway | null;
+  paidAt?: string | null; // when the payment was actually received (null while unpaid)
   supplierOrderedAt?: string | null;
   stockReceivedAt?: string | null;
   invoiceSentAt?: string | null;
@@ -263,14 +264,34 @@ export interface FreeShippingImpact {
   shippingRevenueWaived: number; // sum of pudoStandardFee(totalQty) for those orders — what would've been charged
 }
 
+/** How much money arrived by each payment method in the report range. */
+export interface ReportMethodRow {
+  method: string; // eft | yoco | payfast | stitch | ozow
+  count: number;
+  amount: number;
+}
+
+/** Orders waiting for their EFT — money owed to the business right now. */
+export interface OutstandingPayments {
+  count: number;
+  amount: number;
+  overdueCount: number; // older than 24h — worth a nudge
+  oldestHours: number; // age of the oldest unpaid order
+}
+
 export interface SalesReport {
   from: string; // ISO date, inclusive
   to: string; // ISO date, inclusive
   orderCount: number;
   revenue: number; // sum of non-cancelled order totals
   avgOrderValue: number;
-  paidRevenue: number; // sum where paymentStatus = 'paid'
-  paidProfit: number; // sum of (price - costPrice) * qty where paymentStatus = 'paid'
+  // Cash basis — by the date the money was RECEIVED, not the order date, and net of refunds:
+  paidRevenue: number; // payments received in the range
+  paidProfit: number; // profit on the orders those payments covered
+  refundedInRange: number; // payments received in the range that have since been refunded (excluded above)
+  receivedByMethod: ReportMethodRow[];
+  // As of now, regardless of the range: orders placed and not yet paid.
+  outstanding: OutstandingPayments;
   byStatus: Record<OrderStatus, number>;
   topProducts: ReportProductRow[]; // sorted desc by revenue
   byCategory: ReportCategoryRow[];

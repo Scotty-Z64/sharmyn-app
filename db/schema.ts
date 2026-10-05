@@ -54,6 +54,18 @@ export const orders = mysqlTable("orders", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// One row per payment actually received: WHEN the money landed (not when the
+// order was placed), how, and how much. Reports and the daily reconciliation
+// read this so EFTs that arrive a day or two after the order count on the
+// day they were received. Created on first use (CREATE TABLE IF NOT EXISTS in
+// api/queries/shop.ts), so no manual migration is needed.
+export const orderPayments = mysqlTable("order_payments", {
+  orderId: varchar("order_id", { length: 16 }).primaryKey(),
+  method: varchar("method", { length: 10 }).notNull(), // eft | yoco | payfast | stitch | ozow
+  amount: int("amount").notNull(), // ZAR
+  receivedAt: timestamp("received_at").notNull().defaultNow(),
+});
+
 export const studioPosts = mysqlTable("studio_posts", {
   id: varchar("id", { length: 40 }).primaryKey(),
   imageData: text("image_data").notNull(), // MEDIUMTEXT in prod — compressed data URL

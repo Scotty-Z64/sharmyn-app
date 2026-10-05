@@ -55,6 +55,16 @@ function downloadCsv(filename: string, csv: string) {
   URL.revokeObjectURL(url);
 }
 
+const METHOD_LABEL: Record<string, string> = {
+  eft: 'EFT (bank transfer)',
+  yoco: 'Card (Yoco)',
+  payfast: 'Payfast',
+  stitch: 'Stitch',
+  ozow: 'Ozow (instant EFT)',
+  unknown: 'Other / earlier orders',
+};
+const methodLabel = (m: string): string => METHOD_LABEL[m] ?? m;
+
 export default function ReportsTab() {
   const { token, orders, toast } = usePortal();
   const [rangeKey, setRangeKey] = useState<RangeKey>('30d');
@@ -71,10 +81,10 @@ export default function ReportsTab() {
       orders
         .filter((o) => o.paymentStatus === 'paid' && o.status !== 'cancelled')
         .filter((o) => {
-          const t = new Date(o.createdAt).getTime();
+          const t = new Date(o.paidAt ?? o.createdAt).getTime();
           return t >= from.getTime() && t <= to.getTime();
         })
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        .sort((a, b) => (b.paidAt ?? b.createdAt).localeCompare(a.paidAt ?? a.createdAt)),
     [orders, from, to]
   );
 
@@ -89,10 +99,14 @@ export default function ReportsTab() {
       ['From', from.toDateString()],
       ['To', to.toDateString()],
       [],
-      ['Orders', report.orderCount],
-      ['Revenue', report.revenue],
-      ['Paid revenue', report.paidRevenue],
-      ['Paid profit', report.paidProfit],
+      ['Orders placed', report.orderCount],
+      ['Order value (by order date)', report.revenue],
+      ['Money received (by date received)', report.paidRevenue],
+      ['Profit on money received', report.paidProfit],
+      ['Received then cancelled/refunded', report.refundedInRange],
+      ...report.receivedByMethod.map((m): (string | number)[] => ['Received by ' + methodLabel(m.method), m.amount]),
+      ['Awaiting payment (as at today)', report.outstanding.amount],
+      ['Orders awaiting payment', report.outstanding.count],
       ['Average order value', report.avgOrderValue],
       [],
       ['By status'],
@@ -162,19 +176,49 @@ export default function ReportsTab() {
         <p className="mt-8 text-sm text-ink-500 text-center">Could not load the report — try again.</p>
       ) : (
         <>
-          <div className="mt-4 grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="mt-4 grid grid-cols-2 lg:grid-cols-3 gap-3">
             {[
-              { label: 'Orders', value: report.orderCount },
-              { label: 'Revenue', value: formatPrice(report.revenue) },
-              { label: 'Paid so far', value: formatPrice(report.paidRevenue) },
-              { label: 'Paid profit', value: formatPrice(report.paidProfit), accent: true },
-              { label: 'Avg order', value: formatPrice(report.avgOrderValue) },
+              { label: 'Orders placed', value: report.orderCount, sub: 'by order date', accent: false, warn: false },
+              { label: 'Order value', value: formatPrice(report.revenue), sub: 'by order date, before payment', accent: false, warn: false },
+              { label: 'Money received', value: formatPrice(report.paidRevenue), sub: 'by the date it landed', accent: true, warn: false },
+              { label: 'Profit on money received', value: formatPrice(report.paidProfit), sub: '', accent: true, warn: false },
+              {
+                label: 'Awaiting payment',
+                value: formatPrice(report.outstanding.amount),
+                sub: report.outstanding.count + ' order' + (report.outstanding.count === 1 ? '' : 's') + ' as at today' + (report.outstanding.overdueCount ? ' · ' + report.outstanding.overdueCount + ' over 24h' : ''),
+                accent: false,
+                warn: report.outstanding.overdueCount > 0,
+              },
+              { label: 'Avg order', value: formatPrice(report.avgOrderValue), sub: '', accent: false, warn: false },
             ].map((s) => (
-              <div key={s.label} className="bg-white rounded-2xl p-4 shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
+              <div key={s.label} className={`bg-white rounded-2xl p-4 shadow-[0_8px_30px_rgba(43,29,35,0.07)] ${s.warn ? 'ring-1 ring-rose-300/70' : ''}`}>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">{s.label}</p>
                 <p className={`font-display text-2xl font-semibold mt-1 ${s.accent ? 'text-[#1F8A5B]' : 'text-ink-900'}`}>{s.value}</p>
+                {s.sub && <p className={`mt-0.5 text-[11px] ${s.warn ? 'text-rose-600' : 'text-ink-500'}`}>{s.sub}</p>}
               </div>
             ))}
+          </div>
+
+          <div className="mt-4 bg-white rounded-2xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
+            <h3 className="font-display text-lg font-semibold text-ink-900">Money received, by how it was paid</h3>
+            {report.receivedByMethod.length === 0 ? (
+              <p className="mt-3 text-sm text-ink-500">No payments received in this range yet.</p>
+            ) : (
+              <div className="mt-3 divide-y divide-blush-100">
+                {report.receivedByMethod.map((m) => (
+                  <div key={m.method} className="py-2.5 flex items-center gap-3 text-sm">
+                    <span className="flex-1 text-ink-900">{methodLabel(m.method)}</span>
+                    <span className="text-ink-500">{m.count} payment{m.count === 1 ? '' : 's'}</span>
+                    <span className="font-display font-semibold text-ink-900 w-24 text-right">{formatPrice(m.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {report.refundedInRange > 0 && (
+              <p className="mt-3 text-[12px] text-ink-500">
+                {formatPrice(report.refundedInRange)} was received in this range on orders that were later cancelled or refunded, so it is left out of the totals above.
+              </p>
+            )}
           </div>
 
           <div className="mt-4 bg-white rounded-2xl p-4 sm:p-5 shadow-[0_8px_30px_rgba(43,29,35,0.07)]">
@@ -362,8 +406,8 @@ export default function ReportsTab() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-ink-900 truncate">{o.id} · {o.customer.name}</p>
                       <p className="text-[11px] text-ink-500">
-                        {new Date(o.createdAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        {!o.invoiceSentAt && <span className="text-rose-500"> · not yet emailed</span>}
+                        Paid {new Date(o.paidAt ?? o.createdAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {!o.invoiceSentAt && <span className="text-rose-500"> · invoice not sent yet</span>}
                       </p>
                     </div>
                     <span className="font-display text-sm font-semibold text-ink-900 shrink-0">{formatPrice(o.total)}</span>
