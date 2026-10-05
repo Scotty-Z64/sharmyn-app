@@ -31,6 +31,10 @@ import {
   findProduct,
   getSiteSettings,
   updateSiteSettings,
+  addPaymentProof,
+  countPaymentProofs,
+  getLatestPaymentProof,
+  decidePaymentProofs,
 } from "./queries/shop";
 import {
   paymentsEnabled,
@@ -44,7 +48,8 @@ import {
 } from "./lib/payments";
 import { stitchEnabled, createStitchPaymentLink, getStitchLink, stitchLinkPaysOrder } from "./lib/stitch";
 import { ozowEnabled, createOzowPayment, checkOzowPayment } from "./lib/ozow";
-import { sendOrderPaymentWhatsApp, sendShippedWhatsApp } from "./lib/whatsapp";
+import { sendOrderPaymentWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp } from "./lib/whatsapp";
+import { parseProofDataUrl, MAX_PROOFS_PER_ORDER } from "./lib/proof";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
 import { publishToInstagram } from "./lib/meta";
 import {
@@ -56,7 +61,7 @@ import {
 } from "./queries/studio";
 import { createExchange, listExchangesForOrder, markExchangeSlipSent } from "./queries/exchanges";
 import { adminConfigured, verifyAdminPassword, issueAdminToken, assertAdminToken, rateLimit, clientIp } from "./lib/admin";
-import { notifyOwner, notifyCustomer, notifyLowStock, sendInvoice, sendExchangeSlip } from "./lib/notify";
+import { notifyOwner, notifyCustomer, notifyLowStock, notifyProofReceived, sendInvoice, sendExchangeSlip } from "./lib/notify";
 import type { Order } from "@contracts/types";
 import { HERO_ASPECTS } from "@contracts/types";
 
@@ -158,6 +163,35 @@ export const appRouter = createRouter({
         const order = await findPublicOrder(input.id, input.email);
         if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
         return order;
+      }),
+
+    // The customer uploads the proof of payment from their bank (photo/screenshot or
+    // PDF). Needs the order number + the checkout email, exactly like tracking
+    // (a wrong email looks the same as a missing order). The owner is notified
+    // with the proof and the invoice and then confirms or rejects it in the portal.
+    submitPaymentProof: publicQuery
+      .input(z.object({ id: z.string(), email: z.string(), dataUrl: z.string().max(5_200_000) }))
+      .mutation(async ({ input, ctx }) => {
+        rateLimit(`submitProof:${clientIp(ctx.req)}`, 6);
+        const order = await findOrder(input.id);
+        const orderEmail = (order?.customer.email ?? "").trim().toLowerCase();
+        if (!order || !orderEmail || orderEmail !== input.email.trim().toLowerCase()) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+        }
+        if (order.status === "cancelled") throw new TRPCError({ code: "BAD_REQUEST", message: "This order was cancelled" });
+        if (order.paymentStatus === "paid") return { ok: true as const, alreadyPaid: true as const };
+        let proof;
+        try {
+          proof = parseProofDataUrl(input.dataUrl);
+        } catch (e) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: e instanceof Error ? e.message.replace("PROOF_INVALID:", "") : "Invalid file" });
+        }
+        if ((await countPaymentProofs(order.id)) >= MAX_PROOFS_PER_ORDER) {
+          throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many proofs uploaded for this order — please WhatsApp us instead" });
+        }
+        await addPaymentProof(order.id, proof.mime, input.dataUrl);
+        void notifyProofReceived({ ...order, proofStatus: "pending", proofNote: null }, proof).catch((e) => console.error("[notify] proof of payment:", e));
+        return { ok: true as const, alreadyPaid: false as const };
       }),
 
     // Customer self-service cancel: only pending + unpaid orders.
@@ -486,8 +520,33 @@ export const appRouter = createRouter({
         }
         if (order.paymentStatus === "paid") return order;
         const updated = await markOrderPaid(order.id, null, "eft");
-        if (updated) sendInvoiceOnce(updated);
+        if (updated) {
+          await decidePaymentProofs(order.id, "accepted");
+          sendInvoiceOnce(updated); // PAID invoice + "we're ordering your items, track it here" to the customer
+        }
         return updated;
+      }),
+    // The latest proof of payment the customer uploaded (owner only) — shown in the Orders tab.
+    adminPaymentProof: publicQuery
+      .input(z.object({ token: adminToken, id: z.string() }))
+      .query(async ({ input }) => {
+        assertAdminToken(input.token);
+        return getLatestPaymentProof(input.id);
+      }),
+    // The money isn't there / the proof isn't right: the order stays unpaid and held,
+    // and the customer is told why and how to send a new proof.
+    rejectPayment: publicQuery
+      .input(z.object({ token: adminToken, id: z.string(), reason: z.string().trim().min(3).max(160) }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        const order = await findOrder(input.id);
+        if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+        if (order.paymentStatus === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "This order is already paid" });
+        if (order.status === "cancelled") throw new TRPCError({ code: "BAD_REQUEST", message: "Order is cancelled" });
+        await decidePaymentProofs(order.id, "rejected", input.reason);
+        void notifyCustomer("payment_rejected", order, input.reason).catch((e) => console.error("[notify]", e));
+        void sendPaymentIssueWhatsApp(order, input.reason).catch((e) => console.error("[whatsapp] payment issue message failed:", e));
+        return { ...order, proofStatus: "rejected" as const, proofNote: input.reason };
       }),
     setTrackingNumber: publicQuery
       .input(z.object({ token: adminToken, id: z.string(), trackingNumber: z.string().nullable() }))

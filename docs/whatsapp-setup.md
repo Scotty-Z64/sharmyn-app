@@ -8,6 +8,7 @@ types at checkout, with no one tapping anything:
 | Customer places an EFT order | `sharmyn_order_payment` | Invoice PDF (with the banking details) |
 | Owner confirms the EFT payment | `sharmyn_payment_received` | PAID invoice PDF |
 | Order marked shipped / waybill added | `sharmyn_order_shipped` | — (tracking number in the text) |
+| Owner rejects a payment / proof | `sharmyn_payment_issue` | — (reason + how to resend) |
 
 A business may only *start* a WhatsApp conversation with a message template that
 Meta has approved, so the wording below must be submitted to Meta first. Until
@@ -22,7 +23,7 @@ does nothing, and the owner portal's manual WhatsApp buttons keep working.
    - The number must not already be registered on a regular WhatsApp account, *or*
      use Meta's "coexistence" option to keep the WhatsApp Business **app** on the
      same number. Check which applies to +27 61 645 5670 before starting.
-3. Create the three templates below (category **Utility**, language **English**).
+3. Create the four templates below (category **Utility**, language **English**).
    Meta asks for an example value for every `{{n}}` variable; use the examples shown.
 4. Create a **System User** (Business Settings → Users → System users), give it the
    WhatsApp Business account, and generate a **permanent access token** with the
@@ -61,6 +62,14 @@ Hi {{1}}, your Sharmyn order {{2}} is on its way 📦 Courier tracking number: {
 ```
 
 Examples: `{{1}}` Thandi · `{{2}}` K7M3QXA2 · `{{3}}` TCG123456789 · `{{4}}` https://sharmyn.co.za/track?order=K7M3QXA2
+
+### sharmyn_payment_issue — no header
+
+```
+Hi {{1}}, we could not confirm your payment for order {{2}}: {{3}}. Please check it and send your proof of payment again on the Track Order page at sharmyn.co.za, or reply here. Your order is still being held for you. Need help? WhatsApp {{4}}
+```
+
+Examples: `{{1}}` Thandi · `{{2}}` K7M3QXA2 · `{{3}}` The money is not showing in our account yet · `{{4}}` +27616455670
 
 ## 3. Switch it on (Zane)
 

@@ -8,6 +8,7 @@ import type { Exchange, FulfilmentStage } from '@contracts/types';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { ConfirmDialog, STATUS_STYLE, Thumb } from './bits';
+import { ProofViewer, RejectPaymentDialog } from './ProofDialogs';
 import { waLink, toIntlPhoneZA, bankConfigured, eftInstructionsText, UNPAID_HOLD_HOURS } from '@/config/business';
 
 const MISSED_AFTER_DAYS = 3;
@@ -229,12 +230,15 @@ function OrderCard({ order }: { order: Order }) {
   const refundMut = trpc.shop.setRefundStatus.useMutation();
   const refundOnlineMut = trpc.shop.refundOrder.useMutation();
   const confirmEftMut = trpc.shop.confirmEftPayment.useMutation();
+  const rejectPaymentMut = trpc.shop.rejectPayment.useMutation();
   const supplierMut = trpc.shop.markSupplierOrdered.useMutation();
   const stockMut = trpc.shop.markStockReceived.useMutation();
   const unmarkMut = trpc.shop.unmarkFulfilmentStage.useMutation();
   const [open, setOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmEft, setConfirmEft] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [viewingProof, setViewingProof] = useState(false);
   const [exchanging, setExchanging] = useState(false);
   const exchangesQuery = trpc.shop.listExchanges.useQuery({ token, orderId: order.id }, { enabled: open && order.paymentStatus === 'paid' });
   const stepIdx = STEPS.indexOf(order.status);
@@ -281,6 +285,19 @@ function OrderCard({ order }: { order: Order }) {
       toast(`Order ${order.id} marked paid — invoice sent`);
     } catch {
       toast('Could not confirm payment — try again');
+    }
+  };
+
+  // The payment isn't there / the proof isn't right: order stays on hold, customer is told why.
+  const rejectPayment = async (reason: string) => {
+    if (rejectPaymentMut.isPending) return;
+    try {
+      await rejectPaymentMut.mutateAsync({ token, id: order.id, reason });
+      setRejecting(false);
+      refresh();
+      toast(`Payment rejected — ${order.customer.name} has been told`);
+    } catch {
+      toast('Could not reject the payment — try again');
     }
   };
 
@@ -348,6 +365,11 @@ function OrderCard({ order }: { order: Order }) {
             {STEP_LABEL[order.status]}
           </motion.span>
         </div>
+        {order.paymentStatus !== 'paid' && order.status !== 'cancelled' && order.proofStatus === 'pending' && (
+          <p className="mt-1.5 inline-flex h-6 px-2.5 rounded-full bg-[#E8F1FA] text-[#2E6FB0] text-[10px] font-semibold uppercase tracking-[0.1em] items-center">
+            Proof of payment received — check &amp; confirm
+          </p>
+        )}
         <div className="mt-1.5 flex items-center justify-between gap-2">
           <span className="text-xs text-ink-500">
             {new Date(order.createdAt).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -439,6 +461,21 @@ function OrderCard({ order }: { order: Order }) {
               {order.paymentStatus !== 'paid' && order.status !== 'cancelled' && (
                 <div className="rounded-xl border border-gold-400/40 bg-blush-50 p-3">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500 mb-2">Awaiting payment (EFT)</p>
+                  {order.proofStatus === 'pending' && (
+                    <div className="mb-2 rounded-lg border border-[#2E6FB0]/30 bg-white p-2.5">
+                      <p className="text-[12px] font-semibold text-ink-900">The customer uploaded their proof of payment</p>
+                      <p className="mt-0.5 text-[11px] text-ink-500">Check the money is in the account, then confirm or reject below.</p>
+                      <button onClick={() => setViewingProof(true)}
+                        className="mt-2 w-full h-10 rounded-full bg-[#2E6FB0] text-white text-[11px] font-semibold uppercase tracking-[0.1em] hover:opacity-90">
+                        View proof of payment
+                      </button>
+                    </div>
+                  )}
+                  {order.proofStatus === 'rejected' && (
+                    <p className="mb-2 text-[11px] font-medium text-rose-600">
+                      You rejected the last proof{order.proofNote ? ` (${order.proofNote})` : ''}. Waiting for the customer to send a new one.
+                    </p>
+                  )}
                   {bankConfigured() && order.customer.phone && (
                     <a
                       href={waLink(
@@ -460,6 +497,13 @@ ${eftInstructionsText(order.id, order.total)}`
                     className="w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.1em] hover:bg-gold-400 transition-colors disabled:opacity-50"
                   >
                     {confirmEftMut.isPending ? 'Confirming…' : 'Confirm EFT payment received'}
+                  </button>
+                  <button
+                    onClick={() => setRejecting(true)}
+                    disabled={rejectPaymentMut.isPending}
+                    className="mt-2 w-full h-10 rounded-full border border-rose-300 text-rose-600 text-[11px] font-semibold uppercase tracking-[0.1em] hover:bg-blush-100 transition-colors disabled:opacity-50"
+                  >
+                    Payment not received / reject proof
                   </button>
                   <p className="mt-2 text-[11px] text-ink-500">Only confirm once the money is showing in the FNB account. This marks the order paid and sends the invoice.</p>
                   {(() => {
@@ -656,6 +700,10 @@ ${eftInstructionsText(order.id, order.total)}`
               )}
 
               <AnimatePresence>
+                {viewingProof && <ProofViewer order={order} onClose={() => setViewingProof(false)} />}
+                {rejecting && (
+                  <RejectPaymentDialog order={order} busy={rejectPaymentMut.isPending} onReject={(r) => void rejectPayment(r)} onCancel={() => setRejecting(false)} />
+                )}
                 {confirmEft && (
                   <ConfirmDialog
                     title={`Confirm payment for ${order.id}?`}

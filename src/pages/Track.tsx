@@ -8,6 +8,7 @@ import { formatPrice } from '@/lib/store';
 import type { PublicOrder, OrderStatus } from '@/lib/store';
 import { trpc } from '@/providers/trpc';
 import BackButton from '@/components/BackButton';
+import ProofUpload from '@/components/checkout/ProofUpload';
 
 const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number];
 
@@ -379,6 +380,17 @@ export default function Track() {
                 </div>
 
                 <StatusTimeline order={order} />
+
+                {/* Unpaid EFT order: upload the proof of payment, or see what happened to the last one */}
+                {order.paymentStatus === 'unpaid' && order.status !== 'cancelled' && submitted && (
+                  <ProofUpload
+                    orderId={order.id}
+                    email={submitted.email}
+                    proofStatus={order.proofStatus}
+                    proofNote={order.proofNote}
+                    onUploaded={() => void orderQuery.refetch()}
+                  />
+                )}
 
                 {/* Pudo waybill */}
                 {order.trackingNumber && (

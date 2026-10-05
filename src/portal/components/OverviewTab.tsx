@@ -26,11 +26,12 @@ export function useStats() {
   const unpaid = orders.filter((o) => o.paymentStatus === 'unpaid' && o.status !== 'cancelled');
   const unpaidOrders = unpaid.length;
   const unpaidAmount = unpaid.reduce((s, o) => s + o.total, 0);
-  return { products, orders, units, pending, revenue, lowStock, paidOrders, unpaidOrders, unpaidAmount };
+  const proofsWaiting = unpaid.filter((o) => o.proofStatus === 'pending').length; // customer says they've paid — needs the owner's check
+  return { products, orders, units, pending, revenue, lowStock, paidOrders, unpaidOrders, unpaidAmount, proofsWaiting };
 }
 
 export default function OverviewTab({ goTo }: { goTo: (t: 'products' | 'stock' | 'orders') => void }) {
-  const { products, orders, units, pending, revenue, lowStock, paidOrders, unpaidOrders, unpaidAmount } = useStats();
+  const { products, orders, units, pending, revenue, lowStock, paidOrders, unpaidOrders, unpaidAmount, proofsWaiting } = useStats();
   const { unreadCount } = usePortal();
 
   const stats = [
@@ -97,6 +98,11 @@ export default function OverviewTab({ goTo }: { goTo: (t: 'products' | 'stock' |
           <span className="h-7 px-3 rounded-full bg-blush-100 text-ink-500 text-[11px] font-semibold uppercase tracking-[0.08em] grid place-items-center">
             {unpaidOrders} awaiting payment{unpaidOrders > 0 ? ' · ' + formatPrice(unpaidAmount) : ''}
           </span>
+          {proofsWaiting > 0 && (
+            <span className="h-7 px-3 rounded-full bg-[#E8F1FA] text-[#2E6FB0] text-[11px] font-semibold uppercase tracking-[0.08em] grid place-items-center">
+              {proofsWaiting} proof{proofsWaiting === 1 ? '' : 's'} to check
+            </span>
+          )}
           <button onClick={() => goTo('orders')} className="ml-auto h-11 text-[11px] font-semibold uppercase tracking-[0.12em] text-rose-600 flex items-center gap-1">
             Orders <ArrowRight size={13} />
           </button>

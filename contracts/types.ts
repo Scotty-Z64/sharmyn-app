@@ -23,6 +23,8 @@ export type Availability = "in-stock" | "sold-out" | "back-soon";
 export type OrderStatus = "pending" | "processing" | "shipped" | "delivered" | "cancelled";
 export type PaymentStatus = "unpaid" | "paid" | "failed";
 export type PaymentGateway = "yoco" | "payfast" | "stitch" | "ozow" | "eft"; // "eft" = manual bank transfer the owner confirmed
+/** A customer's uploaded proof of payment: waiting for the owner, accepted (payment confirmed) or rejected (with a reason). */
+export type ProofStatus = "pending" | "accepted" | "rejected";
 export type RefundStatus = "none" | "pending" | "refunded";
 export type DeliveryMethod = "pudo" | "door" | "collect";
 
@@ -109,6 +111,8 @@ export interface Order {
   paymentRef?: string | null; // gateway checkout/payment id
   paymentGateway?: PaymentGateway | null;
   paidAt?: string | null; // when the payment was actually received (null while unpaid)
+  proofStatus?: ProofStatus | null; // latest proof of payment the customer uploaded, if any
+  proofNote?: string | null; // the owner's reason when the latest proof was rejected
   supplierOrderedAt?: string | null;
   stockReceivedAt?: string | null;
   invoiceSentAt?: string | null;
@@ -163,11 +167,13 @@ export interface PublicOrder {
   total: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
+  proofStatus: ProofStatus | null; // so the customer can see "received, awaiting confirmation" or "please resend"
+  proofNote: string | null; // shown only when the proof was rejected
   createdAt: string;
   statusHistory: { status: OrderStatus; at: string }[];
 }
 
-export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock";
+export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock" | "payment_proof";
 
 export type StudioPostStatus = "draft" | "ready" | "posted";
 export type StudioTemplate = "new-in" | "sale" | "restocked" | "elegant";

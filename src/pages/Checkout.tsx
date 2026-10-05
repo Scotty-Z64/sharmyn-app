@@ -10,6 +10,7 @@ import type { Order, OrderDelivery, PudoLockerRef } from '@/lib/store';
 import PudoLockerPicker from '@/components/checkout/PudoLockerPicker';
 import { BANK, BUSINESS, UNPAID_HOLD_HOURS, bankConfigured, waLink } from '@/config/business';
 import { WhatsAppIcon } from '@/components/WhatsAppFloat';
+import ProofUpload from '@/components/checkout/ProofUpload';
 
 const PROVINCES = [
   'Gauteng', 'Western Cape', 'KwaZulu-Natal', 'Eastern Cape', 'Free State',
@@ -341,6 +342,10 @@ export default function Checkout() {
                 Please use <strong>{placed.id}</strong> as your payment reference so we can match your payment. We hold your order for {UNPAID_HOLD_HOURS} hours.
               </p>
             </div>
+          )}
+
+          {!onlinePayEnabled && placed.paymentStatus !== 'paid' && (
+            <ProofUpload orderId={placed.id} email={placed.customer.email} />
           )}
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">

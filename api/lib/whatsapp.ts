@@ -3,6 +3,7 @@
 //   1. order placed        → banking details + the invoice PDF   (sharmyn_order_payment)
 //   2. payment confirmed   → "received" + the PAID invoice PDF   (sharmyn_payment_received)
 //   3. parcel shipped      → courier tracking number + link      (sharmyn_order_shipped)
+//   4. payment not confirmed → reason + how to resend the proof  (sharmyn_payment_issue)
 // A business can only START a conversation with an approved *template*, so the
 // wording lives in Meta (see docs/whatsapp-setup.md for the exact text to
 // submit); this file only fills in the variables. Inert until
@@ -19,6 +20,7 @@ export const WHATSAPP_TEMPLATES = {
   payment: "sharmyn_order_payment",
   received: "sharmyn_payment_received",
   shipped: "sharmyn_order_shipped",
+  paymentIssue: "sharmyn_payment_issue",
 } as const;
 
 export function whatsappEnabled(): boolean {
@@ -105,6 +107,16 @@ export async function sendPaymentReceivedWhatsApp(order: Order): Promise<boolean
   await sendTemplate(to, WHATSAPP_TEMPLATES.received, [
     invoiceHeader(order),
     { type: "body", parameters: [text(firstName(order)), text(order.id), text(trackLink(order))] },
+  ]);
+  return true;
+}
+
+/** The owner could not confirm the payment (or rejected the proof): tell the customer why and how to resend. */
+export async function sendPaymentIssueWhatsApp(order: Order, reason: string): Promise<boolean> {
+  const to = customerWhatsAppNumber(order);
+  if (!whatsappEnabled() || !to) return false;
+  await sendTemplate(to, WHATSAPP_TEMPLATES.paymentIssue, [
+    { type: "body", parameters: [text(firstName(order)), text(order.id), text(reason), text(BUSINESS.whatsapp)] },
   ]);
   return true;
 }

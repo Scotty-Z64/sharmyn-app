@@ -2,10 +2,10 @@
 // Email is fire-and-forget — failures are logged, never thrown.
 import type { Exchange, Order, Product } from "@contracts/types";
 import { insertNotification } from "../queries/shop";
-import { bankConfigured, eftInstructionsText } from "../../src/config/business";
+import { BUSINESS, bankConfigured, eftInstructionsText } from "../../src/config/business";
 import { sendPaymentReceivedWhatsApp } from "./whatsapp";
 
-export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock";
+export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock" | "payment_proof";
 
 const DELIVERY_LABEL: Record<string, string> = {
   pudo: "Pudo Locker Pickup",
@@ -67,12 +67,14 @@ const SUBJECTS: Record<Exclude<NotificationType, "low_stock">, (o: Order) => str
   new_order: (o) => `New order ${o.id} — R${o.total}`,
   paid: (o) => `Payment received for ${o.id} — R${o.total}`,
   cancel_request: (o) => `Cancellation request for ${o.id}`,
+  payment_proof: (o) => `Proof of payment received for ${o.id} — R${o.total}`,
 };
 
 const MESSAGES: Record<Exclude<NotificationType, "low_stock">, (o: Order) => string> = {
   new_order: (o) => `New order ${o.id} placed — R${o.total} (${o.paymentStatus})`,
   paid: (o) => `Order ${o.id} is paid — R${o.total}`,
   cancel_request: (o) => `Customer requested cancellation of ${o.id}`,
+  payment_proof: (o) => `Proof of payment received for ${o.id} (R${o.total}) — check the funds, then confirm or reject it in Orders`,
 };
 
 function ownerEmailConfigured(): { apiKey: string; ownerEmail: string } | null {
@@ -87,12 +89,12 @@ function sendEmail(
   to: string[],
   subject: string,
   text: string,
-  attachment?: { filename: string; content: string } // content: base64
+  attachment?: { filename: string; content: string } | { filename: string; content: string }[] // content: base64
 ): void {
   // Resend's shared sandbox sender — works with no domain verification. Switch to a
   // real @sharmyn.co.za address once that domain is verified in the Resend dashboard.
   const body: Record<string, unknown> = { from: "Sharmyn Store <onboarding@resend.dev>", to, subject, text };
-  if (attachment) body.attachments = [attachment];
+  if (attachment) body.attachments = Array.isArray(attachment) ? attachment : [attachment];
   fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -100,7 +102,11 @@ function sendEmail(
   }).catch((e) => console.error("[notify] resend email failed:", e));
 }
 
-export async function notifyOwner(type: Exclude<NotificationType, "low_stock">, order: Order): Promise<void> {
+export async function notifyOwner(
+  type: Exclude<NotificationType, "low_stock">,
+  order: Order,
+  attachments?: { filename: string; content: string }[]
+): Promise<void> {
   const message = MESSAGES[type](order);
   try {
     await insertNotification({ type, message, orderId: order.id });
@@ -110,7 +116,23 @@ export async function notifyOwner(type: Exclude<NotificationType, "low_stock">, 
 
   const cfg = ownerEmailConfigured();
   if (!cfg) return;
-  sendEmail(cfg.apiKey, [cfg.ownerEmail], SUBJECTS[type](order), `${message}\n\n${summarise(order)}`);
+  sendEmail(cfg.apiKey, [cfg.ownerEmail], SUBJECTS[type](order), `${message}\n\n${summarise(order)}`, attachments);
+}
+
+/**
+ * A customer uploaded their proof of payment: tell the owner (in-app bell + email)
+ * with the proof and the invoice attached, so they can check the bank account
+ * and confirm or reject it from the Orders tab.
+ */
+export async function notifyProofReceived(order: Order, proof: { base64: string; ext: string }): Promise<void> {
+  const files = [{ filename: `proof-of-payment-${order.id}.${proof.ext}`, content: proof.base64 }];
+  try {
+    const { buildInvoicePdf } = await import("./invoice");
+    files.push({ filename: `sharmyn-invoice-${order.id}.pdf`, content: (await buildInvoicePdf(order)).toString("base64") });
+  } catch (e) {
+    console.error("[notify] could not attach the invoice to the proof email:", e); // the proof itself still goes out
+  }
+  await notifyOwner("payment_proof", order, files);
 }
 
 /**
@@ -139,16 +161,17 @@ export async function notifyLowStock(product: Product): Promise<void> {
 // Same RESEND_API_KEY gate — if unset, this is a no-op (order placement never
 // depends on email succeeding).
 
-export type CustomerEmailType = "order_placed" | "order_shipped" | "order_delivered" | "order_cancelled";
+export type CustomerEmailType = "order_placed" | "order_shipped" | "order_delivered" | "order_cancelled" | "payment_rejected";
 
 const CUSTOMER_SUBJECTS: Record<CustomerEmailType, (o: Order) => string> = {
   order_placed: (o) => `Sharmyn — order ${o.id} received`,
   order_shipped: (o) => `Sharmyn — order ${o.id} is on its way`,
   order_delivered: (o) => `Sharmyn — order ${o.id} delivered`,
   order_cancelled: (o) => `Sharmyn — order ${o.id} cancelled`,
+  payment_rejected: (o) => `Sharmyn — we could not confirm your payment for order ${o.id}`,
 };
 
-function customerBody(type: CustomerEmailType, order: Order): string {
+function customerBody(type: CustomerEmailType, order: Order, note?: string): string {
   const lines = order.items.map((i) => `  - ${i.name} x${i.qty} — R${i.price * i.qty}`).join("\n");
   const track = `Track your order any time: reply to this email with your order number ${order.id}, or use the tracking page on the store with this order number and the email address you checked out with.`;
   const intro: Record<CustomerEmailType, string> = {
@@ -156,6 +179,7 @@ function customerBody(type: CustomerEmailType, order: Order): string {
     order_shipped: `Hi ${order.customer.name}, your order is on its way!${order.trackingNumber ? ` Tracking/waybill number: ${order.trackingNumber}.` : ""}`,
     order_delivered: `Hi ${order.customer.name}, your order has been delivered — we hope you love it!`,
     order_cancelled: `Hi ${order.customer.name}, order ${order.id} has been cancelled. Any payment made will be refunded.`,
+    payment_rejected: `Hi ${order.customer.name}, we could not confirm your payment for order ${order.id}${note ? `: ${note}` : "."} Please check it and send your proof of payment again (on the Track Order page, or by WhatsApp to ${BUSINESS.whatsapp}), and quote ${order.id} as the reference. Your order is still being held for you.`,
   };
   // Delivered is also the natural moment to ask for feedback — folded into
   // this email rather than a separate timed send, since there's no reliable
@@ -172,12 +196,12 @@ function customerBody(type: CustomerEmailType, order: Order): string {
   return [intro[type], "", `Order ${order.id}`, lines, "", `Total: R${order.total}`, ...payBlock, "", track + reviewAsk].join("\n");
 }
 
-export async function notifyCustomer(type: CustomerEmailType, order: Order): Promise<void> {
+export async function notifyCustomer(type: CustomerEmailType, order: Order, note?: string): Promise<void> {
   const to = order.customer.email?.trim();
   if (!to) return; // no email on file (e.g. WhatsApp-only checkout) — nothing to send
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return; // same optional gate as owner email — degrades gracefully
-  sendEmail(apiKey, [to], CUSTOMER_SUBJECTS[type](order), customerBody(type, order));
+  sendEmail(apiKey, [to], CUSTOMER_SUBJECTS[type](order), customerBody(type, order, note));
 }
 
 /**

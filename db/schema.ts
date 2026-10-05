@@ -66,6 +66,20 @@ export const orderPayments = mysqlTable("order_payments", {
   receivedAt: timestamp("received_at").notNull().defaultNow(),
 });
 
+// Proof of payment uploaded by the customer (a photo/PDF of the bank confirmation).
+// Created on first use (see api/queries/shop.ts), like order_payments. The file
+// is stored as a base64 data URL (MEDIUMTEXT) and is only ever sent to the owner.
+export const orderProofs = mysqlTable("order_proofs", {
+  id: varchar("id", { length: 24 }).primaryKey(),
+  orderId: varchar("order_id", { length: 16 }).notNull(),
+  mime: varchar("mime", { length: 40 }).notNull(),
+  data: text("data").notNull(),
+  status: varchar("status", { length: 10 }).notNull().default("pending"), // pending | accepted | rejected
+  note: varchar("note", { length: 200 }), // owner's reason when rejected
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  decidedAt: timestamp("decided_at"),
+});
+
 export const studioPosts = mysqlTable("studio_posts", {
   id: varchar("id", { length: 40 }).primaryKey(),
   imageData: text("image_data").notNull(), // MEDIUMTEXT in prod — compressed data URL

@@ -1,7 +1,7 @@
 import { eq, desc, sql, and, lt, gte, lte, inArray, ne } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { getDb } from "./connection";
-import { products, orders, orderPayments, notifications, siteSettings } from "@db/schema";
+import { products, orders, orderPayments, orderProofs, notifications, siteSettings } from "@db/schema";
 import { UNPAID_HOLD_HOURS } from "../../src/config/business";
 import { summarisePayments, summariseOutstanding } from "../lib/payment-summary";
 import { isSizedCategory, pudoDeliveryFee, pudoStandardFee } from "@contracts/types";
@@ -85,7 +85,7 @@ function legacyPaidAt(row: typeof orders.$inferSelect): string {
   return history.find((h) => h.status === "processing")?.at ?? row.createdAt.toISOString();
 }
 
-function toOrder(row: typeof orders.$inferSelect, receivedAt?: Date | null): Order {
+function toOrder(row: typeof orders.$inferSelect, receivedAt?: Date | null, proof?: ProofInfo | null): Order {
   return {
     id: row.id,
     items: row.items as OrderItem[],
@@ -100,6 +100,8 @@ function toOrder(row: typeof orders.$inferSelect, receivedAt?: Date | null): Ord
     paymentRef: row.paymentRef ?? null,
     paymentGateway: (row.paymentGateway as Order["paymentGateway"]) ?? null,
     paidAt: row.paymentStatus === "paid" ? (receivedAt ? receivedAt.toISOString() : legacyPaidAt(row)) : null,
+    proofStatus: proof?.status ?? null,
+    proofNote: proof?.status === "rejected" ? proof.note : null,
     supplierOrderedAt: row.supplierOrderedAt ? row.supplierOrderedAt.toISOString() : null,
     stockReceivedAt: row.stockReceivedAt ? row.stockReceivedAt.toISOString() : null,
     invoiceSentAt: row.invoiceSentAt ? row.invoiceSentAt.toISOString() : null,
@@ -118,6 +120,8 @@ export function toPublicOrder(order: Order): PublicOrder {
       : null,
     trackingNumber: order.trackingNumber ?? null,
     total: order.total,
+    proofStatus: order.proofStatus ?? null,
+    proofNote: order.proofNote ?? null,
     status: order.status,
     paymentStatus: order.paymentStatus,
     statusHistory: order.statusHistory,
@@ -354,13 +358,113 @@ async function recordPaymentReceived(orderId: string, method: string, amount: nu
   return receivedAt;
 }
 
+// ---- proof of payment uploads ----
+
+export interface ProofInfo {
+  status: "pending" | "accepted" | "rejected";
+  note: string | null;
+}
+
+let proofsTableReady: Promise<void> | null = null;
+
+function ensureProofsTable(): Promise<void> {
+  proofsTableReady ??= (async () => {
+    await getDb().execute(sql`CREATE TABLE IF NOT EXISTS order_proofs (
+      id VARCHAR(24) NOT NULL PRIMARY KEY,
+      order_id VARCHAR(16) NOT NULL,
+      mime VARCHAR(40) NOT NULL,
+      data MEDIUMTEXT NOT NULL,
+      status VARCHAR(10) NOT NULL DEFAULT 'pending',
+      note VARCHAR(200) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      decided_at TIMESTAMP NULL,
+      INDEX idx_order_proofs_order (order_id)
+    )`);
+  })().catch((e) => {
+    proofsTableReady = null;
+    throw e;
+  });
+  return proofsTableReady;
+}
+
+/** Latest proof status per order. Never loads the files themselves. */
+async function latestProofByOrder(): Promise<Map<string, ProofInfo>> {
+  try {
+    await ensureProofsTable();
+    const rows = await getDb()
+      .select({ orderId: orderProofs.orderId, status: orderProofs.status, note: orderProofs.note, createdAt: orderProofs.createdAt })
+      .from(orderProofs)
+      .orderBy(orderProofs.createdAt);
+    const latest = new Map<string, ProofInfo>();
+    for (const r of rows) latest.set(r.orderId, { status: r.status as ProofInfo["status"], note: r.note ?? null }); // oldest → newest, so the last one wins
+    return latest;
+  } catch (e) {
+    console.error("[proof] could not read proofs:", e);
+    return new Map();
+  }
+}
+
+async function latestProofFor(orderId: string): Promise<ProofInfo | null> {
+  try {
+    await ensureProofsTable();
+    const rows = await getDb()
+      .select({ status: orderProofs.status, note: orderProofs.note })
+      .from(orderProofs)
+      .where(eq(orderProofs.orderId, orderId))
+      .orderBy(desc(orderProofs.createdAt))
+      .limit(1);
+    return rows[0] ? { status: rows[0].status as ProofInfo["status"], note: rows[0].note ?? null } : null;
+  } catch (e) {
+    console.error("[proof] could not read proof:", e);
+    return null;
+  }
+}
+
+/** Stores an uploaded proof (already validated by parseProofDataUrl). Returns its id. */
+export async function addPaymentProof(orderId: string, mime: string, dataUrl: string): Promise<string> {
+  await ensureProofsTable();
+  const id = randomBytes(9).toString("hex");
+  await getDb().insert(orderProofs).values({ id, orderId, mime, data: dataUrl, status: "pending" });
+  return id;
+}
+
+export async function countPaymentProofs(orderId: string): Promise<number> {
+  await ensureProofsTable();
+  const rows = await getDb().select({ id: orderProofs.id }).from(orderProofs).where(eq(orderProofs.orderId, orderId));
+  return rows.length;
+}
+
+/** The newest proof for an order, with its file — owner only. */
+export async function getLatestPaymentProof(
+  orderId: string
+): Promise<{ id: string; mime: string; dataUrl: string; status: string; note: string | null; createdAt: string } | null> {
+  await ensureProofsTable();
+  const rows = await getDb().select().from(orderProofs).where(eq(orderProofs.orderId, orderId)).orderBy(desc(orderProofs.createdAt)).limit(1);
+  const r = rows[0];
+  return r ? { id: r.id, mime: r.mime, dataUrl: r.data, status: r.status, note: r.note ?? null, createdAt: r.createdAt.toISOString() } : null;
+}
+
+/** Marks every still-pending proof on an order accepted or rejected. */
+export async function decidePaymentProofs(orderId: string, status: "accepted" | "rejected", note?: string): Promise<void> {
+  try {
+    await ensureProofsTable();
+    await getDb()
+      .update(orderProofs)
+      .set({ status, note: note ? note.slice(0, 200) : null, decidedAt: new Date() })
+      .where(and(eq(orderProofs.orderId, orderId), eq(orderProofs.status, "pending")));
+  } catch (e) {
+    console.error("[proof] failed to record decision for", orderId, e);
+  }
+}
+
 // ---- orders ----
 
 export async function listOrders(): Promise<Order[]> {
   await sweepStaleUnpaidOrders();
   const rows = await getDb().select().from(orders).orderBy(desc(orders.createdAt));
   const received = await receivedAtByOrder();
-  return rows.map((r) => toOrder(r, received.get(r.id)));
+  const proofs = await latestProofByOrder();
+  return rows.map((r) => toOrder(r, received.get(r.id), proofs.get(r.id)));
 }
 
 export async function findOrder(id: string): Promise<Order | null> {
@@ -370,7 +474,8 @@ export async function findOrder(id: string): Promise<Order | null> {
     .where(sql`LOWER(${orders.id}) = LOWER(${id.trim()})`)
     .limit(1);
   if (!rows[0]) return null;
-  return toOrder(rows[0], rows[0].paymentStatus === "paid" ? await receivedAtFor(rows[0].id) : null);
+  const paid = rows[0].paymentStatus === "paid";
+  return toOrder(rows[0], paid ? await receivedAtFor(rows[0].id) : null, paid ? null : await latestProofFor(rows[0].id));
 }
 
 /**
