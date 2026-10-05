@@ -48,7 +48,10 @@ export async function buildInvoicePdf(order: Order): Promise<Buffer> {
     imageById.set(id, raw ? dataUrlToBuffer(raw) : null);
   }
 
-  const paidOn = new Date();
+  // Dated by when payment was confirmed (the order moving to Processing), so a
+  // link opened weeks later doesn't show today's date and a shifted delivery window.
+  const processingAt = order.statusHistory.find((h) => h.status === "processing")?.at;
+  const paidOn = processingAt ? new Date(processingAt) : new Date();
   const earliestDelivery = addBusinessDays(paidOn, 5);
   const latestDelivery = addBusinessDays(paidOn, 7);
 
@@ -118,15 +121,37 @@ export async function buildInvoicePdf(order: Order): Promise<Buffer> {
     doc.font("Helvetica-Bold").fontSize(12).fillColor(INK);
     doc.text("TOTAL", 410, rowY, { width: 60, align: "right" });
     doc.text(`R${order.total}`, 475, rowY, { width: 70, align: "right" });
+    if (order.paymentStatus === "paid") {
+      rowY += 20;
+      doc.font("Helvetica-Bold").fontSize(9).fillColor(GOLD).text(
+        order.paymentGateway === "eft" ? "PAID - EFT payment received, thank you" : "PAID - thank you",
+        50, rowY, { width: 495, align: "right" }
+      );
+    }
 
     // Expected delivery
     rowY += 40;
+    if (rowY > 560) { doc.addPage(); rowY = 50; }
     doc.roundedRect(50, rowY, 495, 44, 6).fillColor("#F3E9D4").fill();
     doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text("Expected delivery", 65, rowY + 10);
     doc.font("Helvetica").fontSize(10).fillColor(SOFT).text(
       `Between ${formatDate(earliestDelivery)} and ${formatDate(latestDelivery)} (5–7 working days from today).`,
       65, rowY + 24, { width: 465 }
     );
+
+    // Tracking — the courier waybill only exists once the parcel ships, so before
+    // that the invoice says when to expect it and where to look.
+    rowY += 56;
+    const trackUrl = `${BUSINESS.website.replace(/^https?:\/\//, "")}/track?order=${order.id}`;
+    doc.roundedRect(50, rowY, 495, 58, 6).fillColor("#F3E9D4").fill();
+    doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text("Order & tracking", 65, rowY + 10);
+    doc.font("Helvetica").fontSize(10).fillColor(SOFT).text(
+      order.trackingNumber
+        ? `Order number: ${order.id}    Courier tracking number: ${order.trackingNumber}`
+        : `Order number: ${order.id}    Your courier tracking number will be sent to you as soon as your parcel ships.`,
+      65, rowY + 24, { width: 465 }
+    );
+    doc.fillColor(GOLD).text(`Track your order any time: ${trackUrl}`, 65, rowY + 42, { width: 465 });
 
     // Footer
     doc.fillColor(SOFT).fontSize(9).font("Helvetica").text(

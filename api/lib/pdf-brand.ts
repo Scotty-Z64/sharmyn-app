@@ -24,19 +24,19 @@ function loadLogo(): Buffer | null {
 
 /** Draws the sand letterhead band + logo + document title. Content below should start around y=130. */
 export function drawLetterhead(doc: PDFKit.PDFDocument, title: string, rightLines: string[]): void {
-  const BAND_H = 90;
+  const BAND_H = 116; // tall band so the logo can be large; body content starts at y≈130
   doc.rect(0, 0, doc.page.width, BAND_H).fill(SAND);
 
   const logo = loadLogo();
   if (logo) {
-    doc.image(logo, 50, 24, { height: 42 });
+    doc.image(logo, 50, 10, { height: 96 }); // PNG is trimmed to the artwork, so this is a genuinely large mark
   } else {
-    doc.fillColor(INK).fontSize(24).font("Helvetica-Bold").text(BUSINESS_NAME, 50, 32);
+    doc.fillColor(INK).fontSize(30).font("Helvetica-Bold").text(BUSINESS_NAME, 50, 38);
   }
 
-  doc.fillColor(GOLD).fontSize(16).font("Helvetica-Bold").text(title, 350, 28, { width: 195, align: "right" });
+  doc.fillColor(GOLD).fontSize(16).font("Helvetica-Bold").text(title, 350, 36, { width: 195, align: "right" });
   doc.fillColor(INK).fontSize(10).font("Helvetica");
-  let y = 50;
+  let y = 60;
   for (const line of rightLines) {
     doc.text(line, 350, y, { width: 195, align: "right" });
     y += 14;
