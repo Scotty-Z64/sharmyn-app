@@ -5,6 +5,7 @@ import {
   listProducts,
   upsertProduct,
   deleteProduct,
+  ensureProductNumbering,
   adjustStock,
   bulkAdjustPrice,
   listOrders,
@@ -397,8 +398,9 @@ export const appRouter = createRouter({
       }
       return { ok: true as const, token: issueAdminToken(), expiresInMs: 12 * 60 * 60 * 1000 };
     }),
-    adminProducts: publicQuery.input(z.object({ token: adminToken })).query(({ input }) => {
+    adminProducts: publicQuery.input(z.object({ token: adminToken })).query(async ({ input }) => {
       assertAdminToken(input.token);
+      await ensureProductNumbering(); // once per server start: closes any gaps in the catalog numbers
       return listProducts();
     }),
     adminOrders: publicQuery.input(z.object({ token: adminToken })).query(({ input }) => {

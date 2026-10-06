@@ -246,6 +246,48 @@ export async function upsertProduct(
 
 export async function deleteProduct(id: string): Promise<void> {
   await getDb().delete(products).where(eq(products.id, id));
+  // Close the gap the deleted item leaves, so the catalog numbers stay 1..N.
+  try {
+    await renumberProducts();
+  } catch (e) {
+    console.error("[products] renumbering after delete failed:", e);
+  }
+}
+
+/**
+ * Re-sequences the customer-facing catalog numbers ("Item #14") to 1..N in their
+ * current order, closing gaps left by deleted products (and fixing any duplicates).
+ * Only ever moves numbers DOWN into free slots, so no two products share a number
+ * mid-way. Invoices and the supplier list read the number live, so they follow it.
+ */
+export async function renumberProducts(): Promise<{ changed: number; total: number }> {
+  const db = getDb();
+  const rows = await db
+    .select({ id: products.id, refNumber: products.refNumber })
+    .from(products)
+    .orderBy(products.refNumber, products.createdAt, products.id);
+  let changed = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const want = i + 1;
+    if (rows[i].refNumber === want) continue;
+    await db.update(products).set({ refNumber: want }).where(eq(products.id, rows[i].id));
+    changed++;
+  }
+  return { changed, total: rows.length };
+}
+
+let numberingChecked = false;
+/** Runs the renumbering once per server start (when the owner first opens the portal), to fix gaps that already exist. */
+export async function ensureProductNumbering(): Promise<void> {
+  if (numberingChecked) return;
+  numberingChecked = true;
+  try {
+    const { changed } = await renumberProducts();
+    if (changed) console.log(`[products] renumbered ${changed} product(s) to close gaps`);
+  } catch (e) {
+    numberingChecked = false; // try again next time
+    console.error("[products] could not renumber:", e);
+  }
 }
 
 /** Adjust stock by delta (+restock / -correction). Auto-flips availability. */
