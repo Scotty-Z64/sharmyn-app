@@ -800,6 +800,10 @@ export default function OrdersTab() {
           className="h-9 px-3.5 rounded-full text-[10.5px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap transition-colors shrink-0 border bg-white border-gold-400 text-gold-500 hover:bg-[#FBF3E2] flex items-center gap-1.5">
           <Download size={12} /> Supplier order list
         </a>
+        <a href={`/api/order-list.pdf?download=1&token=${encodeURIComponent(token)}`} download
+          className="h-9 px-3.5 rounded-full text-[10.5px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap transition-colors shrink-0 border bg-white border-gold-400 text-gold-500 hover:bg-[#FBF3E2] flex items-center gap-1.5">
+          <Download size={12} /> Download PDF
+        </a>
       </div>
 
       {focusOrderId && (

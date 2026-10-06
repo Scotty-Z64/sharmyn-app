@@ -388,9 +388,8 @@ app.get("/api/report.pdf", async (c) => {
   });
 });
 
-// Supplier order list PDF — admin-only. Uses the "inline" disposition
-// (unlike the sales report's "attachment") so it opens in a new tab ready
-// to print, since that's the actual use case Ben asked for.
+// Supplier order list PDF — admin-only. Opens "inline" in a new tab ready to
+// print by default; with ?download=1 it is sent as a file download instead.
 app.get("/api/order-list.pdf", async (c) => {
   const token = c.req.query("token") ?? "";
   const { assertAdminToken } = await import("./lib/admin");
@@ -406,7 +405,7 @@ app.get("/api/order-list.pdf", async (c) => {
   return new Response(pdf, {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="sharmyn-order-list.pdf"`,
+      "Content-Disposition": `${c.req.query("download") ? "attachment" : "inline"}; filename="sharmyn-order-list-${new Date().toISOString().slice(0, 10)}.pdf"`,
       "Cache-Control": "private, no-store",
     },
   });
