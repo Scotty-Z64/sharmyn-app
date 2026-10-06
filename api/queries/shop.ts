@@ -32,7 +32,6 @@ import type {
 /** Server-side delivery fees (ZAR) — the ONLY source of truth. Pudo isn't
  * flat — see pudoDeliveryFee (contracts/types.ts), priced per parcel by qty. */
 export const DELIVERY_FEES: Record<Exclude<OrderDeliveryInput["method"], "pudo">, number> = {
-  collect: 0,
   door: 80,
 };
 

@@ -26,7 +26,7 @@ export type PaymentGateway = "yoco" | "payfast" | "stitch" | "ozow" | "eft"; // 
 /** A customer's uploaded proof of payment: waiting for the owner, accepted (payment confirmed) or rejected (with a reason). */
 export type ProofStatus = "pending" | "accepted" | "rejected";
 export type RefundStatus = "none" | "pending" | "refunded";
-export type DeliveryMethod = "pudo" | "door" | "collect";
+export type DeliveryMethod = "pudo" | "door";
 
 export interface Product {
   id: string;

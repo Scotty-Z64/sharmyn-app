@@ -24,7 +24,7 @@ function formatShort(iso: string): string {
 }
 const rand = (n: number): string => "R" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 
-const DELIVERY_LABEL: Record<string, string> = { pudo: "Pudo locker", door: "Door delivery", collect: "Collect in Joburg" };
+const DELIVERY_LABEL: Record<string, string> = { pudo: "Pudo locker", door: "Door delivery" };
 
 /** Product ref numbers and photos. Normally read from the database; tests pass them in. */
 export interface OrderListProductData {

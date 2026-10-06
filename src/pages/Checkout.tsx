@@ -17,7 +17,7 @@ const PROVINCES = [
   'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape',
 ];
 
-type DeliveryMethod = 'pudo' | 'door' | 'collect';
+type DeliveryMethod = 'pudo' | 'door';
 
 const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number];
 
@@ -95,10 +95,8 @@ export default function Checkout() {
   const createPaymentMutation = trpc.shop.createPayment.useMutation();
   const paymentConfig = trpc.shop.paymentConfig.useQuery(undefined, { staleTime: 5 * 60_000 });
   const onlinePayEnabled = paymentConfig.data?.enabled === true;
-  // Payment is online-only now — no "pay later" choice. Still gated on
-  // delivery !== 'collect' for when that method returns; unreachable today
-  // since checkout only offers Pudo.
-  const wantsOnlinePay = delivery !== 'collect' && onlinePayEnabled;
+  // Online payment is used whenever a gateway is configured; otherwise the customer pays by EFT.
+  const wantsOnlinePay = onlinePayEnabled;
 
   const lines = useMemo(
     () =>
@@ -113,7 +111,7 @@ export default function Checkout() {
   // Kept in sync with the server's actual charge (placeOrderTx) — this is
   // only what the customer is shown before submitting, never trusted as the
   // real price; the server recomputes it from the order's real item count.
-  const deliveryFee = delivery === 'collect' ? 0 : delivery === 'pudo' ? pudoDeliveryFee(totalQty) : 80;
+  const deliveryFee = delivery === 'pudo' ? pudoDeliveryFee(totalQty) : 80;
   const total = subtotal + deliveryFee;
 
   const selectDelivery = (m: DeliveryMethod) => {
@@ -147,7 +145,6 @@ export default function Checkout() {
     const items = lines.map((l) => ({ productId: l.product.id, qty: l.qty, size: l.size ?? null }));
     const methodLabel =
       delivery === 'pudo' ? `Pudo Locker Pickup ${formatPrice(deliveryFee)}`
-      : delivery === 'collect' ? 'Collect in Joburg (Free)'
       : `Door Delivery ${formatPrice(deliveryFee)}`;
     const deliveryInfo: OrderDelivery = {
       method: delivery,
@@ -382,7 +379,7 @@ export default function Checkout() {
             <div className="mt-1 border-t border-blush-100 pt-3 text-[13px] text-ink-500 space-y-1">
               {placed.delivery && (
                 <div className="flex justify-between">
-                  <span>{placed.delivery.method === 'pudo' ? 'Pudo locker delivery' : placed.delivery.method === 'door' ? 'Door delivery' : 'Collect in Joburg'}</span>
+                  <span>{placed.delivery.method === 'pudo' ? 'Pudo locker delivery' : 'Door delivery'}</span>
                   <span>{placed.delivery.fee === 0 ? 'Free' : formatPrice(placed.delivery.fee)}</span>
                 </div>
               )}
@@ -655,7 +652,7 @@ export default function Checkout() {
 
           {/* Payment method — online payment only, no "pay later" */}
           <h3 className="font-display text-xl font-semibold text-ink-900 mt-7">Payment Method</h3>
-          {onlinePayEnabled && delivery !== 'collect' ? (
+          {onlinePayEnabled ? (
             <div className="mt-3 flex items-center gap-3 rounded-xl border border-rose-500 bg-blush-100/60 ring-2 ring-rose-500/20 p-4 min-h-[44px]">
               <CreditCard className="h-5 w-5 text-rose-500 shrink-0" />
               <span className="flex-1">

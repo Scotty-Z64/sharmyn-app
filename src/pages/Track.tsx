@@ -208,7 +208,7 @@ function deliveryLabel(order: PublicOrder): string {
   if (!d) return 'Delivery to be arranged';
   if (d.method === 'pudo') return 'Pudo Locker Pickup';
   if (d.method === 'door') return 'Door delivery';
-  return 'Collect in Joburg';
+  return 'Delivery'; // anything else (very old orders)
 }
 
 export default function Track() {

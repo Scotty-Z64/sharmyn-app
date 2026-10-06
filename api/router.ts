@@ -102,7 +102,7 @@ const customer = z.object({
 
 // Client sends method (+ locker for pudo) only; fee is computed server-side.
 const deliveryInput = z.object({
-  method: z.enum(["pudo", "door", "collect"]),
+  method: z.enum(["pudo", "door"]),
   locker: z
     .object({
       id: z.string(),

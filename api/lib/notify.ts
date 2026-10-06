@@ -11,7 +11,6 @@ export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_st
 const DELIVERY_LABEL: Record<string, string> = {
   pudo: "Pudo Locker Pickup",
   door: "Door Delivery",
-  collect: "Collect in Joburg",
 };
 
 /** Where-and-who-to-send-it fulfilment block — the part of the email that actually
