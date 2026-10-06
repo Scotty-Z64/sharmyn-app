@@ -50,6 +50,7 @@ export function PriceRow({ product, className }: { product: Product; className?:
 }
 
 export default function ProductCard({ product, index = 0 }: { product: Product; index?: number }) {
+  const featured = !!product.featured; // starred in the owner portal → shown bigger, first in its section
   const { setQuickView, toast } = useShop();
   const resolved = resolveAvailability(product);
   const status = product.quantity === 0 && resolved.status === 'in-stock' ? 'sold-out' : resolved.status;
@@ -79,13 +80,18 @@ export default function ProductCard({ product, index = 0 }: { product: Product; 
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.1 }}
       transition={{ duration: 0.4, delay: (index % 4) * 0.05 }}
-      className="flex flex-col"
+      className={`flex flex-col ${featured ? 'col-span-2 row-span-2' : ''}`}
     >
       <button onClick={() => setQuickView(product)} aria-label={`View ${product.name}`}
-        className="relative border border-gold-500/70 bg-white p-1 cursor-pointer">
-        <div className="relative border border-gold-400/50 bg-[#FDF3E7] aspect-[4/5] overflow-hidden">
+        className={`relative border-2 border-gold-400 bg-[#FFF8E7] p-1 cursor-pointer shadow-[0_0_0_1px_rgba(150,114,26,0.35),0_6px_18px_rgba(150,114,26,0.12)] ${featured ? 'flex-1 flex' : ''}`}>
+        <div className={`relative border border-gold-500/50 bg-[#FDF3E7] overflow-hidden ${featured ? 'w-full aspect-[4/5] sm:aspect-auto sm:min-h-[360px]' : 'aspect-[4/5]'}`}>
           <img src={product.image} alt={product.name} loading="lazy"
-            className="w-full h-full object-cover" />
+            className={`w-full h-full object-cover ${featured ? 'sm:absolute sm:inset-0' : ''}`} />
+          {featured && (
+            <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-[0.12em] bg-gold-400 text-white shadow">
+              ★ Featured
+            </span>
+          )}
           <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
             <AvailabilityBadge product={product} />
             <DiscountBadge product={product} />
@@ -98,11 +104,11 @@ export default function ProductCard({ product, index = 0 }: { product: Product; 
           )}
         </div>
       </button>
-      <div className="pt-2.5 flex flex-col gap-0.5 flex-1">
+      <div className={`pt-2.5 flex flex-col gap-0.5 ${featured ? '' : 'flex-1'}`}>
         {product.brand && (
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gold-500">{product.brand}</span>
         )}
-        <h3 className="text-[13px] sm:text-[15px] font-medium text-ink-900 leading-snug">
+        <h3 className={`font-medium text-ink-900 leading-snug ${featured ? 'text-[15px] sm:text-[19px]' : 'text-[13px] sm:text-[15px]'}`}>
           {product.name} <span className="text-ink-500 font-normal">#{product.refNumber}</span>
         </h3>
         <PriceRow product={product} className="text-[14px] sm:text-[15px] font-bold text-ink-900" />

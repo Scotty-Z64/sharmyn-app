@@ -85,6 +85,8 @@ function Hero() {
 
 /* ---------------- Category circles ---------------- */
 function CategoryCircles({ onPick }: { onPick: (c: Category) => void }) {
+  const { products } = useShop();
+  const empty = (k: Category) => products.length > 0 && !products.some((p) => p.category === k);
   return (
     <section className="py-8">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
@@ -101,11 +103,29 @@ function CategoryCircles({ onPick }: { onPick: (c: Category) => void }) {
               <span className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.1em] text-ink-900 text-center max-w-[90px] leading-tight">
                 {c.label}
               </span>
+              {empty(c.key) && <span className="-mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-gold-500">Coming soon</span>}
             </motion.button>
           ))}
         </div>
       </div>
     </section>
+  );
+}
+
+/* ---------------- Coming soon ---------------- */
+function ComingSoon({ label }: { label: string }) {
+  return (
+    <div className="py-16 text-center border border-gold-400/40 bg-white/60">
+      <div className="flex items-center justify-center gap-3" aria-hidden>
+        <span className="h-px w-12 bg-gold-400" />
+        <span className="w-1.5 h-1.5 rotate-45 bg-gold-400" />
+        <span className="h-px w-12 bg-gold-400" />
+      </div>
+      <p className="mt-4 font-display text-3xl font-semibold text-ink-900">Coming Soon!</p>
+      <p className="mt-2 text-sm text-ink-500 max-w-sm mx-auto px-4">
+        We&rsquo;re busy adding {label}. Follow us on Instagram or WhatsApp to be the first to know when it lands.
+      </p>
+    </div>
   );
 }
 
@@ -135,9 +155,25 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
 
   const searching = query.trim().length > 0;
 
+  // How many products each pill would show (ignoring availability/search), so an empty
+  // category or brand says "Coming soon" instead of silently showing nothing.
+  const catCount = (k: Category) => products.filter((p) => p.category === k).length;
+  const brandCount = (b: string) => products.filter((p) => p.category === activeCat && p.brand === b).length;
+  const catTotal = activeCat === 'all' ? -1 : catCount(activeCat);
+  const comingSoonLabel: string | null =
+    productsLoading || !products.length
+      ? null
+      : activeCat !== 'all' && catTotal === 0
+        ? (CATEGORIES.find((c) => c.key === activeCat)?.label ?? 'this range')
+        : showBrandFilter && brandFilter !== 'all' && brandCount(brandFilter) === 0
+          ? brandFilter
+          : null;
+  const noMatches = activeCat !== 'all' && comingSoonLabel === null && !productsLoading && matches.length === 0;
+
+  // Starred (featured) products come first and are drawn larger — see ProductCard.
   const gridFor = (list: Product[]) => (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-5">
-      {list.map((p, i) => <ProductCard key={p.id} product={p} index={i} />)}
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-5 grid-flow-dense">
+      {[...list].sort((a, b) => Number(b.featured) - Number(a.featured)).map((p, i) => <ProductCard key={p.id} product={p} index={i} />)}
     </div>
   );
 
@@ -174,6 +210,7 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
                 className={`shrink-0 h-11 px-4 text-[11px] font-semibold uppercase tracking-[0.12em] border transition-colors ${
                   activeCat === c ? 'bg-gold-400 text-white border-gold-400' : 'bg-white text-ink-900 border-gold-400/40 hover:border-gold-400'}`}>
                 {c === 'all' ? 'All' : c}
+                {c !== 'all' && products.length > 0 && catCount(c as Category) === 0 && <span className="ml-1.5 text-[8.5px] tracking-[0.1em] opacity-70">Soon</span>}
               </button>
             ))}
             <select value={avail} onChange={(e) => setAvail(e.target.value as AvailFilter)} aria-label="Availability"
@@ -195,6 +232,7 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
                   className={`shrink-0 h-9 px-3.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] rounded-full border transition-colors ${
                     brandFilter === b ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-ink-900 border-blush-100 hover:border-rose-300'}`}>
                   {b === 'all' ? 'All Brands' : b}
+                  {b !== 'all' && products.length > 0 && brandCount(b) === 0 && <span className="ml-1.5 text-[8.5px] tracking-[0.1em] opacity-70">Soon</span>}
                 </button>
               ))}
             </div>
@@ -216,6 +254,10 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
             </div>
             {matches.length ? gridFor(matches) : <p className="text-ink-500 text-sm py-8 text-center">Nothing found — try another word.</p>}
           </div>
+        ) : comingSoonLabel ? (
+          <ComingSoon label={comingSoonLabel} />
+        ) : noMatches ? (
+          <p className="text-ink-500 text-sm py-12 text-center">Nothing matches these filters — try a different brand or availability.</p>
         ) : (
           CATEGORIES.filter((c) => activeCat === 'all' || activeCat === c.key).map((c) => {
             const list = matches.filter((p) => p.category === c.key);
