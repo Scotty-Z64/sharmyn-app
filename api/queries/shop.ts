@@ -138,9 +138,28 @@ function newOrderId(): string {
 
 // ---- products ----
 
+// The storefront asks for the whole catalogue on every visit and the database round trip
+// is ~2 seconds, so the list is kept in memory for a few seconds. It is dropped the moment
+// anything that changes products runs (see withProductsInvalidation at the bottom of this
+// file), and the version counter stops a read that started before a change from re-filling
+// the cache with stale data. Stock is still enforced in SQL when an order is placed.
+const PRODUCTS_CACHE_MS = 10_000;
+let productsCache: { at: number; data: Product[] } | null = null;
+let productsVersion = 0;
+
+function invalidateProductsCache(): void {
+  productsVersion++;
+  productsCache = null;
+}
+
 export async function listProducts(): Promise<Product[]> {
+  const now = Date.now();
+  if (productsCache && now - productsCache.at < PRODUCTS_CACHE_MS) return productsCache.data;
+  const version = productsVersion;
   const rows = await getDb().select().from(products).orderBy(products.createdAt);
-  return rows.map(toProduct);
+  const data = rows.map(toProduct);
+  if (version === productsVersion) productsCache = { at: Date.now(), data };
+  return data;
 }
 
 export async function findProduct(id: string): Promise<Product | null> {
@@ -167,7 +186,7 @@ export interface StockChangeSignal {
   crossedLowStockDown: boolean; // was above lowStockAt, now at/below it (or just sold out)
 }
 
-export async function upsertProduct(
+async function upsertProductImpl(
   p: Omit<Product, "createdAt" | "refNumber"> & { createdAt?: string }
 ): Promise<StockChangeSignal> {
   const db = getDb();
@@ -243,7 +262,7 @@ export async function upsertProduct(
   };
 }
 
-export async function deleteProduct(id: string): Promise<void> {
+async function deleteProductImpl(id: string): Promise<void> {
   await getDb().delete(products).where(eq(products.id, id));
   // Close the gap the deleted item leaves, so the catalog numbers stay 1..N.
   try {
@@ -259,7 +278,7 @@ export async function deleteProduct(id: string): Promise<void> {
  * Only ever moves numbers DOWN into free slots, so no two products share a number
  * mid-way. Invoices and the supplier list read the number live, so they follow it.
  */
-export async function renumberProducts(): Promise<{ changed: number; total: number }> {
+async function renumberProductsImpl(): Promise<{ changed: number; total: number }> {
   const db = getDb();
   const rows = await db
     .select({ id: products.id, refNumber: products.refNumber })
@@ -290,7 +309,7 @@ export async function ensureProductNumbering(): Promise<void> {
 }
 
 /** Adjust stock by delta (+restock / -correction). Auto-flips availability. */
-export async function adjustStock(id: string, delta: number): Promise<StockChangeSignal | null> {
+async function adjustStockImpl(id: string, delta: number): Promise<StockChangeSignal | null> {
   const db = getDb();
   const [before] = await db.select().from(products).where(eq(products.id, id));
   if (!before) return null;
@@ -317,7 +336,7 @@ export async function adjustStock(id: string, delta: number): Promise<StockChang
 }
 
 /** Bulk price change across a category — % (e.g. -20 for 20% off) or a flat Rand delta. Clamped to a minimum of R1. */
-export async function bulkAdjustPrice(
+async function bulkAdjustPriceImpl(
   category: Product["category"],
   mode: "percent" | "fixed",
   value: number
@@ -538,7 +557,7 @@ export async function findPublicOrder(id: string, email: string): Promise<Public
  * atomic conditional stock decrements — any failure rolls everything back.
  * Throws Error("OUT_OF_STOCK:<productId>") on insufficient/unknown stock.
  */
-export async function placeOrderTx(
+async function placeOrderTxImpl(
   customer: OrderCustomer,
   inputItems: OrderInputItem[],
   deliveryInput: OrderDeliveryInput
@@ -646,7 +665,7 @@ export async function placeOrderTx(
  * and flags refundStatus='pending' when the order was paid (owner refunds
  * manually in the Yoco dashboard, then marks it refunded via setRefundStatus).
  */
-export async function cancelOrderTx(id: string): Promise<Order | null> {
+async function cancelOrderTxImpl(id: string): Promise<Order | null> {
   const db = getDb();
   return db.transaction(async (tx) => {
     const rows = await tx.select().from(orders).where(eq(orders.id, id)).limit(1);
@@ -1107,3 +1126,24 @@ export async function updateSiteSettings(patch: {
   }
   return next;
 }
+
+// ---- product cache invalidation ----
+// Everything below changes products (stock, price, details, numbering), so each wrapper
+// clears the catalogue cache when it finishes — and when it fails, in case it half-applied.
+function withProductsInvalidation<A extends unknown[], R>(fn: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+  return async (...args: A) => {
+    try {
+      return await fn(...args);
+    } finally {
+      invalidateProductsCache();
+    }
+  };
+}
+
+export const upsertProduct = withProductsInvalidation(upsertProductImpl);
+export const deleteProduct = withProductsInvalidation(deleteProductImpl);
+export const renumberProducts = withProductsInvalidation(renumberProductsImpl);
+export const adjustStock = withProductsInvalidation(adjustStockImpl);
+export const bulkAdjustPrice = withProductsInvalidation(bulkAdjustPriceImpl);
+export const placeOrderTx = withProductsInvalidation(placeOrderTxImpl);
+export const cancelOrderTx = withProductsInvalidation(cancelOrderTxImpl);

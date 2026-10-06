@@ -40,7 +40,7 @@ Do not use line breaks inside a variable, and keep each `{{n}}` once per templat
 ### sharmyn_order_payment — Header: **Document (PDF)**
 
 ```
-Hi {{1}}, thank you for your Sharmyn order {{2}} 💛 Your total is {{3}}. Please pay by EFT to {{4}} - Account name: {{5}}, Account number: {{6}}, Account type: {{7}}, Branch code: {{8}}. IMPORTANT: please use your order number as your payment reference so we can match your payment. Your invoice is attached. Once you have paid, reply here with your proof of payment and we will confirm your order.
+Hi {{1}}, thank you for your Sharmyn order {{2}} 💛 Your total is {{3}}. Please pay by EFT to {{4}} - Account name: {{5}}, Account number: {{6}}, Account type: {{7}}, Branch code: {{8}}. IMPORTANT: please use your order number as your payment reference so we can match your payment. Your invoice is attached. Once you have paid, upload your proof of payment on the Track Order page at sharmyn.co.za or WhatsApp us on +27 61 645 5670 and we will confirm your order.
 ```
 
 Examples: `{{1}}` Thandi · `{{2}}` K7M3QXA2 · `{{3}}` R850 · `{{4}}` FNB · `{{5}}` Sharmyn · `{{6}}` 62000000000 · `{{7}}` Cheque · `{{8}}` 250655
@@ -66,7 +66,7 @@ Examples: `{{1}}` Thandi · `{{2}}` K7M3QXA2 · `{{3}}` TCG123456789 · `{{4}}` 
 ### sharmyn_payment_issue — no header
 
 ```
-Hi {{1}}, we could not confirm your payment for order {{2}}: {{3}}. Please check it and send your proof of payment again on the Track Order page at sharmyn.co.za, or reply here. Your order is still being held for you. Need help? WhatsApp {{4}}
+Hi {{1}}, we could not confirm your payment for order {{2}}: {{3}}. Please check it and send your proof of payment again on the Track Order page at sharmyn.co.za. Your order is still being held for you. Need help? WhatsApp {{4}}
 ```
 
 Examples: `{{1}}` Thandi · `{{2}}` K7M3QXA2 · `{{3}}` The money is not showing in our account yet · `{{4}}` +27616455670
