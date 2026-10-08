@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Copy, CreditCard, Crown, Loader2, Lock, PackageOpen } from 'lucide-react';
+import { ArrowLeft, Copy, Crown, Loader2, Lock, PackageOpen } from 'lucide-react';
 import { useShop } from '@/lib/shop';
 import { trpc } from '@/providers/trpc';
 import { clearCart, formatPrice, formatAddress, pudoDeliveryFee, PUDO_ITEMS_PER_PARCEL, PUDO_FEE_PER_PARCEL, FREE_SHIPPING_MIN_ITEMS } from '@/lib/store';
@@ -92,11 +92,6 @@ export default function Checkout() {
 
   const utils = trpc.useUtils();
   const placeOrderMutation = trpc.shop.placeOrder.useMutation();
-  const createPaymentMutation = trpc.shop.createPayment.useMutation();
-  const paymentConfig = trpc.shop.paymentConfig.useQuery(undefined, { staleTime: 5 * 60_000 });
-  const onlinePayEnabled = paymentConfig.data?.enabled === true;
-  // Online payment is used whenever a gateway is configured; otherwise the customer pays by EFT.
-  const wantsOnlinePay = onlinePayEnabled;
 
   const lines = useMemo(
     () =>
@@ -172,32 +167,6 @@ export default function Checkout() {
         onSuccess: (order) => {
           clearCart();
           utils.shop.products.invalidate();
-          if (wantsOnlinePay) {
-            // Hand off to the hosted Yoco checkout.
-            createPaymentMutation.mutate(
-              { orderId: order.id },
-              {
-                onSuccess: (res) => {
-                  if (res.alreadyPaid || !res.redirectUrl) {
-                    setPlacing(false);
-                    setPlaced(order);
-                    toast('Order placed');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  } else {
-                    window.location.href = res.redirectUrl;
-                  }
-                },
-                onError: () => {
-                  // Payment init failed — keep the (unpaid) order and show the confirmation.
-                  setPlacing(false);
-                  setPlaced(order);
-                  toast('Order placed — we\u2019ll WhatsApp you payment details');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                },
-              }
-            );
-            return;
-          }
           setPlacing(false);
           setPlaced(order);
           toast('Order placed');
@@ -346,7 +315,7 @@ export default function Checkout() {
             </div>
           )}
 
-          {!onlinePayEnabled && placed.paymentStatus !== 'paid' && (
+          {placed.paymentStatus !== 'paid' && (
             <ProofUpload orderId={placed.id} email={placed.customer.email} />
           )}
 
@@ -484,19 +453,17 @@ export default function Checkout() {
       >
         {placing ? (
           <>
-            <Loader2 className="h-4 w-4 animate-spin" /> {wantsOnlinePay ? 'Taking you to secure payment\u2026' : 'Placing your order\u2026'}
+            <Loader2 className="h-4 w-4 animate-spin" /> Placing your order\u2026
           </>
         ) : (
-          <>{wantsOnlinePay ? `Pay Securely — ${formatPrice(total)}` : `Place Order — ${formatPrice(total)}`}</>
+          <>Place Order — {formatPrice(total)}</>
         )}
       </button>
       <p className="mt-3 flex items-start gap-1.5 text-[12px] text-ink-500">
         <Crown className="h-3.5 w-3.5 mt-0.5 shrink-0 text-gold-500" />
-        {wantsOnlinePay
-          ? 'Secure card / instant EFT payment. Your order is confirmed as soon as payment clears.'
-          : bankConfigured()
-            ? 'Pay by EFT. Our banking details and your payment reference appear right after you place your order — you must use that reference when you pay.'
-            : 'We\u2019ll WhatsApp you our banking details to pay by EFT.'}
+        {bankConfigured()
+          ? 'Pay by EFT. Our banking details and your payment reference appear right after you place your order — you must use that reference when you pay.'
+          : 'We\u2019ll WhatsApp you our banking details to pay by EFT.'}
       </p>
       <p className="mt-2 text-[11px] text-ink-500 text-center">
         We&rsquo;ll WhatsApp your invoice, banking details and tracking number to the number above.
@@ -650,23 +617,13 @@ export default function Checkout() {
             )}
           </div>
 
-          {/* Payment method — online payment only, no "pay later" */}
+          {/* Payment method — manual bank transfer (EFT) only */}
           <h3 className="font-display text-xl font-semibold text-ink-900 mt-7">Payment Method</h3>
-          {onlinePayEnabled ? (
-            <div className="mt-3 flex items-center gap-3 rounded-xl border border-rose-500 bg-blush-100/60 ring-2 ring-rose-500/20 p-4 min-h-[44px]">
-              <CreditCard className="h-5 w-5 text-rose-500 shrink-0" />
-              <span className="flex-1">
-                <span className="block text-[14px] font-semibold text-ink-900">Pay online now — card / instant EFT</span>
-                <span className="block text-[12px] text-ink-500">Secure payment · you&rsquo;ll be redirected after placing your order</span>
-              </span>
-            </div>
-          ) : (
-            <p className="mt-3 rounded-xl border border-gold-400/40 bg-blush-50 px-4 py-3 text-[13px] text-ink-500">
-              {bankConfigured()
-                ? 'Pay by EFT — you’ll get our FNB banking details as soon as you place your order, then send us your proof of payment on WhatsApp.'
-                : 'Pay by EFT — we’ll WhatsApp you our banking details once you place your order.'}
-            </p>
-          )}
+          <p className="mt-3 rounded-xl border border-gold-400/40 bg-blush-50 px-4 py-3 text-[13px] text-ink-500">
+            {bankConfigured()
+              ? 'Pay by EFT — you’ll get our FNB banking details and your payment reference as soon as you place your order (and by WhatsApp), then send us your proof of payment.'
+              : 'Pay by EFT — we’ll WhatsApp you our banking details once you place your order.'}
+          </p>
 
           {/* Order summary + checkout button — inline right after payment method
               on mobile/tablet, instead of buried behind a separate bottom sheet. */}

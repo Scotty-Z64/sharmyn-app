@@ -14,10 +14,10 @@ const CATEGORY_LABEL: Record<Category, string> = {
 
 const METHOD_LABEL: Record<string, string> = {
   eft: "EFT (bank transfer)",
-  yoco: "Card (Yoco)",
-  payfast: "Payfast",
-  stitch: "Stitch",
-  ozow: "Ozow (instant EFT)",
+  yoco: "Online payment (earlier)",
+  payfast: "Online payment (earlier)",
+  stitch: "Online payment (earlier)",
+  ozow: "Online payment (earlier)",
   unknown: "Other / earlier orders",
 };
 

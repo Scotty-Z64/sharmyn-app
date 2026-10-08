@@ -34,7 +34,7 @@ export default function Privacy() {
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>Pudo</strong> — locker name/city, for locker deliveries</li>
           <li><strong>Our courier partner</strong> — name, phone, and address, for door deliveries</li>
-          <li><strong>Our payment gateway</strong> (Stitch/Ozow/Payfast/Yoco) — for processing online payments</li>
+          <li><strong>Our bank (FNB)</strong> — payments are made by EFT into our business account, so your bank statement shows the transfer</li>
           <li><strong>WhatsApp (Meta)</strong> — to send your invoice, our banking details and your tracking number to the WhatsApp number you give us at checkout</li>
           <li><strong>Resend</strong> (our email provider) — to send order and invoice emails</li>
         </ul>

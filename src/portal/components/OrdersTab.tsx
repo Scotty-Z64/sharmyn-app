@@ -227,7 +227,6 @@ function OrderCard({ order }: { order: Order }) {
   const setStatusMut = trpc.shop.setOrderStatus.useMutation();
   const cancelMut = trpc.shop.adminCancelOrder.useMutation();
   const refundMut = trpc.shop.setRefundStatus.useMutation();
-  const refundOnlineMut = trpc.shop.refundOrder.useMutation();
   const confirmEftMut = trpc.shop.confirmEftPayment.useMutation();
   const rejectPaymentMut = trpc.shop.rejectPayment.useMutation();
   const supplierMut = trpc.shop.markSupplierOrdered.useMutation();
@@ -241,8 +240,6 @@ function OrderCard({ order }: { order: Order }) {
   const [exchanging, setExchanging] = useState(false);
   const exchangesQuery = trpc.shop.listExchanges.useQuery({ token, orderId: order.id }, { enabled: open && order.paymentStatus === 'paid' });
   const stepIdx = STEPS.indexOf(order.status);
-  // Gateways whose refunds we can trigger through their API (Yoco, Stitch).
-  const gatewayLabel = order.paymentGateway === 'stitch' ? 'Stitch' : order.paymentGateway === 'ozow' ? 'Ozow' : order.paymentGateway === 'payfast' ? 'Payfast' : 'Yoco';
 
   const setStatus = async (s: OrderStatus) => {
     if (s === order.status || setStatusMut.isPending) return;
@@ -259,15 +256,9 @@ function OrderCard({ order }: { order: Order }) {
     setConfirmCancel(false);
     if (cancelMut.isPending) return;
     try {
-      const result = await cancelMut.mutateAsync({ token, id: order.id });
+      await cancelMut.mutateAsync({ token, id: order.id });
       refresh();
-      if (order.paymentStatus !== 'paid') {
-        toast('Order cancelled. Stock restored.');
-      } else if (result?.refundStatus === 'refunded') {
-        toast(`Order cancelled. Stock restored. Refunded via ${gatewayLabel} automatically.`);
-      } else {
-        toast('Order cancelled. Stock restored. Refund due — one click below.');
-      }
+      toast(order.paymentStatus !== 'paid' ? 'Order cancelled. Stock restored.' : 'Order cancelled. Stock restored. Refund due — send the money back, then press "Mark refunded".');
     } catch {
       toast('Could not cancel order — try again');
     }
@@ -308,25 +299,6 @@ function OrderCard({ order }: { order: Order }) {
       toast(`Order ${order.id} marked refunded`);
     } catch {
       toast('Could not update refund — try again');
-    }
-  };
-
-  // One-click: calls Yoco directly and flips refundStatus in the same step —
-  // no trip to the Yoco dashboard. Only works for orders actually paid
-  // through Yoco; Payfast refunds aren't API-driven on a standard merchant
-  // account, so those (and cash/EFT) fall back to markRefunded once the
-  // owner has refunded however it was actually paid.
-  const canRefundOnline = (order.paymentGateway === 'yoco' || order.paymentGateway === 'stitch' || order.paymentGateway === 'ozow') && !!order.paymentRef;
-  const refundOnline = async () => {
-    if (refundOnlineMut.isPending) return;
-    try {
-      await refundOnlineMut.mutateAsync({ token, id: order.id });
-      refresh();
-      toast(`Order ${order.id} refunded via ${gatewayLabel}`);
-    } catch (e) {
-      const code = (e as { data?: { code?: string } } | null)?.data?.code;
-      if (code === 'PRECONDITION_FAILED') toast('This payment cannot be refunded from here — use "Mark refunded" once refunded manually');
-      else toast(`${gatewayLabel} refund failed — try again or refund manually in the ${gatewayLabel} dashboard`);
     }
   };
 
@@ -648,7 +620,7 @@ ${eftInstructionsText(order.id, order.total)}`
                   </button>
                   {order.paymentStatus === 'paid' && (
                     <p className="mt-1.5 text-[11px] text-ink-500 text-center">
-                      Cancelling a paid order: stock restored. Refund it with one click right after.
+                      Cancelling a paid order restores the stock and flags it "Refund due" so you remember to send the money back.
                     </p>
                   )}
                 </div>
@@ -659,20 +631,10 @@ ${eftInstructionsText(order.id, order.total)}`
                   <p className="mt-1">Stock was restored automatically.</p>
                   {order.refundStatus === 'pending' && (
                     <div className="mt-2 space-y-1.5">
-                      {order.paymentGateway === 'payfast' && (
-                        <p className="text-[11px] text-ink-500">Refund this one from your Payfast dashboard, then mark it refunded below.</p>
-                      )}
-                      {canRefundOnline && (
-                        <button onClick={() => void refundOnline()} disabled={refundOnlineMut.isPending}
-                          className="w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50">
-                          {refundOnlineMut.isPending ? 'Refunding…' : `Refund via ${gatewayLabel}`}
-                        </button>
-                      )}
+                      <p className="text-[11px] text-ink-500">Send the money back from the FNB account first, then press the button below.</p>
                       <button onClick={() => void markRefunded()} disabled={refundMut.isPending}
-                        className={canRefundOnline
-                          ? 'w-full h-9 rounded-full text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-500 hover:text-ink-900 transition-colors'
-                          : 'w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50'}>
-                        {canRefundOnline ? 'Already refunded another way? Mark refunded' : 'Mark refunded'}
+                        className="w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50">
+                        Mark refunded
                       </button>
                     </div>
                   )}
@@ -680,20 +642,10 @@ ${eftInstructionsText(order.id, order.total)}`
               )}
               {order.status !== 'cancelled' && order.refundStatus === 'pending' && (
                 <div className="space-y-1.5">
-                  {order.paymentGateway === 'payfast' && (
-                    <p className="text-[11px] text-ink-500">Refund this one from your Payfast dashboard, then mark it refunded below.</p>
-                  )}
-                  {canRefundOnline && (
-                    <button onClick={() => void refundOnline()} disabled={refundOnlineMut.isPending}
-                      className="w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50">
-                      {refundOnlineMut.isPending ? 'Refunding…' : `Refund via ${gatewayLabel}`}
-                    </button>
-                  )}
+                  <p className="text-[11px] text-ink-500">Send the money back from the FNB account first, then press the button below.</p>
                   <button onClick={() => void markRefunded()} disabled={refundMut.isPending}
-                    className={canRefundOnline
-                      ? 'w-full h-9 rounded-full text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-500 hover:text-ink-900 transition-colors'
-                      : 'w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50'}>
-                    {canRefundOnline ? 'Already refunded another way? Mark refunded' : 'Mark refunded'}
+                    className="w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 transition-colors disabled:opacity-50">
+                    Mark refunded
                   </button>
                 </div>
               )}
@@ -716,9 +668,7 @@ ${eftInstructionsText(order.id, order.total)}`
                   <ConfirmDialog
                     title={`Cancel order ${order.id}?`}
                     body={order.paymentStatus === 'paid'
-                      ? (order.paymentGateway === 'yoco' || order.paymentGateway === 'stitch' || order.paymentGateway === 'ozow')
-                        ? `Stock will be restored, and we'll try to refund it via ${gatewayLabel} automatically. If that doesn't go through, it'll be flagged "Refund due" for a one-click retry.`
-                        : "Stock will be restored. It'll be flagged \"Refund due\" so you don't forget to refund it (via Payfast or however it was paid)."
+                      ? 'Stock will be restored. It\'ll be flagged "Refund due" so you remember to send the money back from the bank account.'
                       : 'Stock will be restored and the order marked as cancelled.'}
                     confirmLabel="Cancel order"
                     onConfirm={() => void cancelOrder()}

@@ -6,7 +6,6 @@ import { ShopProvider } from '@/lib/shop';
 import Home from '@/pages/Home';
 import Checkout from '@/pages/Checkout';
 import Track from '@/pages/Track';
-import PaymentResult from '@/pages/PaymentResult';
 import Privacy from '@/pages/Privacy';
 import Terms from '@/pages/Terms';
 import Returns from '@/pages/Returns';
@@ -62,7 +61,6 @@ function StoreRoutes() {
         <Route path="/" element={<Home />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/track" element={<Track />} />
-        <Route path="/payment/result" element={<PaymentResult />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/returns" element={<Returns />} />

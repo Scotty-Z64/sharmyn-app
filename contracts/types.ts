@@ -22,7 +22,9 @@ export function discountPercent(price: number, oldPrice?: number | null): number
 export type Availability = "in-stock" | "sold-out" | "back-soon";
 export type OrderStatus = "pending" | "processing" | "shipped" | "delivered" | "cancelled";
 export type PaymentStatus = "unpaid" | "paid" | "failed";
-export type PaymentGateway = "yoco" | "payfast" | "stitch" | "ozow" | "eft"; // "eft" = manual bank transfer the owner confirmed
+// Every order is paid by manual bank transfer (EFT) that the owner confirms. Orders taken before the
+// online gateways were removed may still carry an older value in the database; it is only displayed.
+export type PaymentGateway = "eft";
 /** A customer's uploaded proof of payment: waiting for the owner, accepted (payment confirmed) or rejected (with a reason). */
 export type ProofStatus = "pending" | "accepted" | "rejected";
 export type RefundStatus = "none" | "pending" | "refunded";
@@ -272,7 +274,7 @@ export interface FreeShippingImpact {
 
 /** How much money arrived by each payment method in the report range. */
 export interface ReportMethodRow {
-  method: string; // eft | yoco | payfast | stitch | ozow
+  method: string; // eft (older rows may say yoco | payfast | stitch | ozow)
   count: number;
   amount: number;
 }

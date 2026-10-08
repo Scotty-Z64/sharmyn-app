@@ -11,17 +11,13 @@ import {
   listOrders,
   findOrder,
   findPublicOrder,
-  toPublicOrder,
   placeOrderTx,
   cancelOrderTx,
   customerCancelOrder,
   setRefundStatus,
   setOrderStatus,
   setTrackingNumber,
-  setOrderPaymentRef,
-  setOrderPaymentGateway,
   markOrderPaid,
-  markOrderPaymentFailed,
   listNotifications,
   markNotificationRead,
   getSalesReport,
@@ -37,18 +33,6 @@ import {
   getLatestPaymentProof,
   decidePaymentProofs,
 } from "./queries/shop";
-import {
-  paymentsEnabled,
-  activeGateway,
-  yocoEnabled,
-  createYocoCheckout,
-  verifyYocoCheckout,
-  buildPayfastRedirect,
-  canRefundOnline,
-  refundOrderOnline,
-} from "./lib/payments";
-import { stitchEnabled, createStitchPaymentLink, getStitchLink, stitchLinkPaysOrder } from "./lib/stitch";
-import { ozowEnabled, createOzowPayment, checkOzowPayment } from "./lib/ozow";
 import { sendOrderPaymentWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp } from "./lib/whatsapp";
 import { parseProofDataUrl, MAX_PROOFS_PER_ORDER } from "./lib/proof";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
@@ -71,14 +55,6 @@ function sendInvoiceOnce(order: Order): void {
   if (order.invoiceSentAt) return;
   void markInvoiceSent(order.id).catch((e) => console.error("[invoice] failed to flag sent:", e));
   void sendInvoice(order).catch((e) => console.error("[invoice] send failed:", e));
-}
-
-function requestOrigin(req: Request): string {
-  try {
-    return new URL(req.url).origin;
-  } catch {
-    return "http://localhost:3000";
-  }
 }
 
 // Token from adminLogin — HMAC-signed, 12h expiry. See api/lib/admin.ts.
@@ -226,10 +202,9 @@ export const appRouter = createRouter({
           const order = await placeOrderTx(input.customer, input.items, input.delivery);
           void notifyOwner("new_order", order).catch((e) => console.error("[notify]", e));
           void notifyCustomer("order_placed", order).catch((e) => console.error("[notify]", e));
-          // Manual EFT: WhatsApp the customer the banking details and the invoice straight away.
-          if (!paymentsEnabled()) {
-            void sendOrderPaymentWhatsApp(order).catch((e) => console.error("[whatsapp] order payment message failed:", e));
-          }
+          // Everything is paid by EFT: WhatsApp the customer the banking details, their
+          // payment reference and the itemised invoice straight away.
+          void sendOrderPaymentWhatsApp(order).catch((e) => console.error("[whatsapp] order payment message failed:", e));
           return order;
         } catch (e) {
           if (e instanceof Error && e.message.startsWith("OUT_OF_STOCK:")) {
@@ -237,153 +212,6 @@ export const appRouter = createRouter({
           }
           throw e;
         }
-      }),
-
-    // ---- online payments (Stitch / Ozow / Payfast / Yoco) ----
-    paymentConfig: publicQuery.query(() => ({ enabled: paymentsEnabled() })),
-    createPayment: publicQuery
-      .input(z.object({ orderId: z.string() }))
-      .mutation(async ({ input, ctx }) => {
-        const order = await findOrder(input.orderId);
-        if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
-        if (order.paymentStatus === "paid") return { alreadyPaid: true as const, redirectUrl: null };
-        const gateway = activeGateway();
-        if (!gateway) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PAYMENTS_NOT_CONFIGURED" });
-        }
-        if (gateway === "stitch") {
-          // Creates (or reuses a still-open) hosted payment link. The link id
-          // goes in paymentRef — it's what every later status check and
-          // refund is made against.
-          const { paymentLinkId, redirectUrl } = await createStitchPaymentLink(order, requestOrigin(ctx.req));
-          await setOrderPaymentGateway(order.id, "stitch");
-          await setOrderPaymentRef(order.id, paymentLinkId);
-          return { alreadyPaid: false as const, redirectUrl };
-        }
-        if (gateway === "ozow") {
-          // Payment request id goes in paymentRef — status checks and refunds
-          // look the money up (the transaction under it) from that.
-          const { paymentId, redirectUrl } = await createOzowPayment(order, requestOrigin(ctx.req));
-          await setOrderPaymentGateway(order.id, "ozow");
-          await setOrderPaymentRef(order.id, paymentId);
-          return { alreadyPaid: false as const, redirectUrl };
-        }
-        await setOrderPaymentGateway(order.id, gateway);
-        if (gateway === "payfast") {
-          const { redirectUrl } = await buildPayfastRedirect(order, requestOrigin(ctx.req));
-          return { alreadyPaid: false as const, redirectUrl };
-        }
-        const { checkoutId, redirectUrl } = await createYocoCheckout(order, requestOrigin(ctx.req));
-        await setOrderPaymentRef(order.id, checkoutId);
-        return { alreadyPaid: false as const, redirectUrl };
-      }),
-
-    // Fallback confirmation for when the customer lands back on /payment/result
-    // before the webhook has landed. For Yoco this actively re-verifies the
-    // checkout via their API (cross-checking amount + metadata.orderId). Payfast
-    // has no equivalent "verify by id" endpoint for a standard merchant account —
-    // its ITN webhook (POST /api/webhooks/payfast) is authoritative, so this just
-    // briefly polls the DB for it to land (it's typically near-instant, often
-    // arriving before or around the same time as this browser redirect).
-    confirmPayment: publicQuery
-      .input(z.object({ orderId: z.string() }))
-      .mutation(async ({ input }) => {
-        let order = await findOrder(input.orderId);
-        if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
-        if (order.paymentStatus === "paid") {
-          return { paymentStatus: order.paymentStatus, order: toPublicOrder(order) };
-        }
-        if (!paymentsEnabled()) return { paymentStatus: order.paymentStatus, order: null }; // no-op when disabled
-
-        if (order.paymentGateway === "stitch") {
-          // Ask Stitch directly (never trust the redirect's query string).
-          // Poll briefly: the customer can land back here a beat before the
-          // payment finishes registering on Stitch's side.
-          if (!stitchEnabled() || !order.paymentRef) return { paymentStatus: order.paymentStatus, order: null };
-          let link = await getStitchLink(order.paymentRef);
-          for (let attempt = 0; attempt < 3 && link.status === "PENDING"; attempt++) {
-            await new Promise((r) => setTimeout(r, 1500));
-            link = await getStitchLink(order.paymentRef);
-          }
-          if (link.status === "PAID") {
-            if (!stitchLinkPaysOrder(link, order)) {
-              console.error(
-                `[payments] stitch confirmPayment mismatch for ${order.id}: ref=${link.merchantReference} amount=${link.amountCents} expected=${Math.round(order.total * 100)}`
-              );
-              return { paymentStatus: order.paymentStatus, order: null };
-            }
-            const updated = await markOrderPaid(order.id, link.id, "stitch");
-            if (updated) {
-              void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
-              sendInvoiceOnce(updated);
-            }
-            return { paymentStatus: updated?.paymentStatus ?? "paid", order: updated ? toPublicOrder(updated) : null };
-          }
-          if (link.status === "EXPIRED" || link.status === "CANCELLED") {
-            await markOrderPaymentFailed(order.id);
-            return { paymentStatus: "failed" as const, order: null };
-          }
-          return { paymentStatus: order.paymentStatus, order: null };
-        }
-
-        if (order.paymentGateway === "ozow") {
-          // Ask Ozow directly (never trust the redirect's query string). Bank
-          // confirmation can lag the customer's return by a few seconds, so
-          // poll briefly while the transaction is still in flight.
-          if (!ozowEnabled() || !order.paymentRef) return { paymentStatus: order.paymentStatus, order: null };
-          let outcome = await checkOzowPayment(order.paymentRef, order);
-          for (let attempt = 0; attempt < 3 && (outcome.state === "pending" || outcome.state === "none"); attempt++) {
-            await new Promise((r) => setTimeout(r, 1500));
-            outcome = await checkOzowPayment(order.paymentRef, order);
-          }
-          if (outcome.state === "paid") {
-            const updated = await markOrderPaid(order.id, order.paymentRef, "ozow");
-            if (updated) {
-              void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
-              sendInvoiceOnce(updated);
-            }
-            return { paymentStatus: updated?.paymentStatus ?? "paid", order: updated ? toPublicOrder(updated) : null };
-          }
-          if (outcome.state === "failed") {
-            await markOrderPaymentFailed(order.id);
-            return { paymentStatus: "failed" as const, order: null };
-          }
-          return { paymentStatus: order.paymentStatus, order: null };
-        }
-
-        if (order.paymentGateway === "payfast") {
-          for (let attempt = 0; attempt < 5 && order.paymentStatus !== "paid"; attempt++) {
-            if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
-            order = (await findOrder(input.orderId)) ?? order;
-          }
-          if (order.paymentStatus === "paid") {
-            return { paymentStatus: order.paymentStatus, order: toPublicOrder(order) };
-          }
-          return { paymentStatus: order.paymentStatus, order: null };
-        }
-
-        if (!yocoEnabled() || !order.paymentRef) return { paymentStatus: order.paymentStatus, order: null };
-        const { paid, status, amount, orderId } = await verifyYocoCheckout(order.paymentRef);
-        if (paid) {
-          // Never mark paid on a mismatched checkout.
-          if (orderId !== order.id || amount !== Math.round(order.total * 100)) {
-            console.error(
-              `[payments] confirmPayment mismatch for ${order.id}: checkout orderId=${orderId} amount=${amount} expected=${order.total * 100}`
-            );
-            return { paymentStatus: order.paymentStatus, order: null };
-          }
-          const updated = await markOrderPaid(order.id, order.paymentRef, "yoco");
-          if (updated) {
-            void notifyOwner("paid", updated).catch((e) => console.error("[notify]", e));
-            sendInvoiceOnce(updated);
-          }
-          return { paymentStatus: updated?.paymentStatus ?? "paid", order: updated ? toPublicOrder(updated) : null };
-        }
-        if (status === "failed" || status === "cancelled") {
-          await markOrderPaymentFailed(order.id);
-          return { paymentStatus: "failed" as const, order: null };
-        }
-        return { paymentStatus: order.paymentStatus, order: null };
       }),
 
     // ---- owner portal (token-gated; token from adminLogin, 12h expiry) ----
@@ -641,39 +469,19 @@ export const appRouter = createRouter({
 
         return exchange;
       }),
-    // Admin cancel: restores stock; paid orders get refundStatus='pending'.
-    // Cancels + restores stock, then — if this was actually paid through Yoco
-    // — attempts the refund in the same step, so the common case is one
-    // click instead of "cancel, then remember to go refund it." If the
-    // auto-refund attempt fails (or Yoco isn't configured), the order still
-    // comes back with refundStatus 'pending' exactly as before, and the
-    // portal's manual "Refund via Yoco" / "Mark refunded" buttons still work
-    // as the fallback — cancelling itself never fails because of this.
+    // Admin cancel: restores stock; paid orders get refundStatus='pending' so the
+    // owner remembers to send the money back from the bank account.
     adminCancelOrder: publicQuery
       .input(z.object({ token: adminToken, id: z.string() }))
       .mutation(async ({ input }) => {
         assertAdminToken(input.token);
-        let order = await cancelOrderTx(input.id);
+        const order = await cancelOrderTx(input.id);
         if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
         void notifyCustomer("order_cancelled", order).catch((e) => console.error("[notify]", e));
-
-        if (order.refundStatus === "pending" && canRefundOnline(order)) {
-          try {
-            const { refunded } = await refundOrderOnline(order);
-            if (refunded) {
-              const refundedOrder = await setRefundStatus(order.id, "refunded");
-              if (refundedOrder) order = refundedOrder;
-            }
-          } catch (e) {
-            console.error("[refund] auto-refund-on-cancel failed, left as pending for manual retry:", e);
-          }
-        }
         return order;
       }),
-    // After refunding manually in the Yoco dashboard, mark the refund done.
-    // Kept for cash/EFT orders and as a manual override — refundOrder below
-    // does both steps (the actual Yoco refund + this flag) in one click for
-    // orders that were paid through Yoco.
+    // Refunds are manual: the owner sends the money back from the bank account,
+    // then marks the refund done here.
     setRefundStatus: publicQuery
       .input(z.object({ token: adminToken, id: z.string(), refundStatus: z.enum(["none", "pending", "refunded"]) }))
       .mutation(async ({ input }) => {
@@ -681,33 +489,6 @@ export const appRouter = createRouter({
         const order = await setRefundStatus(input.id, input.refundStatus);
         if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
         return order;
-      }),
-    // One-click refund: calls Yoco directly (no trip to the Yoco dashboard),
-    // then flips refundStatus itself. Only works for orders paid via Yoco
-    // (has a paymentRef) with YOCO_SECRET_KEY configured — otherwise throws
-    // and the owner falls back to setRefundStatus once they've refunded
-    // however that order was actually paid (cash/EFT).
-    refundOrder: publicQuery
-      .input(z.object({ token: adminToken, id: z.string() }))
-      .mutation(async ({ input }) => {
-        assertAdminToken(input.token);
-        const order = await findOrder(input.id);
-        if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
-        if (!paymentsEnabled()) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PAYMENTS_NOT_CONFIGURED" });
-        }
-        if (!canRefundOnline(order) || order.paymentStatus !== "paid") {
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message: "NOT_REFUNDABLE_ONLINE — refund this one manually (via the Payfast dashboard, or setRefundStatus once refunded however it was actually paid).",
-          });
-        }
-        const { refunded, status } = await refundOrderOnline(order);
-        if (!refunded) {
-          throw new TRPCError({ code: "BAD_GATEWAY", message: `The gateway did not accept the refund (status: ${status})` });
-        }
-        const updated = await setRefundStatus(order.id, "refunded");
-        return updated;
       }),
     listNotifications: publicQuery.input(z.object({ token: adminToken })).query(({ input }) => {
       assertAdminToken(input.token);

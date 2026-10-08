@@ -663,7 +663,7 @@ async function placeOrderTxImpl(
  * Cancel an order in a transaction: sets status 'cancelled' (+statusHistory),
  * restores each item's stock (flipping sold-out products back to in-stock),
  * and flags refundStatus='pending' when the order was paid (owner refunds
- * manually in the Yoco dashboard, then marks it refunded via setRefundStatus).
+ * manually from the bank account, then marks it refunded via setRefundStatus).
  */
 async function cancelOrderTxImpl(id: string): Promise<Order | null> {
   const db = getDb();
@@ -722,7 +722,7 @@ export async function customerCancelOrder(id: string, email: string): Promise<Pu
   return cancelled ? toPublicOrder(cancelled) : null;
 }
 
-/** Mark a refund as completed after the owner refunds in the Yoco dashboard. */
+/** Mark a refund as completed after the owner refunds from the bank account. */
 export async function setRefundStatus(id: string, refundStatus: RefundStatus): Promise<Order | null> {
   const existing = await findOrder(id);
   if (!existing) return null;
@@ -805,22 +805,6 @@ export async function markInvoiceSent(id: string): Promise<void> {
   await getDb().update(orders).set({ invoiceSentAt: new Date() }).where(eq(orders.id, id));
 }
 
-/** Persist the gateway checkout id on an order (keeps paymentStatus as-is). */
-export async function setOrderPaymentRef(id: string, paymentRef: string): Promise<Order | null> {
-  const existing = await findOrder(id);
-  if (!existing) return null;
-  await getDb().update(orders).set({ paymentRef }).where(eq(orders.id, id));
-  return { ...existing, paymentRef };
-}
-
-/** Records which gateway a checkout was started with, before payment completes. */
-export async function setOrderPaymentGateway(id: string, paymentGateway: Order["paymentGateway"]): Promise<Order | null> {
-  const existing = await findOrder(id);
-  if (!existing) return null;
-  await getDb().update(orders).set({ paymentGateway }).where(eq(orders.id, id));
-  return { ...existing, paymentGateway };
-}
-
 /**
  * Mark an order paid and advance it to "processing" (payment confirms the order),
  * appending to statusHistory. Idempotent: if already paid, returns the order as-is.
@@ -853,15 +837,6 @@ export async function markOrderPaid(
     status,
     statusHistory,
   };
-}
-
-/** Mark an order payment failed (keeps statusHistory untouched). */
-export async function markOrderPaymentFailed(id: string): Promise<Order | null> {
-  const existing = await findOrder(id);
-  if (!existing) return null;
-  if (existing.paymentStatus === "paid") return existing;
-  await getDb().update(orders).set({ paymentStatus: "failed" }).where(eq(orders.id, id));
-  return { ...existing, paymentStatus: "failed" };
 }
 
 // ---- notifications ----
