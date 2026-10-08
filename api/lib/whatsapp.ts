@@ -4,6 +4,8 @@
 //   2. payment confirmed   → "received" + the PAID invoice PDF   (sharmyn_payment_received)
 //   3. parcel shipped      → courier tracking number + link      (sharmyn_order_shipped)
 //   4. payment not confirmed → reason + how to resend the proof  (sharmyn_payment_issue)
+// and one message to the OWNER:
+//   5. customer sent proof → "check the bank for this reference"  (sharmyn_owner_proof_alert)
 // A business can only START a conversation with an approved *template*, so the
 // wording lives in Meta (see docs/whatsapp-setup.md for the exact text to
 // submit); this file only fills in the variables. Inert until
@@ -21,6 +23,7 @@ export const WHATSAPP_TEMPLATES = {
   received: "sharmyn_payment_received",
   shipped: "sharmyn_order_shipped",
   paymentIssue: "sharmyn_payment_issue",
+  ownerProofAlert: "sharmyn_owner_proof_alert",
 } as const;
 
 export function whatsappEnabled(): boolean {
@@ -127,6 +130,29 @@ export async function sendShippedWhatsApp(order: Order): Promise<boolean> {
   if (!whatsappEnabled() || !to || !order.trackingNumber) return false;
   await sendTemplate(to, WHATSAPP_TEMPLATES.shipped, [
     { type: "body", parameters: [text(firstName(order)), text(order.id), text(order.trackingNumber), text(trackLink(order))] },
+  ]);
+  return true;
+}
+
+/**
+ * The number that gets the "check the bank" alerts: OWNER_WHATSAPP if set, else the business WhatsApp
+ * number. (When the business number is also the sending number WhatsApp cannot message itself, so
+ * set OWNER_WHATSAPP to the phone Ben actually carries.)
+ */
+export function ownerWhatsAppNumber(): string | null {
+  const digits = toIntlPhoneZA(process.env.OWNER_WHATSAPP || BUSINESS.whatsapp);
+  return /^\d{9,15}$/.test(digits) ? digits : null;
+}
+
+/** A customer sent proof of payment: tell the owner to check the bank for the order's reference. */
+export async function sendOwnerProofWhatsApp(order: Order): Promise<boolean> {
+  const to = ownerWhatsAppNumber();
+  if (!whatsappEnabled() || !to) return false;
+  await sendTemplate(to, WHATSAPP_TEMPLATES.ownerProofAlert, [
+    {
+      type: "body",
+      parameters: [text(order.id), text(order.customer.name), text(`R${order.total}`), text(`${BUSINESS.website}/manage`)],
+    },
   ]);
   return true;
 }

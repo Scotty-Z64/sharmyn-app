@@ -9,6 +9,7 @@ types at checkout, with no one tapping anything:
 | Owner confirms the EFT payment | `sharmyn_payment_received` | PAID invoice PDF |
 | Order marked shipped / waybill added | `sharmyn_order_shipped` | — (tracking number in the text) |
 | Owner rejects a payment / proof | `sharmyn_payment_issue` | — (reason + how to resend) |
+| Customer uploads proof of payment on the site | `sharmyn_owner_proof_alert` | — (sent to the OWNER: "check the bank for this reference") |
 
 A business may only *start* a WhatsApp conversation with a message template that
 Meta has approved, so the wording below must be submitted to Meta first. Until
@@ -71,6 +72,20 @@ Hi {{1}}, we could not confirm your payment for order {{2}}: {{3}}. Please check
 
 Examples: `{{1}}` Thandi · `{{2}}` K7M3QXA2 · `{{3}}` The money is not showing in our account yet · `{{4}}` +27616455670
 
+### sharmyn_owner_proof_alert — no header (sent to the owner, not the customer)
+
+```
+Sharmyn team: a customer has sent proof of payment for order {{1}}. Customer: {{2}}. Amount: {{3}}. Please check the FNB account for a payment that uses that order number as the reference. Once the money is showing, confirm or reject the order here: {{4}} Thank you.
+```
+
+Examples: `{{1}}` K7M3QXA2 · `{{2}}` Thandi Mokoena · `{{3}}` R1250 · `{{4}}` https://sharmyn.co.za/manage
+
+It goes to `OWNER_WHATSAPP`
+(any number, "082…" or "+27…") and falls back to the business number. WhatsApp cannot message
+itself, so once the business number is also the sending number, set `OWNER_WHATSAPP` to the
+phone Ben actually carries. While you are still on Meta's test number, add that phone as a
+verified recipient in API Setup first.
+
 ## 3. Switch it on (Zane)
 
 Set on Render, then trigger a manual deploy (env changes do not auto-deploy):
@@ -79,6 +94,7 @@ Set on Render, then trigger a manual deploy (env changes do not auto-deploy):
 |---|---|
 | `WHATSAPP_PHONE_NUMBER_ID` | the Phone number ID |
 | `WHATSAPP_ACCESS_TOKEN` | the permanent token |
+| `OWNER_WHATSAPP` | optional: the phone that gets the "check the bank" alerts (default: the business number) |
 | `WHATSAPP_TEMPLATE_LANG` | optional, default `en` (use `en_US` / `en_GB` if the templates were created that way) |
 
 The banking details come from `BANK` in `src/config/business.ts` (account name,

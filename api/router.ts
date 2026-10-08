@@ -33,7 +33,7 @@ import {
   getLatestPaymentProof,
   decidePaymentProofs,
 } from "./queries/shop";
-import { sendOrderPaymentWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp } from "./lib/whatsapp";
+import { sendOrderPaymentWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp } from "./lib/whatsapp";
 import { parseProofDataUrl, MAX_PROOFS_PER_ORDER } from "./lib/proof";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
 import { publishToInstagram } from "./lib/meta";
@@ -167,7 +167,9 @@ export const appRouter = createRouter({
           throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many proofs uploaded for this order — please WhatsApp us instead" });
         }
         await addPaymentProof(order.id, proof.mime, input.dataUrl);
-        void notifyProofReceived({ ...order, proofStatus: "pending", proofNote: null }, proof).catch((e) => console.error("[notify] proof of payment:", e));
+        const withProof = { ...order, proofStatus: "pending" as const, proofNote: null };
+        void notifyProofReceived(withProof, proof).catch((e) => console.error("[notify] proof of payment:", e));
+        void sendOwnerProofWhatsApp(withProof).catch((e) => console.error("[whatsapp] owner proof alert failed:", e));
         return { ok: true as const, alreadyPaid: false as const };
       }),
 
