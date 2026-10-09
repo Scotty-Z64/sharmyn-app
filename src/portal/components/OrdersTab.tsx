@@ -9,6 +9,7 @@ import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { ConfirmDialog, STATUS_STYLE, Thumb } from './bits';
 import { ProofViewer, RejectPaymentDialog } from './ProofDialogs';
+import { OrderMessages } from './WhatsAppPanel';
 import { waLink, toIntlPhoneZA, bankConfigured, eftInstructionsText, UNPAID_HOLD_HOURS } from '@/config/business';
 
 const MISSED_AFTER_DAYS = 3;
@@ -427,6 +428,8 @@ function OrderCard({ order }: { order: Order }) {
                   )}
                 </div>
               )}
+
+              <OrderMessages orderId={order.id} />
 
               {/* awaiting EFT — send the banking details, then confirm once the money has landed */}
               {order.paymentStatus !== 'paid' && order.status !== 'cancelled' && (

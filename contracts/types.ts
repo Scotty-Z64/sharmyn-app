@@ -175,7 +175,24 @@ export interface PublicOrder {
   statusHistory: { status: OrderStatus; at: string }[];
 }
 
-export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock" | "payment_proof";
+export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock" | "payment_proof" | "whatsapp_failed";
+
+/** One automatic WhatsApp the system tried to send for an order (owner portal only). */
+export interface OrderMessage {
+  kind: "payment" | "received" | "shipped" | "issue" | "owner_proof";
+  ok: boolean;
+  detail: string; // "Sent to +27…" or the plain-English reason it failed
+  at: string;
+}
+
+/** Whether the saved WhatsApp token + phone number work right now (owner portal only). */
+export interface WhatsAppStatus {
+  configured: boolean;
+  ok: boolean;
+  number?: string;
+  name?: string;
+  problem?: string;
+}
 
 export type StudioPostStatus = "draft" | "ready" | "posted";
 export type StudioTemplate = "new-in" | "sale" | "restocked" | "elegant";

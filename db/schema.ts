@@ -80,6 +80,17 @@ export const orderProofs = mysqlTable("order_proofs", {
   decidedAt: timestamp("decided_at"),
 });
 
+// One row per automatic WhatsApp the system tried to send for an order (created lazily at runtime,
+// see api/queries/messages.ts): what it was, whether Meta accepted it, and the reason if not.
+export const orderMessages = mysqlTable("order_messages", {
+  id: varchar("id", { length: 24 }).primaryKey(),
+  orderId: varchar("order_id", { length: 16 }).notNull(),
+  kind: varchar("kind", { length: 16 }).notNull(), // payment | received | shipped | issue | owner_proof
+  ok: boolean("ok").notNull(),
+  detail: varchar("detail", { length: 300 }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const studioPosts = mysqlTable("studio_posts", {
   id: varchar("id", { length: 40 }).primaryKey(),
   imageData: text("image_data").notNull(), // MEDIUMTEXT in prod — compressed data URL

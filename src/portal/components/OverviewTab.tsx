@@ -4,6 +4,7 @@ import type { OrderStatus } from '@/portal/lib/utils-shop';
 import { formatPrice } from '@/portal/lib/utils-shop';
 import { usePortal } from '@/portal/lib/portal';
 import { CountUp, Thumb } from './bits';
+import WhatsAppPanel from './WhatsAppPanel';
 
 function isToday(iso: string): boolean {
   const d = new Date(iso);
@@ -108,6 +109,8 @@ export default function OverviewTab({ goTo }: { goTo: (t: 'products' | 'stock' |
           </button>
         </div>
       </motion.div>
+
+      <WhatsAppPanel />
 
       {/* Daily reconciliation */}
       {(paidToday.length > 0 || packedToday.length > 0) && (

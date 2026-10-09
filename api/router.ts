@@ -33,7 +33,8 @@ import {
   getLatestPaymentProof,
   decidePaymentProofs,
 } from "./queries/shop";
-import { sendOrderPaymentWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp } from "./lib/whatsapp";
+import { sendOrderPaymentWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp, whatsappStatus, sendWhatsAppTest } from "./lib/whatsapp";
+import { listMessages } from "./queries/messages";
 import { parseProofDataUrl, MAX_PROOFS_PER_ORDER } from "./lib/proof";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
 import { publishToInstagram } from "./lib/meta";
@@ -364,6 +365,31 @@ export const appRouter = createRouter({
       .query(async ({ input }) => {
         assertAdminToken(input.token);
         return getLatestPaymentProof(input.id);
+      }),
+    // What the automatic WhatsApps for this order did (sent / failed + why) — owner only.
+    orderMessages: publicQuery
+      .input(z.object({ token: adminToken, id: z.string() }))
+      .query(({ input }) => {
+        assertAdminToken(input.token);
+        return listMessages(input.id);
+      }),
+    // Does the saved WhatsApp token + phone number work right now? (catches an expired token early)
+    whatsappStatus: publicQuery.input(z.object({ token: adminToken })).query(({ input }) => {
+      assertAdminToken(input.token);
+      return whatsappStatus();
+    }),
+    // Sends Meta's built-in test message to a number, to check the setup without placing an order.
+    sendWhatsAppTest: publicQuery
+      .input(z.object({ token: adminToken, to: z.string().min(7).max(20) }))
+      .mutation(async ({ input, ctx }) => {
+        assertAdminToken(input.token);
+        rateLimit(`whatsappTest:${clientIp(ctx.req)}`, 10);
+        try {
+          await sendWhatsAppTest(input.to);
+          return { ok: true as const };
+        } catch (e) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: e instanceof Error ? e.message : "WhatsApp test failed" });
+        }
       }),
     // The money isn't there / the proof isn't right: the order stays unpaid and held,
     // and the customer is told why and how to send a new proof.
