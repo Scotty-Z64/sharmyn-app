@@ -108,6 +108,8 @@ interface RenderOpts {
   accent: Accent;
   salePct: string;
   oldPrice: string;
+  photoScale: number; // % — 100 = the template's own size for the product photo
+  photoShift: number; // % of the canvas height the photo is nudged down (negative = up)
 }
 
 /**
@@ -190,6 +192,12 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const accent = o.accent === 'gold' ? GOLD : ROSE;
+  // The owner can make the product bigger/smaller and nudge it up/down; every template
+  // places its photo through this one helper so the controls work the same everywhere.
+  const k = Math.min(1.6, Math.max(0.5, (o.photoScale || 100) / 100));
+  const dy = H * ((o.photoShift || 0) / 100);
+  const drawPhoto = (cx: number, bottomY: number, maxW: number, maxH: number) =>
+    drawProductFit(ctx, o.photo, cx, bottomY + dy, Math.min(W * 0.96, maxW * k), maxH * k);
   const headline = (o.headline || '').trim();
   const subtext = (o.subtext || '').trim();
   const price = o.showPrice && o.price && !isNaN(Number(o.price)) ? formatPrice(Number(o.price)) : '';
@@ -207,9 +215,9 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
     ctx.textAlign = 'center';
     const maxW = W * 0.8, maxH = H * (isWide ? 0.5 : 0.6);
     const bottomY = H * (isWide ? 0.62 : 0.66);
-    drawProductFit(ctx, o.photo, W / 2, bottomY, maxW, maxH);
+    drawPhoto(W / 2, bottomY, maxW, maxH);
 
-    let ty = bottomY + H * 0.085;
+    let ty = bottomY + dy + H * 0.085;
     if (headline) {
       ctx.fillStyle = INK;
       ctx.font = `italic 600 ${Math.round(H * 0.06)}px ${SERIF}`;
@@ -239,7 +247,7 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
     }
     const maxW = W * 0.72, maxH = H * (isWide ? 0.42 : 0.54);
     const bottomY = H * (isWide ? 0.84 : 0.82);
-    drawProductFit(ctx, o.photo, W / 2, bottomY, maxW, maxH);
+    drawPhoto(W / 2, bottomY, maxW, maxH);
     if (price) drawPricePill(ctx, price, W / 2, H * (isWide ? 0.92 : 0.91), H * 0.036, accent);
     drawWordmark(ctx, W, H, o.wordmark, 0.14);
     return;
@@ -252,9 +260,9 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
     // land (a dynamic "hug the product's top edge" approach overlapped the
     // headline into tall products like high-top sneakers; fixed positions
     // with a guaranteed-safe gap sidestep that regardless of photo shape).
-    const maxW = W * 0.6, maxH = H * (isWide ? 0.26 : 0.32);
+    const maxW = W * 0.78, maxH = H * (isWide ? 0.31 : 0.39);
     const bottomY = H * (isWide ? 0.82 : 0.8);
-    drawProductFit(ctx, o.photo, W / 2, bottomY, maxW, maxH);
+    drawPhoto(W / 2, bottomY, maxW, maxH);
 
     const br = M * 0.1;
     const by = H * (isWide ? 0.16 : 0.19);
@@ -321,7 +329,7 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
   }
   const maxW = W * 0.72, maxH = H * (isWide ? 0.4 : 0.5);
   const bottomY = H * (isWide ? 0.85 : 0.83);
-  drawProductFit(ctx, o.photo, W / 2, bottomY, maxW, maxH);
+  drawPhoto(W / 2, bottomY, maxW, maxH);
   if (price) drawPricePill(ctx, price, W / 2, H * (isWide ? 0.92 : 0.91), H * 0.036, accent);
   drawWordmark(ctx, W, H, o.wordmark, 0.14);
 }
@@ -778,6 +786,8 @@ export default function StudioTab() {
   const [salePct, setSalePct] = useState('20');
   const [showPrice, setShowPrice] = useState(true);
   const [accent, setAccent] = useState<Accent>('gold');
+  const [photoScale, setPhotoScale] = useState(100);
+  const [photoShift, setPhotoShift] = useState(0);
 
   // Caption state
   const [category, setCategory] = useState<Category>('sneakers');
@@ -813,9 +823,9 @@ export default function StudioTab() {
     if (!c) return;
     renderPost(c, {
       template, format, photo: photoImg.current, backdrop: backdropImg.current, wordmark: wordmarkImg.current,
-      headline, subtext, price, showPrice, accent, salePct, oldPrice,
+      headline, subtext, price, showPrice, accent, salePct, oldPrice, photoScale, photoShift,
     });
-  }, [template, format, headline, subtext, price, showPrice, accent, salePct, oldPrice]);
+  }, [template, format, headline, subtext, price, showPrice, accent, salePct, oldPrice, photoScale, photoShift]);
 
   useEffect(() => { redraw(); }, [redraw]);
   // The canvas only mounts once step reaches 2; if the photo/logo finished
@@ -1030,6 +1040,25 @@ export default function StudioTab() {
                 ))}
               </div>
             </div>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-blush-100 bg-blush-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <label className={labelCls}>Product size</label>
+              <span className="text-[11px] text-ink-500">{photoScale}%</span>
+            </div>
+            <input type="range" min={60} max={150} step={5} value={photoScale}
+              onChange={(e) => setPhotoScale(Number(e.target.value))} className="mt-1.5 w-full accent-gold-500" />
+            <div className="mt-3 flex items-center justify-between">
+              <label className={labelCls}>Move up / down</label>
+              <span className="text-[11px] text-ink-500">{photoShift === 0 ? 'centred' : photoShift < 0 ? `up ${-photoShift}` : `down ${photoShift}`}</span>
+            </div>
+            <input type="range" min={-15} max={15} step={1} value={photoShift}
+              onChange={(e) => setPhotoShift(Number(e.target.value))} className="mt-1.5 w-full accent-gold-500" />
+            {(photoScale !== 100 || photoShift !== 0) && (
+              <button type="button" onClick={() => { setPhotoScale(100); setPhotoShift(0); }}
+                className="mt-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-500 hover:text-ink-900">Reset size and position</button>
+            )}
           </div>
 
           <div className="mt-4 flex justify-between">
