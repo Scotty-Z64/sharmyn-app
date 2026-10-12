@@ -16,6 +16,8 @@ Changing a value in Render redeploys the site (about 3 minutes).
 | `WHATSAPP_PHONE_NUMBER_ID` | For automatic WhatsApp | The sending number's ID from Meta (API Setup). |
 | `WHATSAPP_ACCESS_TOKEN` 🔒 | For automatic WhatsApp | A **permanent System User token** (see `whatsapp-setup.md`). A token copied from API Setup expires after 24 hours. |
 | `OWNER_WHATSAPP` | For the "check the bank" alert | The phone that gets the proof-of-payment alert. Must be a verified recipient while on Meta's test number. |
+| `WHATSAPP_VERIFY_TOKEN` | For incoming messages | Any long random text; Meta sends it back once when the webhook is saved (see `whatsapp-setup.md` 3c). |
+| `WHATSAPP_APP_SECRET` 🔒 | For incoming messages | The Meta app secret (App settings → Basic). Used to check every incoming webhook really came from Meta. |
 | `WHATSAPP_TEMPLATE_LANG` | Optional | Template language code, default `en`. |
 | `CRON_SECRET` 🔒 | Optional | Lets an outside scheduler trigger the weekly report (`/api/cron/weekly-report`). |
 | `PHOTOROOM_API_KEY` 🔒 | Optional | Paid AI photo polish in the Studio. The free in-browser tool works without it. |

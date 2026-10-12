@@ -117,6 +117,32 @@ the WhatsApp Business app cannot also be the API number unless Meta's coexistenc
 recreate the five templates on that account as **Utility**, add the payment method to that account,
 complete Business Verification, and publish the app.
 
+## 3c. Receiving customers' messages (the webhook)
+
+Once the Sharmyn number runs on Meta's Cloud API, the WhatsApp phone app no longer shows its chats. Meta instead
+sends every incoming message, and a receipt for every message we send, to the site:
+
+- A **photo or PDF with the order number** (SH-XXXXXXXX), or from a number that has exactly one open order, is filed
+  on that order as proof of payment. The owner gets the same alerts as for a website upload, and the customer gets a
+  thank-you.
+- **Every other message** is kept in `/manage → Messages`, with a bell notification and an email. The customer gets
+  one short automatic reply (at most once every 6 hours).
+- **Receipts** (sent, delivered, read, or why it failed) show next to each automatic message on the order.
+
+Set up (once the number is registered):
+
+1. In Render add two settings: `WHATSAPP_VERIFY_TOKEN` (any long random text you invent) and `WHATSAPP_APP_SECRET`
+   (Meta developer app → **App settings → Basic → App secret** → Show). Save and wait for the deploy to go Live.
+2. Meta developer app → **WhatsApp → Configuration** (under Use cases → Customize) → **Webhook** → Edit:
+   - Callback URL: `https://sharmyn.co.za/api/webhooks/whatsapp`
+   - Verify token: the same text as `WHATSAPP_VERIFY_TOKEN`
+   - Click **Verify and save**.
+3. Under **Webhook fields** turn on **messages** (Subscribe).
+4. Send a WhatsApp from a phone to the Sharmyn number. It should appear under `/manage → Messages` within seconds.
+
+Meta only delivers real customers' messages once the app is **published**; until then only test messages from the
+developer dashboard arrive.
+
 ## 4. Notes
 
 - Every send is logged per order and failures raise a bell notification (see `environment.md`).
