@@ -6,8 +6,8 @@ import { WhatsAppIcon } from './WhatsAppFloat';
 const SHOP_LINKS = [
   { label: 'Sneakers', to: '/#sneakers' },
   { label: 'Shoes', to: '/#shoes' },
-  { label: 'Custom Jewellery', to: '/#jewellery' },
-  { label: 'Handbags', to: '/#handbags' },
+  { label: 'Jewellery', to: '/#jewellery' },
+  { label: 'Bags & Handbags', to: '/#handbags' },
   { label: 'Clothing', to: '/#clothing' },
 ];
 

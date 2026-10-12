@@ -21,7 +21,7 @@ export default function Returns() {
       <Section title="Exchanges">
         <p>
           Prefer a different size or colour? WhatsApp us your order number within 7 days of delivery
-          and we'll arrange an exchange — no additional charge, subject to stock availability. We'll
+          and we'll arrange an exchange — courier costs are for the customer's account, subject to stock availability. We'll
           send you a confirmation slip once it's processed.
         </p>
       </Section>
