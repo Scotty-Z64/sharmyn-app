@@ -101,7 +101,25 @@ The banking details come from `BANK` in `src/config/business.ts` (account name,
 number and type must be filled in, otherwise the banking message is skipped rather
 than sent with blanks).
 
+## 3b. A token that does not expire (do this before relying on it)
+
+A token generated in API Setup is a 24-hour test token. For real use make a **System User token**:
+
+1. Meta Business Settings → **Users → System users → Add** (a plain name such as "Orders"; Meta
+   rejects names containing the business name). Role: Admin.
+2. Select it → **Assign assets**: the app (full control) and the WhatsApp account (full control).
+3. **Generate token** → pick the app → expiry **Never** → tick `whatsapp_business_management`
+   and `whatsapp_business_messaging` → copy it once.
+4. Put it in Render as `WHATSAPP_ACCESS_TOKEN`. Check `/manage → Overview → Automatic WhatsApp`.
+
+Production number: register a real sending number (a separate SIM is simplest, because the number on
+the WhatsApp Business app cannot also be the API number unless Meta's coexistence option is offered),
+recreate the five templates on that account as **Utility**, add the payment method to that account,
+complete Business Verification, and publish the app.
+
 ## 4. Notes
+
+- Every send is logged per order and failures raise a bell notification (see `environment.md`).
 
 - Each message the system sends is billed by Meta per conversation/message
   (utility templates are cheap; see Meta's current WhatsApp pricing for South Africa).
