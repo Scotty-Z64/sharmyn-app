@@ -193,7 +193,8 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
   const fmt = FORMATS.find((f) => f.key === o.format) ?? FORMATS[0];
   const W = fmt.w, H = fmt.h;
   const M = Math.min(W, H); // for things that should stay "square-ish" regardless of format
-  const isWide = W > H; // wide/landscape formats (e.g. Facebook Post) need shorter photo boxes
+  const isWide = W > H;
+  const tall = H / W > 1.5; // stories / status: a long canvas, so the product can be much bigger and sits higher // wide/landscape formats (e.g. Facebook Post) need shorter photo boxes
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
@@ -239,8 +240,8 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
     // (Previously assumed a full-bleed lifestyle photo; Studio photos are
     // cutouts now, so a hero-product layout suits what's actually available.)
     ctx.textAlign = 'center';
-    const maxW = W * 0.8, maxH = H * (isWide ? 0.5 : 0.6);
-    const bottomY = H * (isWide ? 0.62 : 0.66);
+    const maxW = W * (tall ? 0.92 : 0.8), maxH = H * (isWide ? 0.52 : tall ? 0.42 : 0.6);
+    const bottomY = H * (isWide ? 0.62 : tall ? 0.62 : 0.66);
     drawPhoto(W / 2, bottomY, maxW, maxH);
 
     let ty = bottomY + dy + H * 0.085;
@@ -271,10 +272,10 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
       ctx.font = `italic 500 ${Math.round(H * 0.03)}px ${SERIF}`;
       drawSubtext(subtext, W / 2, H * 0.155, W * 0.86);
     }
-    const maxW = W * 0.72, maxH = H * (isWide ? 0.42 : 0.54);
-    const bottomY = H * (isWide ? 0.84 : 0.82);
+    const maxW = W * (tall ? 0.92 : 0.72), maxH = H * (isWide ? 0.52 : tall ? 0.38 : 0.54);
+    const bottomY = H * (isWide ? 0.84 : tall ? 0.66 : 0.82);
     drawPhoto(W / 2, bottomY, maxW, maxH);
-    if (price) drawPricePill(ctx, price, W / 2, H * (isWide ? 0.92 : 0.91), H * 0.036, accent);
+    if (price) drawPricePill(ctx, price, W / 2, tall ? bottomY + H * 0.08 : H * (isWide ? 0.92 : 0.91), H * 0.036, accent);
     drawWordmark(ctx, W, H, o.wordmark, 0.14);
     return;
   }
@@ -286,12 +287,12 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
     // land (a dynamic "hug the product's top edge" approach overlapped the
     // headline into tall products like high-top sneakers; fixed positions
     // with a guaranteed-safe gap sidestep that regardless of photo shape).
-    const maxW = W * 0.78, maxH = H * (isWide ? 0.31 : 0.39);
-    const bottomY = H * (isWide ? 0.82 : 0.8);
+    const maxW = W * (tall ? 0.92 : 0.78), maxH = H * (isWide ? 0.38 : tall ? 0.29 : 0.365);
+    const bottomY = H * (isWide ? 0.84 : tall ? 0.66 : 0.8);
     drawPhoto(W / 2, bottomY, maxW, maxH);
 
-    const br = M * 0.1;
-    const by = H * (isWide ? 0.16 : 0.19);
+    const br = M * (tall ? 0.13 : 0.1);
+    const by = H * (isWide ? 0.16 : tall ? 0.15 : 0.19);
     ctx.beginPath();
     ctx.arc(W / 2, by, br, 0, Math.PI * 2);
     ctx.fillStyle = accent;
@@ -312,11 +313,11 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
       ctx.fillStyle = INK;
       ctx.textAlign = 'center';
       ctx.font = `italic 500 ${Math.round(H * 0.03)}px ${SERIF}`;
-      drawSubtext(subtext, W / 2, by + br + H * 0.105, W * 0.86);
+      drawSubtext(subtext, W / 2, by + br + H * (isWide ? 0.115 : 0.1), W * 0.86);
     }
 
     if (price) {
-      const py = H * (isWide ? 0.93 : 0.92);
+      const py = tall ? bottomY + H * 0.09 : H * (isWide ? 0.93 : 0.92);
       if (oldPrice) {
         ctx.font = `500 ${Math.round(H * 0.034)}px ${SERIF}`;
         const oldW = ctx.measureText(oldPrice).width;
@@ -359,10 +360,10 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
     ctx.font = `italic 500 ${Math.round(H * 0.03)}px ${SERIF}`;
     drawSubtext(subtext, W / 2, bannerY + bannerH + H * 0.048, W * 0.86);
   }
-  const maxW = W * 0.72, maxH = H * (isWide ? 0.4 : 0.5);
-  const bottomY = H * (isWide ? 0.85 : 0.83);
+  const maxW = W * (tall ? 0.92 : 0.72), maxH = H * (isWide ? 0.5 : tall ? 0.36 : 0.5);
+  const bottomY = H * (isWide ? 0.85 : tall ? 0.66 : 0.83);
   drawPhoto(W / 2, bottomY, maxW, maxH);
-  if (price) drawPricePill(ctx, price, W / 2, H * (isWide ? 0.92 : 0.91), H * 0.036, accent);
+  if (price) drawPricePill(ctx, price, W / 2, tall ? bottomY + H * 0.08 : H * (isWide ? 0.92 : 0.91), H * 0.036, accent);
   drawWordmark(ctx, W, H, o.wordmark, 0.14);
 }
 
