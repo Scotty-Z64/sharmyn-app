@@ -5,6 +5,7 @@ import { formatPrice } from '@/portal/lib/utils-shop';
 import { usePortal } from '@/portal/lib/portal';
 import { CountUp, Thumb } from './bits';
 import WhatsAppPanel from './WhatsAppPanel';
+import PromoPanel from './PromoPanel';
 
 function isToday(iso: string): boolean {
   const d = new Date(iso);
@@ -109,6 +110,8 @@ export default function OverviewTab({ goTo }: { goTo: (t: 'products' | 'stock' |
           </button>
         </div>
       </motion.div>
+
+      <PromoPanel />
 
       <WhatsAppPanel />
 

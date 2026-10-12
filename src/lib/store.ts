@@ -20,7 +20,7 @@ export type {
   OrderItem,
   PudoLockerRef,
 } from '@contracts/types';
-export { SHOE_BRANDS, isSizedCategory, pudoDeliveryFee, pudoStandardFee, PUDO_ITEMS_PER_PARCEL, PUDO_FEE_PER_PARCEL, FREE_SHIPPING_MIN_ITEMS, discountPercent, HERO_ASPECTS } from '@contracts/types';
+export { SHOE_BRANDS, isSizedCategory, pudoDeliveryFee, DELIVERY_FEE_PER_ITEM, openingSpecialForCart, OPENING_SPECIAL_OFF, OPENING_SPECIAL_MIN_QTY, discountPercent, HERO_ASPECTS } from '@contracts/types';
 import type { HeroAspect } from '@contracts/types';
 
 /** Banner shape presets — a fixed ratio at every screen size when chosen;
@@ -153,7 +153,7 @@ export function cartSubtotal(products: Product[]): number {
 export const CATEGORIES: { key: Category; label: string; tagline: string }[] = [
   { key: 'sneakers', label: 'Sneakers', tagline: 'Street-soft soles' },
   { key: 'shoes', label: 'Shoes', tagline: 'Ladies footwear for every occasion' },
-  { key: 'jewellery', label: 'Jewellery', tagline: 'Made-to-shine custom pieces' },
+  { key: 'jewellery', label: 'Jewellery', tagline: 'Pieces made to shine' },
   { key: 'handbags', label: 'Handbags', tagline: 'Carry the moment' },
   { key: 'clothing', label: 'Clothing', tagline: 'Everyday elegance' },
 ];

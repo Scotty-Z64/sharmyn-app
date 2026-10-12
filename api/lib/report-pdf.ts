@@ -146,7 +146,7 @@ export async function buildReportPdf(report: SalesReport): Promise<Buffer> {
     if (report.discountImpact.itemsSoldOnDiscount > 0) {
       y += 15;
       if (y > 700) { doc.addPage(); y = 50; }
-      doc.fillColor(GOLD).fontSize(11).font("Helvetica-Bold").text("Discount impact", 50, y);
+      doc.fillColor(GOLD).fontSize(11).font("Helvetica-Bold").text("Discounts given (sale prices and Opening Special)", 50, y);
       y += 18;
       doc.fillColor(INK).fontSize(9).font("Helvetica");
       doc.text(`Items sold on discount: ${report.discountImpact.itemsSoldOnDiscount}`, 50, y, { width: 495 });
@@ -154,20 +154,6 @@ export async function buildReportPdf(report: SalesReport): Promise<Buffer> {
       doc.text(`Revenue from discounted items: ${fmt(report.discountImpact.revenueFromDiscounted)}`, 50, y, { width: 495 });
       y += 15;
       doc.text(`Discount given: ${fmt(report.discountImpact.discountGiven)}`, 50, y, { width: 495 });
-      y += 15;
-    }
-
-    if (report.freeShippingImpact.ordersWithFreeShipping > 0) {
-      y += 15;
-      if (y > 700) { doc.addPage(); y = 50; }
-      doc.fillColor(GOLD).fontSize(11).font("Helvetica-Bold").text("Free shipping impact", 50, y);
-      y += 18;
-      doc.fillColor(INK).fontSize(9).font("Helvetica");
-      doc.text(`Orders with free shipping: ${report.freeShippingImpact.ordersWithFreeShipping}`, 50, y, { width: 495 });
-      y += 15;
-      doc.text(`Items in those orders: ${report.freeShippingImpact.itemsInThoseOrders}`, 50, y, { width: 495 });
-      y += 15;
-      doc.text(`Shipping revenue waived: ${fmt(report.freeShippingImpact.shippingRevenueWaived)}`, 50, y, { width: 495 });
       y += 15;
     }
 

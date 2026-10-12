@@ -35,6 +35,7 @@ import {
 } from "./queries/shop";
 import { sendOrderPaymentWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp, whatsappStatus, sendWhatsAppTest } from "./lib/whatsapp";
 import { listMessages } from "./queries/messages";
+import { openingSpecialEnabled, setOpeningSpecialEnabled } from "./queries/flags";
 import { parseProofDataUrl, MAX_PROOFS_PER_ORDER } from "./lib/proof";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
 import { publishToInstagram } from "./lib/meta";
@@ -172,6 +173,17 @@ export const appRouter = createRouter({
         void notifyProofReceived(withProof, proof).catch((e) => console.error("[notify] proof of payment:", e));
         void sendOwnerProofWhatsApp(withProof).catch((e) => console.error("[whatsapp] owner proof alert failed:", e));
         return { ok: true as const, alreadyPaid: false as const };
+      }),
+
+    // Which promotions are running (the storefront and cart read this to show the saving).
+    promo: publicQuery.query(async () => ({ openingSpecial: await openingSpecialEnabled() })),
+    // Owner switch for the Opening Special.
+    setOpeningSpecial: publicQuery
+      .input(z.object({ token: adminToken, enabled: z.boolean() }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        await setOpeningSpecialEnabled(input.enabled);
+        return { openingSpecial: input.enabled };
       }),
 
     // Customer self-service cancel: only pending + unpaid orders.

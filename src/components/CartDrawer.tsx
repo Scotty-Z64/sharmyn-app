@@ -2,7 +2,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Minus, Plus, Trash2, X } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useShop } from '@/lib/shop';
-import { formatPrice, removeFromCart, setCartQty, isSizedCategory } from '@/lib/store';
+import { formatPrice, removeFromCart, setCartQty, isSizedCategory, openingSpecialForCart, OPENING_SPECIAL_OFF } from '@/lib/store';
+import { useOpeningSpecial } from '@/lib/promo';
 
 export default function CartDrawer() {
   const { cart, products, cartOpen, setCartOpen, setSizeGuideOpen } = useShop();
@@ -10,7 +11,18 @@ export default function CartDrawer() {
   const lines = cart
     .map((c) => ({ ...c, product: products.find((p) => p.id === c.productId) }))
     .filter((l) => l.product);
-  const subtotal = lines.reduce((s, l) => s + l.product!.price * l.qty, 0);
+  const specialOn = useOpeningSpecial();
+  const offs = openingSpecialForCart(lines.map((l) => ({ category: l.product!.category, qty: l.qty })), specialOn);
+  const unitPrice = (i: number) => Math.max(0, lines[i].product!.price - offs[i]);
+  const subtotal = lines.reduce((s, _l, i) => s + unitPrice(i) * lines[i].qty, 0);
+  const saving = lines.reduce((s, l, i) => s + (l.product!.price - unitPrice(i)) * l.qty, 0);
+  // One pair / one bag in the bag: tell them what a second one would save.
+  const nudge = !specialOn ? null
+    : lines.some((l) => l.product!.category === 'sneakers') && !offs.some((o, i) => o > 0 && lines[i].product!.category === 'sneakers')
+      ? `Add one more pair of sneakers and get R${OPENING_SPECIAL_OFF.sneakers} off each pair`
+      : lines.some((l) => l.product!.category === 'handbags') && !offs.some((o, i) => o > 0 && lines[i].product!.category === 'handbags')
+        ? `Add one more handbag and get R${OPENING_SPECIAL_OFF.handbags} off each handbag`
+        : null;
   const hasSneakers = lines.some((l) => isSizedCategory(l.product!.category));
 
   return (
@@ -54,7 +66,8 @@ export default function CartDrawer() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-ink-900 truncate">{l.product!.name}</p>
                           <p className="text-xs text-ink-500">
-                            {formatPrice(l.product!.price)}
+                            {offs[lines.indexOf(l)] > 0 && <span className="line-through text-ink-500/70 mr-1.5">{formatPrice(l.product!.price)}</span>}
+                            {formatPrice(unitPrice(lines.indexOf(l)))}
                             {l.size && <span className="ml-1.5 text-ink-900 font-medium">· Size {l.size}</span>}
                           </p>
                           <div className="mt-2 flex items-center gap-3">
@@ -65,7 +78,7 @@ export default function CartDrawer() {
                               <button aria-label="Increase" onClick={() => setCartQty(l.productId, Math.min(l.product!.quantity || l.qty, l.qty + 1), l.size)}
                                 className="w-9 h-9 grid place-items-center text-ink-900"><Plus size={14} /></button>
                             </div>
-                            <span className="ml-auto font-display font-semibold text-ink-900">{formatPrice(l.product!.price * l.qty)}</span>
+                            <span className="ml-auto font-display font-semibold text-ink-900">{formatPrice(unitPrice(lines.indexOf(l)) * l.qty)}</span>
                             <button aria-label="Remove" onClick={() => removeFromCart(l.productId, l.size)}
                               className="w-9 h-9 grid place-items-center text-ink-500 hover:text-rose-500"><Trash2 size={15} /></button>
                           </div>
@@ -82,12 +95,19 @@ export default function CartDrawer() {
                       <span className="text-[12px] font-semibold text-gold-500 underline underline-offset-2 shrink-0">View</span>
                     </button>
                   )}
+                  {nudge && <p className="rounded-xl border border-gold-400/40 bg-blush-50 px-4 py-2.5 text-[13px] font-semibold text-gold-500">🎉 {nudge}</p>}
+                  {saving > 0 && (
+                    <div className="flex justify-between items-baseline text-[13px]">
+                      <span className="text-gold-500 font-semibold">🎉 Opening special saving</span>
+                      <span className="text-gold-500 font-semibold">−{formatPrice(saving)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-baseline">
                     <span className="text-[12px] uppercase tracking-[0.14em] text-ink-500">Subtotal</span>
                     <motion.span key={subtotal} initial={{ scale: 1.1 }} animate={{ scale: 1 }}
                       className="font-display text-xl font-semibold text-ink-900">{formatPrice(subtotal)}</motion.span>
                   </div>
-                  <p className="text-xs text-ink-500">Delivery calculated at checkout.</p>
+                  <p className="text-xs text-ink-500">Delivery is R100 per item, calculated at checkout.</p>
                   <button onClick={() => { setCartOpen(false); navigate('/checkout'); }}
                     className="w-full h-12 bg-gold-400 text-white text-[12px] font-semibold uppercase tracking-[0.16em] hover:bg-gold-500 transition-colors">
                     Checkout

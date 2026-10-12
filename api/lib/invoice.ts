@@ -121,6 +121,11 @@ export async function buildInvoicePdf(order: Order, preloaded?: InvoiceProductDa
       doc.font("Helvetica").fontSize(10).fillColor(INK);
       doc.text(String(item.qty), 360, textY, { width: 40, align: "right" });
       doc.text(`R${item.price}`, 410, textY, { width: 60, align: "right" });
+      if (item.oldPrice && item.oldPrice > item.price) {
+        // sale price or the Opening Special: show what it normally costs
+        doc.font("Helvetica").fontSize(8).fillColor(SOFT).text(`was R${item.oldPrice}`, 410, textY + 13, { width: 60, align: "right" });
+        doc.font("Helvetica").fontSize(10).fillColor(INK);
+      }
       doc.text(`R${item.price * item.qty}`, 475, textY, { width: 70, align: "right" });
       rowY += ROW_H;
       if (rowY > 700) { doc.addPage(); rowY = 50; }

@@ -19,16 +19,16 @@ export default function Terms() {
 
       <Section title="Payment">
         <p>
-          Orders are paid online by card or instant EFT through our secure payment gateway at
-          checkout. Your order is only packed and shipped once payment is confirmed.
+          Orders are paid by EFT (bank transfer) into our FNB business account. After you place your
+          order we show you our banking details and your payment reference, and WhatsApp them to you —
+          please use that reference when you pay and send us your proof of payment. Your order is only
+          packed and shipped once we have confirmed the payment, and unpaid orders are released after 72 hours.
         </p>
       </Section>
 
       <Section title="Delivery">
         <p>We deliver anywhere in South Africa via Pudo smart locker — you choose the locker nearest
-          you at checkout. Delivery is R150 per parcel of up to 3 items; larger orders are priced per
-          extra parcel (e.g. 4–6 items is R300), shown at checkout before you pay. <strong>Buy 2 or more
-          items and delivery is free</strong> — this is applied automatically at checkout.</p>
+          you at checkout. Delivery is a flat R100 per item, anywhere in South Africa, shown at checkout before you pay.</p>
         <p>
           Delivery typically takes 5–7 working days from payment confirmation. Delays can happen with
           courier partners beyond our control — we'll keep you updated if this happens.

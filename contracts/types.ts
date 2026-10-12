@@ -123,30 +123,37 @@ export interface Order {
 }
 
 /**
- * Pudo delivery pricing: R150 covers one parcel of up to 3 items. Pudo
- * lockers have a physical size limit, so a bigger order realistically needs
- * more than one parcel/locker — priced the same per parcel rather than a
- * flat fee regardless of order size, which would lose money on large orders.
- * Shared by the checkout page (what the customer is shown) and the order
- * placement transaction (what's actually charged), so they can never drift.
+ * Delivery: a flat R100 per item, nationwide. Shared by the checkout page (what the
+ * customer is shown) and the order placement transaction (what's actually charged),
+ * so they can never drift.
  */
-export const PUDO_ITEMS_PER_PARCEL = 3;
-export const PUDO_FEE_PER_PARCEL = 150;
-// Free-shipping promo: buy this many items (any category) or more and the
-// Pudo fee is waived entirely. A separate constant/function from the base
-// per-parcel pricing below so reporting can show "what would this have cost
-// without the promo" without the two rules getting tangled together.
-export const FREE_SHIPPING_MIN_ITEMS = 2;
-
-/** Standard per-parcel Pudo pricing, before the free-shipping promo below. */
-export function pudoStandardFee(totalQty: number): number {
-  return Math.ceil(Math.max(1, totalQty) / PUDO_ITEMS_PER_PARCEL) * PUDO_FEE_PER_PARCEL;
+export const DELIVERY_FEE_PER_ITEM = 100;
+export function pudoDeliveryFee(totalQty: number): number {
+  return Math.max(1, totalQty) * DELIVERY_FEE_PER_ITEM;
 }
 
-/** What's actually charged — free once the cart hits FREE_SHIPPING_MIN_ITEMS. */
-export function pudoDeliveryFee(totalQty: number): number {
-  if (totalQty >= FREE_SHIPPING_MIN_ITEMS) return 0;
-  return pudoStandardFee(totalQty);
+/**
+ * Sharmyn Opening Special: buy more than one pair of sneakers and get R100 off EACH
+ * pair; buy more than one handbag and get R50 off EACH bag. Sneakers and handbags are
+ * counted separately (one pair plus one bag earns nothing). The owner can switch it
+ * off in the portal. The server applies it when the order is placed; the storefront
+ * uses the same function to show the saving, so what the customer sees is what is charged.
+ */
+export const OPENING_SPECIAL_MIN_QTY = 2;
+export const OPENING_SPECIAL_OFF: Partial<Record<Category, number>> = { sneakers: 100, handbags: 50 };
+
+/** Rand off each unit of this category, given how many units of it are in the cart. */
+export function openingSpecialOffPerUnit(category: Category, qtyInCategory: number): number {
+  if (qtyInCategory < OPENING_SPECIAL_MIN_QTY) return 0;
+  return OPENING_SPECIAL_OFF[category] ?? 0;
+}
+
+/** Rand off per unit for every line of a cart (same order as the input lines). */
+export function openingSpecialForCart(lines: { category: Category; qty: number }[], enabled: boolean): number[] {
+  if (!enabled) return lines.map(() => 0);
+  const qty: Partial<Record<Category, number>> = {};
+  for (const l of lines) qty[l.category] = (qty[l.category] ?? 0) + l.qty;
+  return lines.map((l) => openingSpecialOffPerUnit(l.category, qty[l.category] ?? 0));
 }
 
 /** Where a paid order sits in the fulfilment pipeline — derived, not stored. */
@@ -281,14 +288,6 @@ export interface DiscountImpact {
   discountGiven: number; // sum of (oldPrice - price) * qty — what customers saved / the business gave up
 }
 
-/** Tracks the free-shipping-on-2+-items promo: which orders qualified (Pudo,
- * fee waived to 0) and what that delivery would normally have cost. */
-export interface FreeShippingImpact {
-  ordersWithFreeShipping: number; // non-cancelled orders where the Pudo fee was waived
-  itemsInThoseOrders: number; // total item qty across those orders
-  shippingRevenueWaived: number; // sum of pudoStandardFee(totalQty) for those orders — what would've been charged
-}
-
 /** How much money arrived by each payment method in the report range. */
 export interface ReportMethodRow {
   method: string; // eft (older rows may say yoco | payfast | stitch | ozow)
@@ -323,7 +322,6 @@ export interface SalesReport {
   bySize: ReportSizeRow[]; // sorted desc by qtySold
   trend: ReportTrendPoint[]; // sorted asc by date
   discountImpact: DiscountImpact;
-  freeShippingImpact: FreeShippingImpact;
 }
 
 export const HERO_ASPECTS = ["wide", "standard", "tall", "square"] as const;

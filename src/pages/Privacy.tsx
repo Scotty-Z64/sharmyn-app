@@ -16,7 +16,7 @@ export default function Privacy() {
           <li>Name, email address, and phone number</li>
           <li>Delivery address and city (only when you choose door or locker delivery)</li>
           <li>Order details — items, sizes, prices, delivery method</li>
-          <li>Payment status from our payment gateway (we never see or store your card details)</li>
+          <li>Payment status and the proof of payment you send us (we never see or store card details — you pay by EFT from your own bank)</li>
         </ul>
       </Section>
 

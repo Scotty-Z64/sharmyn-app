@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Copy, Crown, Loader2, Lock, PackageOpen } from 'lucide-react';
 import { useShop } from '@/lib/shop';
 import { trpc } from '@/providers/trpc';
-import { clearCart, formatPrice, formatAddress, pudoDeliveryFee, PUDO_ITEMS_PER_PARCEL, PUDO_FEE_PER_PARCEL, FREE_SHIPPING_MIN_ITEMS } from '@/lib/store';
+import { clearCart, formatPrice, formatAddress, pudoDeliveryFee, openingSpecialForCart } from '@/lib/store';
+import { useOpeningSpecial } from '@/lib/promo';
 import type { Order, OrderDelivery, PudoLockerRef } from '@/lib/store';
 import PudoLockerPicker from '@/components/checkout/PudoLockerPicker';
 import { BANK, BUSINESS, UNPAID_HOLD_HOURS, bankConfigured, waLink } from '@/config/business';
@@ -101,12 +102,21 @@ export default function Checkout() {
     [cart, products]
   );
 
-  const subtotal = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
+  const specialOn = useOpeningSpecial();
+  // Same maths the server uses (contracts/types.ts) — shown here, charged there.
+  const offs = useMemo(
+    () => openingSpecialForCart(lines.map((l) => ({ category: l.product.category, qty: l.qty })), specialOn),
+    [lines, specialOn]
+  );
+  const unitPrice = (i: number) => Math.max(0, lines[i].product.price - offs[i]);
+  const rawSubtotal = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
+  const subtotal = lines.reduce((s, l, i) => s + unitPrice(i) * l.qty, 0);
+  const saving = rawSubtotal - subtotal;
   const totalQty = lines.reduce((s, l) => s + l.qty, 0);
   // Kept in sync with the server's actual charge (placeOrderTx) — this is
   // only what the customer is shown before submitting, never trusted as the
   // real price; the server recomputes it from the order's real item count.
-  const deliveryFee = delivery === 'pudo' ? pudoDeliveryFee(totalQty) : 80;
+  const deliveryFee = pudoDeliveryFee(totalQty); // R100 per item, nationwide
   const total = subtotal + deliveryFee;
 
   const selectDelivery = (m: DeliveryMethod) => {
@@ -406,7 +416,7 @@ export default function Checkout() {
   const summaryItems = (
     <>
       <ul className="divide-y divide-blush-100">
-        {lines.map((l) => (
+        {lines.map((l, idx) => (
           <li key={`${l.productId}-${l.size ?? ''}`} className="flex items-center gap-3 py-3">
             <img src={l.product.image} alt={l.product.name} className="h-14 w-14 rounded-xl object-cover bg-blush-100" />
             <div className="flex-1 min-w-0">
@@ -415,22 +425,24 @@ export default function Checkout() {
               </p>
               <p className="text-[12px] text-ink-500">Qty {l.qty}{l.size && <span> · Size {l.size}</span>}</p>
             </div>
-            <p className="text-[14px] font-semibold text-ink-900">{formatPrice(l.product.price * l.qty)}</p>
+            <p className="text-[14px] font-semibold text-ink-900">{formatPrice(unitPrice(idx) * l.qty)}</p>
           </li>
         ))}
       </ul>
       <div className="mt-4 space-y-1.5 border-t border-blush-100 pt-4 text-[14px]">
         <div className="flex justify-between text-ink-500">
           <span>Subtotal</span>
-          <span className="text-ink-900">{formatPrice(subtotal)}</span>
+          <span className="text-ink-900">{formatPrice(rawSubtotal)}</span>
         </div>
+        {saving > 0 && (
+          <div className="flex justify-between font-semibold text-gold-500">
+            <span>🎉 Opening special</span>
+            <span>−{formatPrice(saving)}</span>
+          </div>
+        )}
         <div className="flex justify-between text-ink-500">
-          <span>Delivery</span>
-          {deliveryFee === 0 ? (
-            <span className="font-semibold text-[#1F8A5B]">FREE</span>
-          ) : (
-            <span className="text-ink-900">{formatPrice(deliveryFee)}</span>
-          )}
+          <span>Delivery ({totalQty} × R100)</span>
+          <span className="text-ink-900">{formatPrice(deliveryFee)}</span>
         </div>
         <div className="flex justify-between items-baseline pt-1">
           <span className="font-semibold text-ink-900">Total</span>
@@ -591,14 +603,11 @@ export default function Checkout() {
               <PackageOpen className="h-5 w-5 text-rose-500 shrink-0" />
               <span className="flex-1">
                 <span className="block text-[14px] font-semibold text-ink-900">
-                  Pudo Locker Pickup — {pudoDeliveryFee(totalQty) === 0 ? <span className="text-[#1F8A5B]">FREE</span> : formatPrice(pudoDeliveryFee(totalQty))} <span className="ml-1 rounded-full bg-gold-400/15 border border-gold-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold-500">Recommended</span>
+                  Pudo Locker Pickup — {formatPrice(pudoDeliveryFee(totalQty))} <span className="ml-1 rounded-full bg-gold-400/15 border border-gold-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold-500">Recommended</span>
                 </span>
                 <span className="block text-[12px] text-ink-500">
-                  Collect from a smart locker near you · 5–7 working days · Free shipping on {FREE_SHIPPING_MIN_ITEMS}+ items, otherwise {formatPrice(PUDO_FEE_PER_PARCEL)} per {PUDO_ITEMS_PER_PARCEL} items
+                  Collect from a smart locker near you · 5–7 working days · R100 per item, nationwide
                 </span>
-                {totalQty === FREE_SHIPPING_MIN_ITEMS - 1 && (
-                  <span className="block mt-0.5 text-[11px] font-semibold text-gold-500">Add 1 more item to get free shipping!</span>
-                )}
               </span>
             </label>
             {delivery === 'pudo' && (

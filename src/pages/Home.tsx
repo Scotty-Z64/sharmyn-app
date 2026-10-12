@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Search, X } from 'lucide-react';
 import { trpc } from '@/providers/trpc';
@@ -8,13 +8,15 @@ import { CATEGORIES, SHOE_BRANDS, resolveAvailability, heroAspectClass, type Cat
 import ProductCard from '@/components/ProductCard';
 import QuickView from '@/components/QuickView';
 import SearchOverlay from '@/components/SearchOverlay';
+import { useOpeningSpecial } from '@/lib/promo';
 
 const BRAND_CATEGORIES: Category[] = ['sneakers', 'shoes'];
 
 const COLLECTION_CIRCLES: { key: Category; label: string; img: string }[] = [
   { key: 'sneakers', label: 'Sneakers', img: '/collection-sneakers.png' },
-  { key: 'jewellery', label: 'Custom Jewellery', img: '/collection-jewellery.png' },
-  { key: 'handbags', label: 'Handbags', img: '/collection-handbags.png' },
+  { key: 'shoes', label: 'Shoes', img: '/collection-sneakers.png' },
+  { key: 'jewellery', label: 'Jewellery', img: '/collection-jewellery.png' },
+  { key: 'handbags', label: 'Bags & Handbags', img: '/collection-handbags.png' },
   { key: 'clothing', label: 'Clothing', img: '/collection-clothing.png' },
 ];
 
@@ -50,7 +52,7 @@ function Hero() {
           <span className="h-px w-12 bg-gold-400" />
         </motion.div>
         <motion.p {...fadeUp(0.18)} className="mt-4 max-w-md text-sm text-ink-500 leading-relaxed">
-          Women's sneakers, custom jewellery, handbags &amp; fashion — delivered SA-wide via Pudo lockers.
+          Women's sneakers, shoes, jewellery, handbags &amp; fashion — delivered SA-wide via Pudo lockers.
         </motion.p>
         <motion.div {...fadeUp(0.26)} className="mt-5 flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
           <button onClick={() => scrollToId('shop')}
@@ -148,7 +150,7 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
       const status = p.quantity === 0 && r.status === 'in-stock' ? 'sold-out' : r.status;
       if (avail !== 'all' && status !== avail) return false;
       if (showBrandFilter && brandFilter !== 'all' && p.brand !== brandFilter) return false;
-      if (q && !(p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q))) return false;
+      if (q && !(p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || (p.brand ?? '').toLowerCase().includes(q) || String(p.refNumber) === q.replace(/^#/, ''))) return false;
       return true;
     });
   }, [products, query, avail, showBrandFilter, brandFilter]);
@@ -196,7 +198,7 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
           <div className="flex items-center gap-2 bg-white rounded-none px-4 h-11 border border-gold-400/40">
             <Search size={16} className="text-gold-500 shrink-0" />
             <input value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search sneakers, jewellery, bags…"
+              placeholder="Search by name, brand or item number…"
               className="w-full bg-transparent text-sm focus:outline-none placeholder:text-ink-500/60" />
             {query && (
               <button onClick={() => setQuery('')} aria-label="Clear search" className="w-8 h-8 grid place-items-center text-ink-500">
@@ -265,7 +267,7 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
             return (
               <div key={c.key} id={c.key} className="scroll-mt-36">
                 <h3 className="font-display text-2xl font-semibold text-ink-900 capitalize mb-5 border-b border-gold-400/25 pb-2">
-                  {c.key === 'jewellery' ? 'Custom Jewellery' : c.label}
+                  {c.key === 'handbags' ? 'Bags & Handbags' : c.label}
                 </h3>
                 {gridFor(list)}
               </div>
@@ -277,9 +279,40 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
   );
 }
 
+/* ---------------- Opening special banner ---------------- */
+function OpeningSpecialBanner() {
+  if (!useOpeningSpecial()) return null;
+  return (
+    <section className="px-4 sm:px-6">
+      <div className="mx-auto max-w-3xl border-2 border-gold-400 bg-white px-5 py-6 sm:px-8 text-center shadow-[0_8px_30px_rgba(150,114,26,0.12)]">
+        <p className="font-display text-xl sm:text-3xl font-semibold text-gold-500">🎉 SHARMYN OPENING SPECIAL! 🎉</p>
+        <div className="mt-4 space-y-3 text-ink-900">
+          <p className="text-sm sm:text-base"><span className="font-semibold">👟 SNEAKER SPECIAL</span><br />Buy more than one pair and get <strong>R100 OFF per pair!</strong></p>
+          <p className="text-sm sm:text-base"><span className="font-semibold">👜 HANDBAG SPECIAL</span><br />Buy more than one handbag and get <strong>R50 OFF per handbag!</strong></p>
+          <p className="text-sm sm:text-base font-medium">✨ The more you buy, the more you save!</p>
+        </div>
+        <p className="mt-4 font-display italic text-gold-500">❤️ SHARMYN – Style That Defines You ❤️</p>
+      </div>
+    </section>
+  );
+}
+
 /* ---------------- Home page ---------------- */
 export default function Home() {
   const [activeCat, setActiveCat] = useState<Category | 'all'>('all');
+  // Menu / footer links look like "/#sneakers". The router does not scroll to those by itself, and
+  // empty ranges have no section to scroll to, so open that range in the catalogue instead.
+  const { hash } = useLocation();
+  useEffect(() => {
+    const key = hash.replace('#', '');
+    if (!key) return;
+    if (CATEGORIES.some((c) => c.key === key)) {
+      setActiveCat(key as Category);
+      setTimeout(() => scrollToId('shop'), 80);
+    } else if (key === 'contact') {
+      setTimeout(() => scrollToId('contact'), 80);
+    }
+  }, [hash]);
   const onPickCollection = (c: Category) => {
     setActiveCat(c);
     setTimeout(() => scrollToId('shop'), 50);
@@ -288,6 +321,7 @@ export default function Home() {
     <>
       <Hero />
       <CategoryCircles onPick={onPickCollection} />
+      <OpeningSpecialBanner />
       <Catalog activeCat={activeCat} setActiveCat={setActiveCat} />
       <QuickView />
       <SearchOverlay />

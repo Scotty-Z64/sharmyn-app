@@ -91,6 +91,13 @@ export const orderMessages = mysqlTable("order_messages", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Small on/off switches the owner controls from the portal (created lazily at runtime, see
+// api/queries/flags.ts). Today: the Opening Special.
+export const appFlags = mysqlTable("app_flags", {
+  key: varchar("flag_key", { length: 40 }).primaryKey(),
+  value: varchar("flag_value", { length: 100 }).notNull(),
+});
+
 export const studioPosts = mysqlTable("studio_posts", {
   id: varchar("id", { length: 40 }).primaryKey(),
   imageData: text("image_data").notNull(), // MEDIUMTEXT in prod — compressed data URL

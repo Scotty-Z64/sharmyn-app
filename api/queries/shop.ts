@@ -4,7 +4,8 @@ import { getDb } from "./connection";
 import { products, orders, orderPayments, orderProofs, notifications, siteSettings } from "@db/schema";
 import { UNPAID_HOLD_HOURS } from "../../src/config/business";
 import { summarisePayments, summariseOutstanding } from "../lib/payment-summary";
-import { isSizedCategory, pudoDeliveryFee, pudoStandardFee } from "@contracts/types";
+import { isSizedCategory, pudoDeliveryFee, openingSpecialForCart } from "@contracts/types";
+import { openingSpecialEnabled } from "./flags";
 import type {
   Product,
   Order,
@@ -25,18 +26,14 @@ import type {
   ReportSizeRow,
   ReportTrendPoint,
   DiscountImpact,
-  FreeShippingImpact,
   SiteSettings,
 } from "@contracts/types";
 
 /** Server-side delivery fees (ZAR) — the ONLY source of truth. Pudo isn't
  * flat — see pudoDeliveryFee (contracts/types.ts), priced per parcel by qty. */
-export const DELIVERY_FEES: Record<Exclude<OrderDeliveryInput["method"], "pudo">, number> = {
-  door: 80,
-};
-
 function deliveryFeeFor(method: OrderDeliveryInput["method"], totalQty: number): number {
-  return method === "pudo" ? pudoDeliveryFee(totalQty) : DELIVERY_FEES[method];
+  void method; // one flat rate per item, whichever way it is delivered
+  return pudoDeliveryFee(totalQty);
 }
 
 const UNPAID_TTL_MS = UNPAID_HOLD_HOURS * 60 * 60 * 1000; // lazy sweep: cancel pending+unpaid after the hold window (shared with the checkout wording)
@@ -566,6 +563,16 @@ async function placeOrderTxImpl(
   await sweepStaleUnpaidOrders();
 
   const totalQty = inputItems.reduce((s, i) => s + i.qty, 0);
+
+  // Opening Special: worked out here, on the server, from the real categories — never from the browser.
+  const specialOn = await openingSpecialEnabled();
+  const catRows = await db.select({ id: products.id, category: products.category }).from(products).where(inArray(products.id, inputItems.map((i) => i.productId)));
+  const catById = new Map(catRows.map((r) => [r.id, r.category as Category]));
+  const offPerUnit = openingSpecialForCart(
+    inputItems.map((i) => ({ category: catById.get(i.productId) ?? ("clothing" as Category), qty: i.qty })),
+    specialOn
+  );
+
   const delivery: OrderDelivery = {
     method: deliveryInput.method,
     locker: deliveryInput.method === "pudo" ? deliveryInput.locker : undefined,
@@ -579,7 +586,7 @@ async function placeOrderTxImpl(
     try {
       return await db.transaction(async (tx) => {
         const items: OrderItem[] = [];
-        for (const input of inputItems) {
+        for (const [lineIdx, input] of inputItems.entries()) {
           const [row] = await tx.select().from(products).where(eq(products.id, input.productId));
           if (!row || row.availability !== "in-stock") {
             throw new Error("OUT_OF_STOCK:" + input.productId);
@@ -612,12 +619,15 @@ async function placeOrderTxImpl(
           await tx.execute(
             sql`UPDATE products SET availability = 'sold-out' WHERE id = ${input.productId} AND quantity <= 0 AND availability = 'in-stock'`
           );
+          // The special lowers the price per unit; the normal price is kept as oldPrice so the
+          // invoice and the discount report can show what was saved.
+          const off = offPerUnit[lineIdx] ?? 0;
           items.push({
             productId: row.id,
             name: row.name,
-            price: row.price,
+            price: Math.max(0, row.price - off),
             costPrice: row.costPrice,
-            oldPrice: row.oldPrice ?? null,
+            oldPrice: row.oldPrice ?? (off > 0 ? row.price : null),
             qty: input.qty,
             size: input.size ?? null,
           });
@@ -902,9 +912,6 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
   let discountItemsSold = 0;
   let discountRevenue = 0;
   let discountGiven = 0;
-  let freeShippingOrders = 0;
-  let freeShippingItems = 0;
-  let freeShippingWaived = 0;
 
   // Seed every day in range (not just days with sales) so the trend line
   // doesn't skip gaps.
@@ -947,15 +954,6 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
         }
       }
 
-      // Free-shipping promo: a Pudo order with its fee waived to 0 is only
-      // ever waived by pudoDeliveryFee once totalQty hits the threshold, so
-      // method+fee===0 is a reliable signal — no separate qty re-check needed.
-      if (order.delivery?.method === "pudo" && order.delivery.fee === 0) {
-        const orderQty = order.items.reduce((s, i) => s + i.qty, 0);
-        freeShippingOrders += 1;
-        freeShippingItems += orderQty;
-        freeShippingWaived += pudoStandardFee(orderQty);
-      }
     }
   }
 
@@ -971,12 +969,6 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
     itemsSoldOnDiscount: discountItemsSold,
     revenueFromDiscounted: discountRevenue,
     discountGiven,
-  };
-
-  const freeShippingImpact: FreeShippingImpact = {
-    ordersWithFreeShipping: freeShippingOrders,
-    itemsInThoseOrders: freeShippingItems,
-    shippingRevenueWaived: freeShippingWaived,
   };
 
   // Resolve current category for each product that actually sold, in one query.
@@ -1059,7 +1051,6 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
     bySize,
     trend,
     discountImpact,
-    freeShippingImpact,
   };
 }
 
