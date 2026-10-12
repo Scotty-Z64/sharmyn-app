@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react';
+import type { ChangeEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Copy,
@@ -110,6 +110,13 @@ interface RenderOpts {
   oldPrice: string;
   photoScale: number; // % — 100 = the template's own size for the product photo
   photoShift: number; // % of the canvas height the photo is nudged down (negative = up)
+  photoX: number; // % of the canvas width the photo is nudged right (negative = left)
+  headlineScale: number; // % — 100 = the template's own headline size
+  headlineX: number; // % of width, + = right
+  headlineY: number; // % of height, + = down
+  subScale: number; // same three controls for the optional subtext
+  subX: number;
+  subY: number;
 }
 
 /**
@@ -196,8 +203,27 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
   // places its photo through this one helper so the controls work the same everywhere.
   const k = Math.min(1.6, Math.max(0.5, (o.photoScale || 100) / 100));
   const dy = H * ((o.photoShift || 0) / 100);
+  const dx = W * ((o.photoX || 0) / 100);
   const drawPhoto = (cx: number, bottomY: number, maxW: number, maxH: number) =>
-    drawProductFit(ctx, o.photo, cx, bottomY + dy, Math.min(W * 0.96, maxW * k), maxH * k);
+    drawProductFit(ctx, o.photo, cx + dx, bottomY + dy, Math.min(W * 0.96, maxW * k), maxH * k);
+  // Headline and subtext can each be made bigger/smaller and moved. The text is drawn around its own
+  // anchor point, so it grows and shrinks in place; layout of everything else stays put.
+  const place = (scalePct: number, xPct: number, yPct: number) => ({
+    k: Math.min(2.5, Math.max(0.4, (scalePct || 100) / 100)),
+    dx: W * ((xPct || 0) / 100),
+    dy: H * ((yPct || 0) / 100),
+  });
+  const hp = place(o.headlineScale, o.headlineX, o.headlineY);
+  const sp = place(o.subScale, o.subX, o.subY);
+  const drawText = (t: string, x: number, y: number, maxW: number, p: { k: number; dx: number; dy: number }) => {
+    ctx.save();
+    ctx.translate(x + p.dx, y + p.dy);
+    ctx.scale(p.k, p.k);
+    ctx.fillText(t, 0, 0, Math.min(W * 0.96, maxW * p.k) / p.k);
+    ctx.restore();
+  };
+  const drawHeadline = (t: string, x: number, y: number, maxW: number) => drawText(t, x, y, maxW, hp);
+  const drawSubtext = (t: string, x: number, y: number, maxW: number) => drawText(t, x, y, maxW, sp);
   const headline = (o.headline || '').trim();
   const subtext = (o.subtext || '').trim();
   const price = o.showPrice && o.price && !isNaN(Number(o.price)) ? formatPrice(Number(o.price)) : '';
@@ -221,13 +247,13 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
     if (headline) {
       ctx.fillStyle = INK;
       ctx.font = `italic 600 ${Math.round(H * 0.06)}px ${SERIF}`;
-      ctx.fillText(headline, W / 2, ty, W * 0.86);
+      drawHeadline(headline, W / 2, ty, W * 0.86);
       ty += H * 0.058;
     }
     if (subtext) {
       ctx.fillStyle = '#7A6A60';
       ctx.font = `italic 500 ${Math.round(H * 0.032)}px ${SERIF}`;
-      ctx.fillText(subtext, W / 2, ty, W * 0.86);
+      drawSubtext(subtext, W / 2, ty, W * 0.86);
       ty += H * 0.05;
     }
     if (price) drawPricePill(ctx, price, W / 2, ty + H * 0.01, H * 0.036, GOLD);
@@ -239,11 +265,11 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
     ctx.textAlign = 'center';
     ctx.fillStyle = accent;
     ctx.font = `700 ${Math.round(H * 0.058)}px ${SERIF}`;
-    ctx.fillText(headline || 'NEW IN STORE', W / 2, H * 0.115, W * 0.86);
+    drawHeadline(headline || 'NEW IN STORE', W / 2, H * 0.115, W * 0.86);
     if (subtext) {
       ctx.fillStyle = INK;
       ctx.font = `italic 500 ${Math.round(H * 0.03)}px ${SERIF}`;
-      ctx.fillText(subtext, W / 2, H * 0.155, W * 0.86);
+      drawSubtext(subtext, W / 2, H * 0.155, W * 0.86);
     }
     const maxW = W * 0.72, maxH = H * (isWide ? 0.42 : 0.54);
     const bottomY = H * (isWide ? 0.84 : 0.82);
@@ -280,7 +306,13 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
     if (headline) {
       ctx.fillStyle = INK;
       ctx.font = `700 ${Math.round(H * 0.05)}px ${SERIF}`;
-      ctx.fillText(headline, W / 2, by + br + H * 0.06, W * 0.86);
+      drawHeadline(headline, W / 2, by + br + H * 0.06, W * 0.86);
+    }
+    if (subtext) {
+      ctx.fillStyle = INK;
+      ctx.textAlign = 'center';
+      ctx.font = `italic 500 ${Math.round(H * 0.03)}px ${SERIF}`;
+      drawSubtext(subtext, W / 2, by + br + H * 0.105, W * 0.86);
     }
 
     if (price) {
@@ -321,11 +353,11 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
   ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'center';
   ctx.font = `700 ${Math.round(H * 0.05)}px ${SERIF}`;
-  ctx.fillText(headline || 'BACK IN STOCK', W / 2, bannerY + bannerH * 0.66, W * 0.86);
+  drawHeadline(headline || 'BACK IN STOCK', W / 2, bannerY + bannerH * 0.66, W * 0.86);
   if (subtext) {
     ctx.fillStyle = INK;
     ctx.font = `italic 500 ${Math.round(H * 0.03)}px ${SERIF}`;
-    ctx.fillText(subtext, W / 2, bannerY + bannerH + H * 0.048, W * 0.86);
+    drawSubtext(subtext, W / 2, bannerY + bannerH + H * 0.048, W * 0.86);
   }
   const maxW = W * 0.72, maxH = H * (isWide ? 0.4 : 0.5);
   const bottomY = H * (isWide ? 0.85 : 0.83);
@@ -387,6 +419,27 @@ export function generateCaptions(category: Category, occasion: Occasion, headlin
 
 const inputCls = 'w-full h-12 px-4 rounded-xl border border-blush-100 bg-blush-50/50 text-sm text-ink-900 focus:outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-300/40 transition';
 const labelCls = 'text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500';
+function TuneGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gold-500">{title}</p>
+      <div className="mt-1 grid sm:grid-cols-3 gap-x-4 gap-y-2">{children}</div>
+    </div>
+  );
+}
+
+function TuneSlider({ label, value, min, max, unit = '', onChange }: { label: string; value: number; min: number; max: number; unit?: string; onChange: (v: number) => void }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-ink-900">{label}</span>
+        <span className="text-[11px] text-ink-500">{value}{unit}</span>
+      </div>
+      <input type="range" min={min} max={max} step={1} value={value} onChange={(e) => onChange(Number(e.target.value))} className="mt-1 w-full accent-gold-500" />
+    </div>
+  );
+}
+
 const btnGold = 'h-[52px] px-6 rounded-full bg-gold-500 text-white text-[12px] font-semibold uppercase tracking-[0.12em] hover:bg-gold-400 active:scale-[0.97] transition flex items-center justify-center gap-2 disabled:opacity-60';
 const btnGhost = 'h-[52px] px-6 rounded-full border border-blush-100 text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-500 hover:bg-blush-50 flex items-center justify-center gap-2';
 
@@ -788,6 +841,13 @@ export default function StudioTab() {
   const [accent, setAccent] = useState<Accent>('gold');
   const [photoScale, setPhotoScale] = useState(100);
   const [photoShift, setPhotoShift] = useState(0);
+  const [photoX, setPhotoX] = useState(0);
+  const [headlineScale, setHeadlineScale] = useState(100);
+  const [headlineX, setHeadlineX] = useState(0);
+  const [headlineY, setHeadlineY] = useState(0);
+  const [subScale, setSubScale] = useState(100);
+  const [subX, setSubX] = useState(0);
+  const [subY, setSubY] = useState(0);
 
   // Caption state
   const [category, setCategory] = useState<Category>('sneakers');
@@ -823,9 +883,10 @@ export default function StudioTab() {
     if (!c) return;
     renderPost(c, {
       template, format, photo: photoImg.current, backdrop: backdropImg.current, wordmark: wordmarkImg.current,
-      headline, subtext, price, showPrice, accent, salePct, oldPrice, photoScale, photoShift,
+      headline, subtext, price, showPrice, accent, salePct, oldPrice, photoScale, photoShift, photoX,
+      headlineScale, headlineX, headlineY, subScale, subX, subY,
     });
-  }, [template, format, headline, subtext, price, showPrice, accent, salePct, oldPrice, photoScale, photoShift]);
+  }, [template, format, headline, subtext, price, showPrice, accent, salePct, oldPrice, photoScale, photoShift, photoX, headlineScale, headlineX, headlineY, subScale, subX, subY]);
 
   useEffect(() => { redraw(); }, [redraw]);
   // The canvas only mounts once step reaches 2; if the photo/logo finished
@@ -1042,22 +1103,27 @@ export default function StudioTab() {
             </div>
           </div>
 
-          <div className="mt-4 rounded-xl border border-blush-100 bg-blush-50/40 p-4">
-            <div className="flex items-center justify-between">
-              <label className={labelCls}>Product size</label>
-              <span className="text-[11px] text-ink-500">{photoScale}%</span>
-            </div>
-            <input type="range" min={60} max={150} step={5} value={photoScale}
-              onChange={(e) => setPhotoScale(Number(e.target.value))} className="mt-1.5 w-full accent-gold-500" />
-            <div className="mt-3 flex items-center justify-between">
-              <label className={labelCls}>Move up / down</label>
-              <span className="text-[11px] text-ink-500">{photoShift === 0 ? 'centred' : photoShift < 0 ? `up ${-photoShift}` : `down ${photoShift}`}</span>
-            </div>
-            <input type="range" min={-15} max={15} step={1} value={photoShift}
-              onChange={(e) => setPhotoShift(Number(e.target.value))} className="mt-1.5 w-full accent-gold-500" />
-            {(photoScale !== 100 || photoShift !== 0) && (
-              <button type="button" onClick={() => { setPhotoScale(100); setPhotoShift(0); }}
-                className="mt-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-500 hover:text-ink-900">Reset size and position</button>
+          <div className="mt-4 rounded-xl border border-blush-100 bg-blush-50/40 p-4 space-y-5">
+            <p className="text-[11px] text-ink-500">Fine-tune the post: make things bigger or smaller and move them left, right, up or down. The preview above updates as you slide.</p>
+            <TuneGroup title="Product photo">
+              <TuneSlider label="Size" value={photoScale} min={60} max={150} unit="%" onChange={setPhotoScale} />
+              <TuneSlider label="Left / right" value={photoX} min={-30} max={30} onChange={setPhotoX} />
+              <TuneSlider label="Up / down" value={photoShift} min={-20} max={20} onChange={setPhotoShift} />
+            </TuneGroup>
+            <TuneGroup title="Headline">
+              <TuneSlider label="Size" value={headlineScale} min={50} max={250} unit="%" onChange={setHeadlineScale} />
+              <TuneSlider label="Left / right" value={headlineX} min={-40} max={40} onChange={setHeadlineX} />
+              <TuneSlider label="Up / down" value={headlineY} min={-30} max={30} onChange={setHeadlineY} />
+            </TuneGroup>
+            <TuneGroup title="Subtext">
+              <TuneSlider label="Size" value={subScale} min={50} max={250} unit="%" onChange={setSubScale} />
+              <TuneSlider label="Left / right" value={subX} min={-40} max={40} onChange={setSubX} />
+              <TuneSlider label="Up / down" value={subY} min={-30} max={30} onChange={setSubY} />
+            </TuneGroup>
+            {(photoScale !== 100 || photoShift !== 0 || photoX !== 0 || headlineScale !== 100 || headlineX !== 0 || headlineY !== 0 || subScale !== 100 || subX !== 0 || subY !== 0) && (
+              <button type="button"
+                onClick={() => { setPhotoScale(100); setPhotoShift(0); setPhotoX(0); setHeadlineScale(100); setHeadlineX(0); setHeadlineY(0); setSubScale(100); setSubX(0); setSubY(0); }}
+                className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-500 hover:text-ink-900">Reset everything</button>
             )}
           </div>
 
