@@ -88,6 +88,24 @@ export const orderMessages = mysqlTable("order_messages", {
   kind: varchar("kind", { length: 16 }).notNull(), // payment | received | shipped | issue | owner_proof
   ok: boolean("ok").notNull(),
   detail: varchar("detail", { length: 300 }).notNull(),
+  wamid: varchar("wamid", { length: 100 }), // Meta's id for the message, so its delivery receipt can be matched
+  delivery: varchar("delivery", { length: 20 }), // sent | delivered | read | failed
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Messages customers send to the Sharmyn WhatsApp number (created lazily, see api/queries/inbound.ts).
+export const waInbound = mysqlTable("wa_inbound", {
+  id: varchar("id", { length: 100 }).primaryKey(), // WhatsApp message id: a retried webhook cannot duplicate it
+  from: varchar("from_number", { length: 20 }).notNull(),
+  name: varchar("profile_name", { length: 80 }),
+  type: varchar("msg_type", { length: 20 }).notNull(),
+  body: text("body").notNull(),
+  mediaId: varchar("media_id", { length: 160 }),
+  mime: varchar("mime", { length: 60 }),
+  orderId: varchar("order_id", { length: 16 }),
+  handled: boolean("handled").notNull().default(false),
+  attached: boolean("attached").notNull().default(false),
+  replied: boolean("replied").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

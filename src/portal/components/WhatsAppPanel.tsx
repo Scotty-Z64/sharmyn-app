@@ -84,7 +84,7 @@ export function OrderMessages({ orderId }: { orderId: string }) {
             {m.ok ? <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-600" /> : <XCircle size={14} className="mt-0.5 shrink-0 text-rose-600" />}
             <span className="min-w-0">
               <span className="font-semibold text-ink-900">{KIND_LABEL[m.kind] ?? m.kind}</span>
-              <span className="text-ink-500"> · {when(m.at)}</span>
+              <span className="text-ink-500"> · {when(m.at)}{m.ok && m.delivery && m.delivery !== 'sent' ? ` · ${m.delivery}` : ''}</span>
               <span className={`block ${m.ok ? 'text-ink-500' : 'text-rose-600'}`}>{m.detail}</span>
             </span>
           </li>

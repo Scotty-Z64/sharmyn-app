@@ -142,8 +142,8 @@ async function deliver(order: Order, kind: WhatsAppKind, to: string | null, name
     return false;
   }
   try {
-    await sendTemplate(to, name, components);
-    await recordMessage(order.id, kind, true, `Sent to +${to}`);
+    const wamid = await sendTemplate(to, name, components);
+    await recordMessage(order.id, kind, true, `Sent to +${to}`, wamid);
     return true;
   } catch (e) {
     const why = explainError(e);
@@ -197,6 +197,41 @@ export async function sendShippedWhatsApp(order: Order): Promise<boolean> {
   return deliver(order, "shipped", customerWhatsAppNumber(order), WHATSAPP_TEMPLATES.shipped, [
     { type: "body", parameters: [text(firstName(order)), text(order.id), text(order.trackingNumber), text(trackLink(order))] },
   ]);
+}
+
+/**
+ * A free-text message to a customer. WhatsApp only allows this within 24 hours of THEIR last message to us,
+ * so it is used only to answer a message they just sent.
+ */
+export async function sendWhatsAppText(to: string, body: string): Promise<string> {
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  if (!phoneId || !token) throw new Error("WHATSAPP_NOT_CONFIGURED");
+  const res = await fetch(`${GRAPH}/${encodeURIComponent(phoneId)}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to, type: "text", text: { body: body.slice(0, 1000), preview_url: false } }),
+  });
+  const out = (await res.json().catch(() => ({}))) as { messages?: { id?: string }[]; error?: { message?: string; code?: number } };
+  const id = out.messages?.[0]?.id;
+  if (!res.ok || !id) throw new Error(`WHATSAPP_SEND_FAILED:${res.status}:${out.error?.code ?? ""}:${(out.error?.message ?? "").slice(0, 200)}`);
+  return id;
+}
+
+/** Downloads a photo/file a customer sent (WhatsApp keeps it for about 30 days) as a data: URL. Throws if it is too big. */
+export async function fetchWhatsAppMedia(mediaId: string, maxBytes: number): Promise<string> {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  if (!token) throw new Error("WHATSAPP_NOT_CONFIGURED");
+  const metaRes = await fetch(`${GRAPH}/${encodeURIComponent(mediaId)}`, { headers: { Authorization: `Bearer ${token}` } });
+  const meta = (await metaRes.json().catch(() => ({}))) as { url?: string; mime_type?: string; file_size?: number };
+  if (!metaRes.ok || !meta.url) throw new Error(`WHATSAPP_MEDIA_LOOKUP_FAILED:${metaRes.status}`);
+  if (meta.file_size && meta.file_size > maxBytes) throw new Error("WHATSAPP_MEDIA_TOO_LARGE");
+  const fileRes = await fetch(meta.url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!fileRes.ok) throw new Error(`WHATSAPP_MEDIA_DOWNLOAD_FAILED:${fileRes.status}`);
+  const buf = Buffer.from(await fileRes.arrayBuffer());
+  if (buf.length > maxBytes) throw new Error("WHATSAPP_MEDIA_TOO_LARGE");
+  const mime = (meta.mime_type || fileRes.headers.get("content-type") || "application/octet-stream").split(";")[0];
+  return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
 /**

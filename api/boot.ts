@@ -10,6 +10,34 @@ const app = new Hono<{ Bindings: HttpBindings }>();
 
 app.use(bodyLimit({ maxSize: 50 * 1024 * 1024 }));
 
+// WhatsApp webhook (Meta). GET is Meta's one-off handshake when the webhook is saved; POST carries customer
+// messages and delivery receipts, signed with the Meta app secret (WHATSAPP_APP_SECRET). An unsigned or
+// wrongly signed POST is rejected; a correctly signed one always gets 200 so Meta does not retry endlessly.
+app.get("/api/webhooks/whatsapp", async (c) => {
+  const { webhookHandshake } = await import("./lib/whatsapp-webhook");
+  const challenge = webhookHandshake(c.req.query("hub.mode"), c.req.query("hub.verify_token"), c.req.query("hub.challenge"));
+  return challenge === null ? c.text("Forbidden", 403) : c.text(challenge);
+});
+app.post("/api/webhooks/whatsapp", async (c) => {
+  const secret = process.env.WHATSAPP_APP_SECRET;
+  if (!secret) {
+    console.error("[whatsapp-in] webhook called but WHATSAPP_APP_SECRET is not set");
+    return c.json({ error: "WEBHOOK_NOT_CONFIGURED" }, 503);
+  }
+  const raw = await c.req.text();
+  const { verifyMetaSignature, handleWhatsAppWebhook } = await import("./lib/whatsapp-webhook");
+  if (!verifyMetaSignature(raw, c.req.header("x-hub-signature-256"), secret)) {
+    console.error("[whatsapp-in] rejected: missing or invalid signature (is WHATSAPP_APP_SECRET the Meta app secret?)");
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  try {
+    await handleWhatsAppWebhook(JSON.parse(raw));
+  } catch (e) {
+    console.error("[whatsapp-in] webhook error:", e);
+  }
+  return c.json({ ok: true });
+});
+
 // Scheduled jobs — called by an external cron (e.g. cron-job.org), not the
 // browser. Auth via `?secret=` or `Authorization: Bearer <CRON_SECRET>`,
 // checked against CRON_SECRET; returns 503 if that env var was never set

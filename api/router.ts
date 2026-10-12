@@ -33,8 +33,9 @@ import {
   getLatestPaymentProof,
   decidePaymentProofs,
 } from "./queries/shop";
-import { sendOrderPaymentWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp, whatsappStatus, sendWhatsAppTest } from "./lib/whatsapp";
+import { sendOrderPaymentWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp, whatsappStatus, sendWhatsAppTest, fetchWhatsAppMedia } from "./lib/whatsapp";
 import { listMessages } from "./queries/messages";
+import { listInbound, getInboundMedia, setInboundHandled } from "./queries/inbound";
 import { openingSpecialEnabled, setOpeningSpecialEnabled } from "./queries/flags";
 import { parseProofDataUrl, MAX_PROOFS_PER_ORDER } from "./lib/proof";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
@@ -386,6 +387,31 @@ export const appRouter = createRouter({
       .query(({ input }) => {
         assertAdminToken(input.token);
         return listMessages(input.id);
+      }),
+    // Messages customers sent to the Sharmyn WhatsApp number (owner only).
+    inboundMessages: publicQuery.input(z.object({ token: adminToken })).query(({ input }) => {
+      assertAdminToken(input.token);
+      return listInbound(100);
+    }),
+    // The photo or file attached to one of those messages, fetched from WhatsApp on demand.
+    inboundMedia: publicQuery
+      .input(z.object({ token: adminToken, id: z.string().max(100) }))
+      .query(async ({ input }) => {
+        assertAdminToken(input.token);
+        const m = await getInboundMedia(input.id);
+        if (!m) throw new TRPCError({ code: "NOT_FOUND", message: "No attachment on that message" });
+        try {
+          return { dataUrl: await fetchWhatsAppMedia(m.mediaId, 8 * 1024 * 1024) };
+        } catch {
+          throw new TRPCError({ code: "BAD_GATEWAY", message: "WhatsApp no longer has that file (they keep them for about 30 days)" });
+        }
+      }),
+    setInboundHandled: publicQuery
+      .input(z.object({ token: adminToken, id: z.string().max(100), handled: z.boolean() }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        await setInboundHandled(input.id, input.handled);
+        return { ok: true as const };
       }),
     // Does the saved WhatsApp token + phone number work right now? (catches an expired token early)
     whatsappStatus: publicQuery.input(z.object({ token: adminToken })).query(({ input }) => {

@@ -10,8 +10,9 @@ import StockTab from '@/portal/components/StockTab';
 import OrdersTab from '@/portal/components/OrdersTab';
 import StudioTab from '@/portal/components/StudioTab';
 import ReportsTab from '@/portal/components/ReportsTab';
+import MessagesTab from '@/portal/components/MessagesTab';
 
-type Tab = 'overview' | 'products' | 'studio' | 'stock' | 'orders' | 'reports';
+type Tab = 'overview' | 'products' | 'studio' | 'stock' | 'orders' | 'messages' | 'reports';
 
 /* ---------------- Password gate ---------------- */
 function LoginGate({ onSuccess }: { onSuccess: (token: string) => void }) {
@@ -152,8 +153,11 @@ function NotificationsBell({ goToOrders }: { goToOrders: () => void }) {
 /* ---------------- Dashboard shell ---------------- */
 function Dashboard() {
   const [tab, setTab] = useState<Tab>('overview');
-  const { loading, logout, unreadCount } = usePortal();
+  const { loading, logout, unreadCount, token } = usePortal();
   const stats = useStats();
+  // Customer WhatsApp messages still waiting for the owner (the portal polls so the badge stays current).
+  const inbound = trpc.shop.inboundMessages.useQuery({ token }, { refetchInterval: 60_000 });
+  const unhandledMessages = (inbound.data ?? []).filter((m) => !m.handled).length;
 
   const tabs: { key: Tab; label: string; count?: number; accent?: boolean; gold?: boolean }[] = [
     { key: 'overview', label: 'Overview' },
@@ -161,6 +165,7 @@ function Dashboard() {
     { key: 'studio', label: '✨ Studio' },
     { key: 'stock', label: 'Stock', count: stats.lowStock.length || undefined, accent: true },
     { key: 'orders', label: 'Orders', count: unreadCount || stats.pending || undefined, accent: !unreadCount, gold: unreadCount > 0 },
+    { key: 'messages', label: 'Messages', count: unhandledMessages || undefined, gold: true },
     { key: 'reports', label: 'Reports' },
   ];
 
@@ -229,6 +234,7 @@ function Dashboard() {
               {tab === 'studio' && <StudioTab />}
               {tab === 'stock' && <StockTab />}
               {tab === 'orders' && <OrdersTab />}
+              {tab === 'messages' && <MessagesTab />}
               {tab === 'reports' && <ReportsTab />}
             </motion.div>
           </AnimatePresence>

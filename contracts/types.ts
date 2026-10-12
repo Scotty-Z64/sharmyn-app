@@ -182,13 +182,29 @@ export interface PublicOrder {
   statusHistory: { status: OrderStatus; at: string }[];
 }
 
-export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock" | "payment_proof" | "whatsapp_failed";
+export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_stock" | "payment_proof" | "whatsapp_failed" | "whatsapp_message";
 
 /** One automatic WhatsApp the system tried to send for an order (owner portal only). */
 export interface OrderMessage {
   kind: "payment" | "received" | "shipped" | "issue" | "owner_proof";
   ok: boolean;
   detail: string; // "Sent to +27…" or the plain-English reason it failed
+  delivery?: string | null; // sent | delivered | read | failed — Meta's later receipt, once the webhook is connected
+  at: string;
+}
+
+/** A message a customer sent to the Sharmyn WhatsApp number (owner portal only). */
+export interface InboundMessage {
+  id: string;
+  from: string; // international digits, e.g. 27637383625
+  name: string | null; // the name on the customer's WhatsApp profile
+  type: string; // text | image | document | audio | video | ...
+  text: string; // the text, or the caption of a photo/file
+  hasMedia: boolean;
+  mime: string | null;
+  orderId: string | null; // the order it was matched to, if any
+  handled: boolean;
+  attachedAsProof: boolean; // a photo/PDF that was filed on the order as proof of payment
   at: string;
 }
 
