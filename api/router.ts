@@ -69,13 +69,15 @@ const orderItemInput = z.object({
   size: z.string().max(16).nullish(),
 });
 
+// Same rules as the checkout form, enforced again here: the browser is never trusted. A bad phone
+// number means the automatic WhatsApp cannot be delivered, so it is rejected up front.
 const customer = z.object({
-  name: z.string(),
-  phone: z.string(),
-  email: z.string().email(), // sole delivery channel for invoices/tracking — required
-  address: z.string(),
-  city: z.string(),
-  notes: z.string(),
+  name: z.string().trim().min(2).max(80),
+  phone: z.string().max(30).refine((v) => { const d = v.replace(/D/g, ""); return d.length >= 10 && d.length <= 12; }, "Enter a valid WhatsApp number"),
+  email: z.string().trim().email().max(120), // sole delivery channel for invoices/tracking — required
+  address: z.string().max(200),
+  city: z.string().max(100),
+  notes: z.string().max(800),
 });
 
 // Client sends method (+ locker for pudo) only; fee is computed server-side.
@@ -210,7 +212,7 @@ export const appRouter = createRouter({
 
     // Server-side pricing: only { productId, qty } + delivery method cross the wire.
     placeOrder: publicQuery
-      .input(z.object({ customer, items: z.array(orderItemInput).min(1), delivery: deliveryInput }))
+      .input(z.object({ customer, items: z.array(orderItemInput).min(1).max(30), delivery: deliveryInput }))
       .mutation(async ({ input, ctx }) => {
         rateLimit(`placeOrder:${clientIp(ctx.req)}`, 10);
         try {
