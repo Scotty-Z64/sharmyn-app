@@ -1,4 +1,4 @@
-// Supplier order list for Ben — three parts, all for orders that are PAID and
+// Supplier order list for Ben — three parts (big photos, and only 6 orders to a page in part 2), all for orders that are PAID and
 // still waiting for him to buy the stock (fulfilmentStage "awaiting_supplier"):
 //   1. Quick round breakdown — what to buy on this supplier run: one line per
 //      product with its sizes and quantities added up across every order, the
@@ -140,36 +140,48 @@ export async function buildOrderListPdf(allOrders: Order[], preloaded?: OrderLis
 
       // ---- 1. quick round breakdown ----
       heading("1. Quick round breakdown — what to buy", "Everything below is paid for. Sizes and quantities are added up across all orders for each product.");
-      const ROW = 64;
+      const ROW = 92;
       for (const line of lines) {
         ensure(ROW);
-        drawProductThumb(doc, imageById.get(line.productId), 50, y, 54);
+        doc.rect(50, y + 4, 11, 11).lineWidth(0.8).strokeColor("#B79AA5").stroke(); // tick when bought
+        drawProductThumb(doc, imageById.get(line.productId), 68, y, 80);
         const ref = refById.get(line.productId);
-        doc.font("Helvetica-Bold").fontSize(11).fillColor(INK).text(line.name, 114, y + 2, { width: 330, height: 15, ellipsis: true, lineBreak: false });
-        doc.font("Helvetica").fontSize(8.5).fillColor(SOFT).text(ref ? `Item #${ref}` : "", 114, y + 17);
+        doc.font("Helvetica-Bold").fontSize(12).fillColor(INK).text(line.name, 160, y + 2, { width: 290, height: 16, ellipsis: true, lineBreak: false });
+        doc.font("Helvetica").fontSize(9).fillColor(SOFT).text(ref ? `Item #${ref}` : "", 160, y + 20);
         const sizeText = [...line.sizes.entries()].map(([size, q]) => (size ? `Size ${size} × ${q}` : `× ${q}`)).join("    ");
-        doc.font("Helvetica-Bold").fontSize(10).fillColor(GOLD).text(sizeText, 114, y + 31, { width: 330 });
-        doc.font("Helvetica-Bold").fontSize(20).fillColor(INK).text(String(line.qty), 455, y + 4, { width: 90, align: "right" });
-        doc.font("Helvetica").fontSize(8).fillColor(SOFT).text(line.qty === 1 ? "item" : "items", 455, y + 28, { width: 90, align: "right" });
-        if (line.cost > 0) doc.text(`${rand(line.cost)} cost`, 455, y + 40, { width: 90, align: "right" });
+        doc.font("Helvetica-Bold").fontSize(11).fillColor(GOLD).text(sizeText, 160, y + 36, { width: 290 });
+        doc.font("Helvetica").fontSize(8).fillColor(SOFT).text(`For orders: ${[...line.orderIds].join(", ")}`, 160, y + 62, { width: 290, height: 20, ellipsis: true });
+        doc.font("Helvetica-Bold").fontSize(24).fillColor(INK).text(String(line.qty), 455, y + 6, { width: 90, align: "right" });
+        doc.font("Helvetica").fontSize(8).fillColor(SOFT).text(line.qty === 1 ? "item" : "items", 455, y + 36, { width: 90, align: "right" });
+        if (line.cost > 0) doc.text(`${rand(line.cost)} cost`, 455, y + 48, { width: 90, align: "right" });
         y += ROW;
         doc.moveTo(50, y - 5).lineTo(545, y - 5).strokeColor("#EFE5DC").stroke();
       }
 
-      // ---- 2. order details ----
-      y += 10;
-      heading("2. Order details", "Which customer each item is for — oldest payment first.");
+      // ---- 2. order details — a fresh page, and at most 6 orders per page ----
+      doc.addPage();
+      y = 50;
+      heading("2. Order details", "Which customer each item is for — oldest payment first. Photos show the exact style to get.");
+      const CELL_W = 165, THUMB = 62, ORDERS_PER_PAGE = 6;
+      let onPage = 0;
       for (const o of toOrder) {
-        const itemLines = o.items.length;
-        ensure(70 + itemLines * 15);
-        doc.roundedRect(50, y, 495, 30, 5).fillColor("#F3E9D4").fill();
-        doc.fillColor(INK).font("Helvetica-Bold").fontSize(10.5).text(o.id, 60, y + 6);
+        const rows = Math.ceil(o.items.length / 3);
+        const cardH = 24 + 14 + rows * (THUMB + 8) + 6;
+        if (onPage >= ORDERS_PER_PAGE || y + cardH > 775) {
+          doc.addPage();
+          y = 50;
+          onPage = 0;
+        }
+        onPage++;
+        doc.roundedRect(50, y, 495, cardH, 5).lineWidth(0.8).fillAndStroke("#FFFFFF", "#E8DCD5");
+        doc.roundedRect(50, y, 495, 24, 5).fillColor("#F3E9D4").fill();
+        doc.fillColor(INK).font("Helvetica-Bold").fontSize(11).text(`Order ${o.id}`, 58, y + 7, { width: 120, lineBreak: false });
+        doc.font("Helvetica-Bold").fontSize(7).fillColor("#1F8A5B").text("PAID", 178, y + 9, { width: 30, lineBreak: false });
         doc.font("Helvetica").fontSize(9).fillColor(SOFT).text(
-          `${o.customer.name}${o.customer.phone ? " · " + o.customer.phone : ""}`, 60, y + 18, { width: 300, height: 10, ellipsis: true, lineBreak: false }
+          `${o.customer.name}${o.customer.phone ? " · " + o.customer.phone : ""}`, 212, y + 8, { width: 190, height: 10, ellipsis: true, lineBreak: false }
         );
-        doc.font("Helvetica").fontSize(8.5).fillColor(SOFT).text(`Paid ${formatShort(o.paidAt ?? o.createdAt)}`, 400, y + 6, { width: 135, align: "right" });
-        doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(rand(o.total), 400, y + 18, { width: 135, align: "right" });
-        y += 36;
+        doc.font("Helvetica").fontSize(8).fillColor(SOFT).text(`Paid ${formatShort(o.paidAt ?? o.createdAt)}`, 400, y + 5, { width: 138, align: "right" });
+        doc.font("Helvetica-Bold").fontSize(9).fillColor(INK).text(rand(o.total), 400, y + 13, { width: 138, align: "right" });
 
         const d = o.delivery;
         const where =
@@ -180,27 +192,28 @@ export async function buildOrderListPdf(allOrders: Order[], preloaded?: OrderLis
               : d
                 ? DELIVERY_LABEL[d.method] ?? d.method
                 : "Delivery not set";
-        doc.font("Helvetica").fontSize(9).fillColor(INK).text(where, 60, y, { width: 480 });
-        y += 14;
-        for (const item of o.items) {
+        doc.font("Helvetica").fontSize(8.5).fillColor(INK).text(where, 58, y + 28, { width: 480, height: 10, ellipsis: true, lineBreak: false });
+
+        o.items.forEach((item, i) => {
+          const cx = 56 + (i % 3) * CELL_W;
+          const cy = y + 42 + Math.floor(i / 3) * (THUMB + 8);
+          drawProductThumb(doc, imageById.get(item.productId), cx, cy, THUMB);
           const ref = refById.get(item.productId);
-          doc.font("Helvetica").fontSize(9).fillColor(INK).text(`${item.qty} ×`, 60, y, { width: 24 });
-          doc.text(`${item.name}${ref ? `  (#${ref})` : ""}`, 88, y, { width: 330, height: 11, ellipsis: true, lineBreak: false });
-          if (item.size) doc.font("Helvetica-Bold").fillColor(GOLD).text(`Size ${item.size}`, 420, y, { width: 60 });
-          doc.font("Helvetica").fillColor(INK).text(rand(item.price * item.qty), 485, y, { width: 55, align: "right" });
-          y += 15;
-        }
+          doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(`${item.qty} ×`, cx + THUMB + 5, cy, { width: 90, lineBreak: false });
+          doc.font("Helvetica").fontSize(8).fillColor(INK).text(item.name, cx + THUMB + 5, cy + 13, { width: CELL_W - THUMB - 12, height: 24, ellipsis: true });
+          if (item.size) doc.font("Helvetica-Bold").fontSize(9.5).fillColor(GOLD).text(`Size ${item.size}`, cx + THUMB + 5, cy + 38, { width: 90, lineBreak: false });
+          if (ref) doc.font("Helvetica").fontSize(7.5).fillColor(SOFT).text(`Item #${ref}`, cx + THUMB + 5, cy + (item.size ? 51 : 38), { width: 90, lineBreak: false });
+        });
         if (o.customer.notes) {
-          doc.font("Helvetica-Oblique").fontSize(8).fillColor(SOFT).text(`Note: ${o.customer.notes}`, 60, y, { width: 480, height: 20, ellipsis: true });
-          y += 12;
+          doc.font("Helvetica-Oblique").fontSize(7).fillColor(SOFT).text(`Note: ${o.customer.notes}`, 58, y + cardH - 9, { width: 480, height: 8, ellipsis: true, lineBreak: false });
         }
-        y += 10;
+        y += cardH + 6;
       }
     }
 
     // ---- 3. not paid yet ----
     if (notPaid.length > 0) {
-      y += 6;
+      if (toOrder.length > 0) { doc.addPage(); y = 50; } else { y += 6; }
       heading("3. Not paid yet — do NOT order these", "Waiting for the customer's EFT. They move into section 1 once you confirm the payment.");
       for (const o of notPaid) {
         ensure(16);
