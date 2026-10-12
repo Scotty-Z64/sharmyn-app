@@ -410,7 +410,7 @@ function OrderCard({ order }: { order: Order }) {
               <div className="rounded-xl bg-blush-50 p-3 text-xs text-ink-500 space-y-1">
                 <p><span className="font-semibold text-ink-900">{order.customer.name}</span> · {order.customer.phone}</p>
                 {order.customer.email && <p>{order.customer.email}</p>}
-                <p>{order.customer.address}, {order.customer.city}</p>
+                {(order.customer.address || order.customer.city) && <p>{[order.customer.address, order.customer.city].filter(Boolean).join(', ')}</p>}
                 {order.customer.notes && <p className="italic">"{order.customer.notes}"</p>}
               </div>
 
