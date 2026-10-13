@@ -524,7 +524,7 @@ export default function Checkout() {
         </ol>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 grid gap-6 lg:grid-cols-[1fr_340px] lg:max-w-5xl">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:max-w-5xl">
         {/* Details form */}
         <motion.form
           id="checkout-form"
@@ -534,7 +534,7 @@ export default function Checkout() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: EASE }}
-          className="rounded-2xl border-t-2 border-gold-400/60 bg-blush-50 bg-white/60 p-5 sm:p-7 shadow-[0_8px_30px_rgba(43,29,35,0.05)]"
+          className="min-w-0 rounded-2xl border-t-2 border-gold-400/60 bg-blush-50 bg-white/60 p-5 sm:p-7 shadow-[0_8px_30px_rgba(43,29,35,0.05)]"
         >
           <h2 className="font-display text-2xl font-semibold text-ink-900">Delivery Details</h2>
 
