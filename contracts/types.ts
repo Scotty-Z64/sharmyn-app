@@ -1,6 +1,6 @@
 // Shared types between api/ and src/ (import via @contracts/)
 
-export type Category = "sneakers" | "shoes" | "jewellery" | "handbags" | "clothing";
+export type Category = "sneakers" | "shoes" | "jewellery" | "handbags" | "bags" | "clothing";
 /** Sneaker/shoe brand or style, customer-facing filter — flat list (Adidas sub-styles included). */
 export const SHOE_BRANDS = [
   "Nike", "Puma", "New Balance", "Converse", "Lacoste",

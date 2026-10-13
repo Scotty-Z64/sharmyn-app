@@ -7,7 +7,8 @@ const SHOP_LINKS = [
   { label: 'Sneakers', to: '/#sneakers' },
   { label: 'Shoes', to: '/#shoes' },
   { label: 'Jewellery', to: '/#jewellery' },
-  { label: 'Bags & Handbags', to: '/#handbags' },
+  { label: 'Handbags', to: '/#handbags' },
+  { label: 'Bags', to: '/#bags' },
   { label: 'Clothing', to: '/#clothing' },
 ];
 

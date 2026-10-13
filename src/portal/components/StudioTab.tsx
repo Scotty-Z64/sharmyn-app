@@ -53,7 +53,7 @@ const OCCASIONS: { key: Occasion; label: string }[] = [
 ];
 
 const CAT_LABEL: Record<Category, string> = {
-  sneakers: 'Sneakers', shoes: 'Shoes', handbags: 'Handbags', jewellery: 'Jewellery', clothing: 'Clothing',
+  sneakers: 'Sneakers', shoes: 'Shoes', handbags: 'Handbags', bags: 'Bags', jewellery: 'Jewellery', clothing: 'Clothing',
 };
 
 /* ================= image compression (mirrors ProductFormModal) ================= */
@@ -372,6 +372,7 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
 const HASHTAG_BANK: Record<Category, string[]> = {
   sneakers: ['#sneakerheadsa', '#sneakersza', '#kicksoftheday', '#sneakeraddict', '#streetstylesa', '#freshkicks', '#sneakerlove', '#solesociety'],
   shoes: ['#shoesza', '#shoeaddict', '#ladiesfootwear', '#shoelover', '#stepoutinstyle', '#shoeoftheday', '#southafricanshoes', '#footwearfashion'],
+  bags: ['#bagsza', '#toteBag', '#everydaybag', '#bagaddict', '#bagoftheday', '#carryinstyle', '#shoplocalza', '#southafricanfashion'],
   handbags: ['#handbaglover', '#bagaddict', '#bagsza', '#armcandy', '#handbagstyle', '#purselove', '#bagsoftheday', '#carryinstyle'],
   jewellery: ['#jewelleryza', '#jewellerylover', '#handmadejewellery', '#sparkleeveryday', '#jewelleryaddict', '#madeinsouthafrica', '#shinebright', '#customjewellery'],
   clothing: ['#fashionza', '#womensfashionsa', '#ootdsouthafrica', '#localfashion', '#styleinspo', '#boutiquestyle', '#sadesign', '#everydayelegance'],

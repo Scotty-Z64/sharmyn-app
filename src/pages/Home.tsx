@@ -16,7 +16,8 @@ const COLLECTION_CIRCLES: { key: Category; label: string; img: string }[] = [
   { key: 'sneakers', label: 'Sneakers', img: '/collection-sneakers.png' },
   { key: 'shoes', label: 'Shoes', img: '/collection-sneakers.png' },
   { key: 'jewellery', label: 'Jewellery', img: '/collection-jewellery.png' },
-  { key: 'handbags', label: 'Bags & Handbags', img: '/collection-handbags.png' },
+  { key: 'handbags', label: 'Handbags', img: '/collection-handbags.png' },
+  { key: 'bags', label: 'Bags', img: '/collection-bags.png' },
   { key: 'clothing', label: 'Clothing', img: '/collection-clothing.png' },
 ];
 
@@ -267,7 +268,7 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
             return (
               <div key={c.key} id={c.key} className="scroll-mt-36">
                 <h3 className="font-display text-2xl font-semibold text-ink-900 capitalize mb-5 border-b border-gold-400/25 pb-2">
-                  {c.key === 'handbags' ? 'Bags & Handbags' : c.label}
+                  {c.label}
                 </h3>
                 {gridFor(list)}
               </div>

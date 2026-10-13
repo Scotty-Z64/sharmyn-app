@@ -96,6 +96,7 @@ const CATEGORY_HASHTAGS: Record<Product["category"], string> = {
   shoes: "#SharmynShoes #LadiesFootwear #SAshoes",
   jewellery: "#SharmynJewellery #CustomJewellery #HandmadeSA",
   handbags: "#SharmynBags #SABoutique #HandbagLove",
+  bags: "#SharmynBags #SABoutique #BagLove",
   clothing: "#SharmynStyle #WomensFashionSA #OOTD",
 };
 

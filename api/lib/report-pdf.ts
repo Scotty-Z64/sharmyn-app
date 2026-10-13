@@ -9,6 +9,7 @@ const CATEGORY_LABEL: Record<Category, string> = {
   shoes: "Shoes",
   jewellery: "Jewellery",
   handbags: "Handbags",
+  bags: "Bags",
   clothing: "Clothing",
 };
 

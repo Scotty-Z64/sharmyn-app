@@ -21,6 +21,7 @@ export const CATEGORIES: { key: Category; label: string; tagline: string }[] = [
   { key: 'shoes', label: 'Shoes', tagline: 'Ladies footwear for every occasion' },
   { key: 'jewellery', label: 'Jewellery', tagline: 'Made-to-shine custom pieces' },
   { key: 'handbags', label: 'Handbags', tagline: 'Carry the moment' },
+  { key: 'bags', label: 'Bags', tagline: 'Totes, backpacks and everyday bags' },
   { key: 'clothing', label: 'Clothing', tagline: 'Everyday elegance' },
 ];
 
