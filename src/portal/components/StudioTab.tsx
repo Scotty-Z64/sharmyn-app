@@ -83,6 +83,60 @@ function compressImageFile(file: File, MAX = 1080, quality = 0.85): Promise<stri
   });
 }
 
+/** Something the canvas can draw: a loaded picture, or a picture cropped onto a canvas. */
+type Drawable = HTMLImageElement | HTMLCanvasElement;
+
+/**
+ * A background-removed photo keeps all the empty space of the original shot, so the product itself can fill
+ * only a quarter of the image and look tiny in a post however big its box is. This crops it to the visible
+ * pixels (plus a small margin). A photo with no transparent edges is returned untouched.
+ */
+export function trimTransparent(img: HTMLImageElement): Drawable {
+  try {
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w || !h) return img;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return img;
+    ctx.drawImage(img, 0, 0, w, h);
+    const { data } = ctx.getImageData(0, 0, w, h);
+    let minX = w, minY = h, maxX = -1, maxY = -1;
+    for (let y = 0; y < h; y++) {
+      const row = y * w * 4;
+      for (let x = 0; x < w; x++) {
+        if (data[row + x * 4 + 3] > 40) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < 0) return img; // nothing visible: leave it alone
+    const padX = Math.round((maxX - minX) * 0.03);
+    const padY = Math.round((maxY - minY) * 0.03);
+    minX = Math.max(0, minX - padX);
+    minY = Math.max(0, minY - padY);
+    maxX = Math.min(w - 1, maxX + padX);
+    maxY = Math.min(h - 1, maxY + padY);
+    const cw = maxX - minX + 1;
+    const ch = maxY - minY + 1;
+    if (cw >= w * 0.94 && ch >= h * 0.94) return img; // already tight
+    const out = document.createElement('canvas');
+    out.width = cw;
+    out.height = ch;
+    const octx = out.getContext('2d');
+    if (!octx) return img;
+    octx.drawImage(c, minX, minY, cw, ch, 0, 0, cw, ch);
+    return out;
+  } catch {
+    return img; // e.g. a picture the browser will not let us read: draw it as it is
+  }
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -98,7 +152,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 interface RenderOpts {
   template: TemplateKey;
   format: FormatKey;
-  photo: HTMLImageElement | null; // usually a transparent cutout now — see applyPhoto
+  photo: Drawable | null; // usually a transparent cutout now (trimmed to the product) — see applyPhoto
   backdrop: HTMLImageElement | null; // sand-texture template, shared with product photos
   wordmark: HTMLImageElement | null; // "Sh" mark, shared with product photos
   headline: string;
@@ -130,7 +184,7 @@ interface RenderOpts {
  */
 function drawProductFit(
   ctx: CanvasRenderingContext2D,
-  photo: HTMLImageElement | null,
+  photo: Drawable | null,
   centerX: number, bottomY: number, maxW: number, maxH: number
 ): { x: number; y: number; w: number; h: number } {
   if (!photo) {
@@ -861,7 +915,7 @@ export default function StudioTab() {
   const [busy, setBusy] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const photoImg = useRef<HTMLImageElement | null>(null);
+  const photoImg = useRef<Drawable | null>(null);
   const backdropImg = useRef<HTMLImageElement | null>(null);
   const wordmarkImg = useRef<HTMLImageElement | null>(null);
 
@@ -876,7 +930,7 @@ export default function StudioTab() {
   // Load photo element when src changes
   useEffect(() => {
     if (!photoSrc) { photoImg.current = null; redraw(); return; }
-    loadImage(photoSrc).then((img) => { photoImg.current = img; redraw(); }).catch(() => setImgErr('Could not load that photo.'));
+    loadImage(photoSrc).then((img) => { photoImg.current = trimTransparent(img); redraw(); }).catch(() => setImgErr('Could not load that photo.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photoSrc]);
 
