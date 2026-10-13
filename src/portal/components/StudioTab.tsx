@@ -727,7 +727,7 @@ function GridPlanner() {
                 <>
                   <div className="mb-4 rounded-xl bg-blush-50 border border-blush-100 p-4 text-[12px] text-ink-900 leading-relaxed">
                     <p className="font-semibold mb-1">How this works:</p>
-                    <p>Posts you save land here, numbered in the order you'll post them — use ‹ › to reorder. When one's ready, tap <b>Download</b> or <b>Share</b> to get the image onto your phone and post it on Instagram yourself. Then come back and tap the button to mark it posted, so you can keep track of what's left.</p>
+                    <p>Posts you save land here, numbered in the order you'll post them — use ‹ › to reorder. When one's ready, tap <b>Download</b> or <b>Share</b> to get the image onto your phone and post it on Instagram yourself. The Studio never posts for you: make sure you are logged in as <b>Sharmyn Fashion</b> (@sharmynfashion), not a personal profile. Then come back and tap the button to mark it posted, so you can keep track of what's left.</p>
                   </div>
                   <div className="grid grid-cols-3 gap-2 sm:gap-3">
                     {posts.map((p, i) => (
