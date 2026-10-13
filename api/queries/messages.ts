@@ -4,6 +4,7 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { getDb } from "./connection";
+import { dbErrorText } from "./db-errors";
 import { orderMessages } from "@db/schema";
 import type { OrderMessage } from "@contracts/types";
 
@@ -25,7 +26,7 @@ function ensureTable(): Promise<void> {
       try {
         await getDb().execute(sql.raw(`ALTER TABLE order_messages ADD COLUMN ${col}`));
       } catch (e) {
-        if (!/duplicate column|1060/i.test(String((e as Error)?.message ?? e))) throw e;
+        if (!/duplicate column|ER_DUP_FIELDNAME|1060/i.test(dbErrorText(e))) throw e; // already there is fine
       }
     }
   })().catch((e) => {

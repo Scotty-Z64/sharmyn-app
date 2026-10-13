@@ -7,7 +7,7 @@ import { sendEmail } from "./mailer";
 import { sendOwnerProofWhatsApp, sendWhatsAppText, fetchWhatsAppMedia, explainWhatsApp, whatsappEnabled } from "./whatsapp";
 import { parseWebhook, processInboundMessage, verifyMetaSignature } from "./whatsapp-inbound";
 import type { InboundDeps } from "./whatsapp-inbound";
-import { insertInbound, markInboundReplied, repliedRecently } from "../queries/inbound";
+import { hasInbound, insertInbound, markInboundReplied, repliedRecently } from "../queries/inbound";
 import { applyDeliveryStatus } from "../queries/messages";
 import { addPaymentProof, countPaymentProofs, findOrder, insertNotification, listOrders } from "../queries/shop";
 
@@ -20,6 +20,7 @@ export function webhookHandshake(mode: string | undefined, token: string | undef
 
 function realDeps(): InboundDeps {
   return {
+    hasInbound,
     insertInbound,
     markReplied: markInboundReplied,
     repliedRecently: (from) => repliedRecently(from),

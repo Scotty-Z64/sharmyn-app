@@ -97,6 +97,7 @@ export function parseWebhook(payload: unknown, ourPhoneNumberId?: string): { mes
 
 /** Everything that touches the outside world, so the flow below can be tested with fakes. */
 export interface InboundDeps {
+  hasInbound(id: string): Promise<boolean>;
   insertInbound(row: InboundRow): Promise<boolean>;
   markReplied(id: string): Promise<void>;
   repliedRecently(from: string): Promise<boolean>;
@@ -128,6 +129,8 @@ async function matchOrder(m: ParsedMessage, deps: InboundDeps): Promise<{ order:
 
 /** Handles one customer message. Never throws: a problem is logged and the owner still gets told. */
 export async function processInboundMessage(m: ParsedMessage, deps: InboundDeps): Promise<void> {
+  // A retry of a message we already handled must do nothing, in particular it must not file the same proof twice.
+  if (await deps.hasInbound(m.id)) return;
   const { order, ambiguous } = await matchOrder(m, deps);
   let attached = false;
   let problem = "";

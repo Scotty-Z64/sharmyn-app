@@ -4,6 +4,7 @@
 // webhook can never create a duplicate.
 import { desc, eq, sql, and, gt } from "drizzle-orm";
 import { getDb } from "./connection";
+import { dbErrorText } from "./db-errors";
 import { waInbound } from "@db/schema";
 import type { InboundMessage } from "@contracts/types";
 
@@ -45,6 +46,13 @@ export interface InboundRow {
   handled: boolean;
 }
 
+/** Have we already stored this WhatsApp message? Checked first, so a Meta retry cannot file a proof twice. */
+export async function hasInbound(id: string): Promise<boolean> {
+  await ensureTable();
+  const rows = await getDb().select({ id: waInbound.id }).from(waInbound).where(eq(waInbound.id, id)).limit(1);
+  return rows.length > 0;
+}
+
 /** Stores a message. Returns false when this exact message was already stored (a webhook retry). */
 export async function insertInbound(r: InboundRow): Promise<boolean> {
   await ensureTable();
@@ -63,7 +71,7 @@ export async function insertInbound(r: InboundRow): Promise<boolean> {
     });
     return true;
   } catch (e) {
-    if (/duplicate entry|ER_DUP_ENTRY/i.test(String((e as Error)?.message ?? e))) return false;
+    if (/duplicate entry|ER_DUP_ENTRY|1062/i.test(dbErrorText(e))) return false;
     throw e;
   }
 }
