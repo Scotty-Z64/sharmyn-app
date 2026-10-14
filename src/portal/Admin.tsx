@@ -11,6 +11,7 @@ import OrdersTab from '@/portal/components/OrdersTab';
 import StudioTab from '@/portal/components/StudioTab';
 import ReportsTab from '@/portal/components/ReportsTab';
 import MessagesTab from '@/portal/components/MessagesTab';
+import PaymentNotice from '@/portal/components/PaymentNotice';
 
 type Tab = 'overview' | 'products' | 'studio' | 'stock' | 'orders' | 'messages' | 'reports';
 
@@ -42,7 +43,9 @@ function LoginGate({ onSuccess }: { onSuccess: (token: string) => void }) {
   };
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center px-4 py-10 bg-sand">
+    <div className="min-h-[100dvh] bg-sand">
+    <PaymentNotice />
+    <div className="min-h-[calc(100dvh-5rem)] flex items-center justify-center px-4 py-10">
       <motion.div
         key={shake}
         initial={{ opacity: 0, scale: 0.96, y: 20 }}
@@ -86,6 +89,7 @@ function LoginGate({ onSuccess }: { onSuccess: (token: string) => void }) {
           <Download size={14} /> Add to Home Screen
         </InstallButton>
       </motion.div>
+    </div>
     </div>
   );
 }
@@ -171,6 +175,7 @@ function Dashboard() {
 
   return (
     <div className="min-h-[100dvh] bg-sand">
+      <PaymentNotice />
       {/* Header */}
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gold-400/30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-2">

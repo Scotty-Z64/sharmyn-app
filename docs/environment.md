@@ -16,6 +16,7 @@ Changing a value in Render redeploys the site (about 3 minutes).
 | `WHATSAPP_PHONE_NUMBER_ID` | For automatic WhatsApp | The sending number's ID from Meta (API Setup). |
 | `WHATSAPP_ACCESS_TOKEN` 🔒 | For automatic WhatsApp | A **permanent System User token** (see `whatsapp-setup.md`). A token copied from API Setup expires after 24 hours. |
 | `OWNER_WHATSAPP` | For the "check the bank" alert | The phone that gets the proof-of-payment alert. Must be a verified recipient while on Meta's test number. |
+| `PAYMENT_NOTICE_DEADLINE` | Optional | An ISO date-time (e.g. `2026-11-14T23:59:59+02:00`). While set, the owner portal shows a payment countdown banner. Delete it to remove the banner. `PAYMENT_NOTICE_AMOUNT` (default 7500) sets the amount shown. |
 | `WHATSAPP_VERIFY_TOKEN` | For incoming messages | Any long random text; Meta sends it back once when the webhook is saved (see `whatsapp-setup.md` 3c). |
 | `WHATSAPP_APP_SECRET` 🔒 | For incoming messages | The Meta app secret (App settings → Basic). Used to check every incoming webhook really came from Meta. |
 | `WHATSAPP_TEMPLATE_LANG` | Optional | Template language code, default `en`. |

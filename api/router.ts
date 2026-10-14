@@ -33,6 +33,7 @@ import {
   getLatestPaymentProof,
   decidePaymentProofs,
 } from "./queries/shop";
+import { paymentNotice } from "./lib/payment-notice";
 import { sendOrderPaymentWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp, whatsappStatus, sendWhatsAppTest, fetchWhatsAppMedia } from "./lib/whatsapp";
 import { listMessages } from "./queries/messages";
 import { listInbound, getInboundMedia, setInboundHandled } from "./queries/inbound";
@@ -414,6 +415,10 @@ export const appRouter = createRouter({
         return { ok: true as const };
       }),
     // Does the saved WhatsApp token + phone number work right now? (catches an expired token early)
+    // Owner portal: the payment-deadline countdown (null when no deadline is set). Public on purpose: it holds nothing secret and the login screen shows it too.
+    paymentNotice: publicQuery.query(() => {
+      return paymentNotice();
+    }),
     whatsappStatus: publicQuery.input(z.object({ token: adminToken })).query(({ input }) => {
       assertAdminToken(input.token);
       return whatsappStatus();
