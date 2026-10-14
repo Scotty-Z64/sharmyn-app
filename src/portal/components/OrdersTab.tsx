@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertTriangle, ChevronDown, Download, MapPin, PackageCheck, PackageOpen, Pencil, Repeat, Truck, XCircle } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Download, MapPin, PackageCheck, PackageOpen, Pencil, Printer, Repeat, Truck, XCircle } from 'lucide-react';
 import type { Order, OrderStatus, Product } from '@/portal/lib/utils-shop';
 import { formatPrice } from '@/portal/lib/utils-shop';
 import { fulfilmentStage } from '@contracts/types';
@@ -694,7 +694,43 @@ ${eftInstructionsText(order.id, order.total)}`
 type PipelineFilter = 'all' | 'today' | FulfilmentStage | 'missed';
 
 export default function OrdersTab() {
-  const { orders, focusOrderId, setFocusOrderId, token } = usePortal();
+  const { orders, focusOrderId, setFocusOrderId, token, toast } = usePortal();
+  const [printing, setPrinting] = useState(false);
+
+  // Prints the supplier order list: fetch the PDF, load it in a hidden frame and open the print dialog.
+  // Some phones will not print from a hidden frame, so then the PDF opens in its own tab, where the
+  // viewer's own print/share button works.
+  const printOrderList = async () => {
+    if (printing) return;
+    setPrinting(true);
+    let url = '';
+    try {
+      const res = await fetch(`/api/order-list.pdf?token=${encodeURIComponent(token)}`);
+      if (!res.ok) throw new Error('bad response');
+      url = URL.createObjectURL(await res.blob());
+      const frame = document.createElement('iframe');
+      frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+      frame.src = url;
+      const cleanup = () => { setTimeout(() => { frame.remove(); URL.revokeObjectURL(url); }, 60_000); };
+      frame.onload = () => {
+        try {
+          frame.contentWindow?.focus();
+          frame.contentWindow?.print();
+          cleanup();
+        } catch {
+          window.open(url, '_blank');
+          cleanup();
+        }
+      };
+      document.body.appendChild(frame);
+    } catch {
+      toast('Could not prepare the order list to print — try Supplier order list instead');
+      if (url) URL.revokeObjectURL(url);
+    } finally {
+      setTimeout(() => setPrinting(false), 1500);
+    }
+  };
+
   const [filter, setFilter] = useState<OrderStatus | 'all'>('all');
   const [pipeline, setPipeline] = useState<PipelineFilter>('all');
 
@@ -756,6 +792,10 @@ export default function OrdersTab() {
           className="h-9 px-3.5 rounded-full text-[10.5px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap transition-colors shrink-0 border bg-white border-gold-400 text-gold-500 hover:bg-[#FBF3E2] flex items-center gap-1.5">
           <Download size={12} /> Download PDF
         </a>
+        <button onClick={() => void printOrderList()} disabled={printing}
+          className="h-9 px-3.5 rounded-full text-[10.5px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap transition-colors shrink-0 border bg-white border-gold-400 text-gold-500 hover:bg-[#FBF3E2] flex items-center gap-1.5 disabled:opacity-60">
+          <Printer size={12} /> {printing ? 'Preparing…' : 'Print'}
+        </button>
       </div>
 
       {focusOrderId && (
