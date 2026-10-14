@@ -1,6 +1,6 @@
 /**
  * A payment notice for the owner portal: a countdown to a payment deadline. It exists only while
- * PAYMENT_NOTICE_DEADLINE (an ISO date-time, e.g. 2026-11-14T23:59:59+02:00) is set, so removing that
+ * PAYMENT_NOTICE_DEADLINE (an ISO date-time, e.g. 2026-10-15T23:59:59+02:00) is set, so removing that
  * setting removes the notice. It informs; it never blocks access on its own.
  */
 export type PaymentNotice = { deadline: string; amount: number; reference: string; contact: string };
