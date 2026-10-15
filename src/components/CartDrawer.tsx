@@ -107,7 +107,7 @@ export default function CartDrawer() {
                     <motion.span key={subtotal} initial={{ scale: 1.1 }} animate={{ scale: 1 }}
                       className="font-display text-xl font-semibold text-ink-900">{formatPrice(subtotal)}</motion.span>
                   </div>
-                  <p className="text-xs text-ink-500">Delivery is R100 per item, calculated at checkout.</p>
+                  <p className="text-xs text-ink-500">Delivery is by locker size (R150 for 1–2 items, R170 for 3–4), calculated at checkout.</p>
                   <button onClick={() => { setCartOpen(false); navigate('/checkout'); }}
                     className="w-full h-12 bg-gold-400 text-white text-[12px] font-semibold uppercase tracking-[0.16em] hover:bg-gold-500 transition-colors">
                     Checkout

@@ -9,6 +9,7 @@ import { inArray } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { products } from "@db/schema";
 import { getProductImageRaw } from "../queries/shop";
+import { orderLockerLabel } from "@contracts/types";
 import type { Order } from "@contracts/types";
 import { BANK, BUSINESS, UNPAID_HOLD_HOURS, bankConfigured } from "../../src/config/business";
 import { INK, GOLD, SOFT, drawLetterhead } from "./pdf-brand";
@@ -134,7 +135,8 @@ export async function buildInvoicePdf(order: Order, preloaded?: InvoiceProductDa
     doc.moveTo(50, rowY + 4).lineTo(545, rowY + 4).strokeColor("#E8DCD5").stroke();
     rowY += 14;
     if (order.delivery && order.delivery.fee > 0) {
-      doc.fillColor(SOFT).text("Delivery", 410, rowY, { width: 60, align: "right" });
+      const lockerLabel = orderLockerLabel(order);
+      doc.fillColor(SOFT).text(lockerLabel ? `Delivery (${lockerLabel})` : "Delivery", 290, rowY, { width: 180, align: "right" });
       doc.fillColor(INK).text(`R${order.delivery.fee}`, 475, rowY, { width: 70, align: "right" });
       rowY += 18;
     }

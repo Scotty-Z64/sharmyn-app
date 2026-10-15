@@ -20,7 +20,7 @@ export type {
   OrderItem,
   PudoLockerRef,
 } from '@contracts/types';
-export { SHOE_BRANDS, isSizedCategory, pudoDeliveryFee, DELIVERY_FEE_PER_ITEM, openingSpecialForCart, OPENING_SPECIAL_OFF, OPENING_SPECIAL_MIN_QTY, discountPercent, HERO_ASPECTS } from '@contracts/types';
+export { SHOE_BRANDS, isSizedCategory, pudoDeliveryFee, lockerBoxLabel, LOCKER_BOXES, openingSpecialForCart, OPENING_SPECIAL_OFF, OPENING_SPECIAL_MIN_QTY, discountPercent, HERO_ASPECTS } from '@contracts/types';
 import type { HeroAspect } from '@contracts/types';
 
 /** Banner shape presets — a fixed ratio at every screen size when chosen;

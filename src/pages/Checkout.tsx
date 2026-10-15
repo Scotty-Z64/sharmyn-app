@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Copy, Crown, Loader2, Lock, PackageOpen } from 'lucide-react';
 import { useShop } from '@/lib/shop';
 import { trpc } from '@/providers/trpc';
-import { clearCart, formatPrice, formatAddress, pudoDeliveryFee, openingSpecialForCart } from '@/lib/store';
+import { clearCart, formatPrice, formatAddress, pudoDeliveryFee, lockerBoxLabel, openingSpecialForCart } from '@/lib/store';
 import { useOpeningSpecial } from '@/lib/promo';
 import type { Order, OrderDelivery, PudoLockerRef } from '@/lib/store';
 import PudoLockerPicker from '@/components/checkout/PudoLockerPicker';
@@ -116,7 +116,7 @@ export default function Checkout() {
   // Kept in sync with the server's actual charge (placeOrderTx) — this is
   // only what the customer is shown before submitting, never trusted as the
   // real price; the server recomputes it from the order's real item count.
-  const deliveryFee = pudoDeliveryFee(totalQty); // R100 per item, nationwide
+  const deliveryFee = pudoDeliveryFee(totalQty); // by locker size: Medium R150 (1–2 items), Large R170 (3–4 items)
   const total = subtotal + deliveryFee;
 
   const selectDelivery = (m: DeliveryMethod) => {
@@ -149,7 +149,7 @@ export default function Checkout() {
     // Slim payload — prices and the delivery fee are recomputed server-side.
     const items = lines.map((l) => ({ productId: l.product.id, qty: l.qty, size: l.size ?? null }));
     const methodLabel =
-      delivery === 'pudo' ? `Pudo Locker Pickup ${formatPrice(deliveryFee)}`
+      delivery === 'pudo' ? `Pudo Locker Pickup (${lockerBoxLabel(totalQty)}) ${formatPrice(deliveryFee)}`
       : `Door Delivery ${formatPrice(deliveryFee)}`;
     const deliveryInfo: OrderDelivery = {
       method: delivery,
@@ -441,7 +441,7 @@ export default function Checkout() {
           </div>
         )}
         <div className="flex justify-between text-ink-500">
-          <span>Delivery ({totalQty} × R100)</span>
+          <span>Delivery ({lockerBoxLabel(totalQty)})</span>
           <span className="text-ink-900">{formatPrice(deliveryFee)}</span>
         </div>
         <div className="flex justify-between items-baseline pt-1">
@@ -606,7 +606,7 @@ export default function Checkout() {
                   Pudo Locker Pickup — {formatPrice(pudoDeliveryFee(totalQty))} <span className="ml-1 rounded-full bg-gold-400/15 border border-gold-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold-500">Recommended</span>
                 </span>
                 <span className="block text-[12px] text-ink-500">
-                  Collect from a smart locker near you · 5–7 working days · R100 per item, nationwide
+                  Collect from a smart locker near you · 5–7 working days · Medium locker (1–2 items) R150, Large locker (3–4 items) R170
                 </span>
               </span>
             </label>

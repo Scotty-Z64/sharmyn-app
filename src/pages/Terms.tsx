@@ -28,7 +28,7 @@ export default function Terms() {
 
       <Section title="Delivery">
         <p>We deliver anywhere in South Africa via Pudo smart locker — you choose the locker nearest
-          you at checkout. Delivery is a flat R100 per item, anywhere in South Africa, shown at checkout before you pay.</p>
+          you at checkout. Delivery is priced by locker size: a Medium locker (1–2 items) is R150 and a Large locker (3–4 items) is R170. Larger orders are split across lockers. The delivery cost is shown at checkout before you pay.</p>
         <p>
           Delivery typically takes 5–7 working days from payment confirmation. Delays can happen with
           courier partners beyond our control — we'll keep you updated if this happens.

@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, ChevronDown, Download, MapPin, PackageCheck, PackageOpen, Pencil, Printer, Repeat, Truck, XCircle } from 'lucide-react';
 import type { Order, OrderStatus, Product } from '@/portal/lib/utils-shop';
 import { formatPrice } from '@/portal/lib/utils-shop';
-import { fulfilmentStage } from '@contracts/types';
+import { fulfilmentStage, orderLockerLabel } from '@contracts/types';
 import type { Exchange, FulfilmentStage } from '@contracts/types';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
@@ -418,7 +418,7 @@ function OrderCard({ order }: { order: Order }) {
               {order.delivery && (
                 <div className="rounded-xl border border-gold-400/40 bg-white p-3 text-xs text-ink-500 space-y-1">
                   <p className="flex items-center gap-1.5 font-semibold uppercase tracking-[0.14em] text-[10px] text-gold-500">
-                    <MapPin size={12} /> {DELIVERY_LABEL[order.delivery.method] ?? 'Delivery'} · {order.delivery.fee === 0 ? 'Free' : formatPrice(order.delivery.fee)}
+                    <MapPin size={12} /> {DELIVERY_LABEL[order.delivery.method] ?? 'Delivery'}{orderLockerLabel(order) ? ` (${orderLockerLabel(order)})` : ''} · {order.delivery.fee === 0 ? 'Free' : formatPrice(order.delivery.fee)}
                   </p>
                   {order.delivery.method === 'pudo' && order.delivery.locker && (
                     <>

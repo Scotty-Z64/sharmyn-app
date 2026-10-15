@@ -123,13 +123,46 @@ export interface Order {
 }
 
 /**
- * Delivery: a flat R100 per item, nationwide. Shared by the checkout page (what the
- * customer is shown) and the order placement transaction (what's actually charged),
- * so they can never drift.
+ * Delivery is by Pudo locker, priced by locker size (as advised by The Courier Guy):
+ *   Medium locker: 1–2 items, R150.   Large locker: 3–4 items, R170.
+ * More than 4 items go in several lockers: as many Large ones as fill up, then one Medium (1–2 left)
+ * or one Large (3 left). Shared by the checkout page (what the customer is shown) and the order
+ * placement transaction (what's actually charged), so they can never drift.
  */
-export const DELIVERY_FEE_PER_ITEM = 100;
+export type LockerSize = "medium" | "large";
+export const LOCKER_BOXES: Record<LockerSize, { label: string; maxItems: number; fee: number }> = {
+  medium: { label: "Medium locker", maxItems: 2, fee: 150 },
+  large: { label: "Large locker", maxItems: 4, fee: 170 },
+};
+export function lockerParcels(totalQty: number): { size: LockerSize; items: number; fee: number }[] {
+  let left = Math.max(1, Math.floor(totalQty));
+  const parcels: { size: LockerSize; items: number; fee: number }[] = [];
+  while (left > 0) {
+    const size: LockerSize = left <= LOCKER_BOXES.medium.maxItems ? "medium" : "large";
+    const items = Math.min(left, LOCKER_BOXES[size].maxItems);
+    parcels.push({ size, items, fee: LOCKER_BOXES[size].fee });
+    left -= items;
+  }
+  return parcels;
+}
 export function pudoDeliveryFee(totalQty: number): number {
-  return Math.max(1, totalQty) * DELIVERY_FEE_PER_ITEM;
+  return lockerParcels(totalQty).reduce((s, p) => s + p.fee, 0);
+}
+/** e.g. "Medium locker", "Large locker", "2 × Large locker + Medium locker". */
+export function lockerBoxLabel(totalQty: number): string {
+  const parcels = lockerParcels(totalQty);
+  const count = (size: LockerSize) => parcels.filter((p) => p.size === size).length;
+  return (["large", "medium"] as LockerSize[])
+    .filter((size) => count(size) > 0)
+    .map((size) => (count(size) > 1 ? `${count(size)} × ` : "") + LOCKER_BOXES[size].label)
+    .join(" + ");
+}
+
+/** The locker size(s) an order was priced for, or null for older orders charged under a previous delivery rule. */
+export function orderLockerLabel(order: { items: { qty: number }[]; delivery?: { method: string; fee: number } | null }): string | null {
+  if (!order.delivery || order.delivery.method !== "pudo") return null;
+  const qty = order.items.reduce((s, i) => s + i.qty, 0);
+  return order.delivery.fee === pudoDeliveryFee(qty) ? lockerBoxLabel(qty) : null;
 }
 
 /**

@@ -29,10 +29,10 @@ import type {
   SiteSettings,
 } from "@contracts/types";
 
-/** Server-side delivery fees (ZAR) — the ONLY source of truth. Pudo isn't
- * flat — see pudoDeliveryFee (contracts/types.ts), priced per parcel by qty. */
+/** Server-side delivery fees (ZAR) — the ONLY source of truth. Priced by locker
+ * size (Medium R150 for 1–2 items, Large R170 for 3–4) — see pudoDeliveryFee (contracts/types.ts). */
 function deliveryFeeFor(method: OrderDeliveryInput["method"], totalQty: number): number {
-  void method; // one flat rate per item, whichever way it is delivered
+  void method; // priced by locker size, whichever way it is delivered
   return pudoDeliveryFee(totalQty);
 }
 
