@@ -4,8 +4,7 @@ import { getDb } from "./connection";
 import { products, orders, orderPayments, orderProofs, notifications, siteSettings } from "@db/schema";
 import { UNPAID_HOLD_HOURS } from "../../src/config/business";
 import { summarisePayments, summariseOutstanding } from "../lib/payment-summary";
-import { isSizedCategory, pudoDeliveryFee, openingSpecialForCart   PudoLockerRef,
-} from "@contracts/types";
+import { isSizedCategory, pudoDeliveryFee, openingSpecialForCart } from "@contracts/types";
 import { openingSpecialEnabled } from "./flags";
 import type {
   Product,
@@ -28,6 +27,7 @@ import type {
   ReportTrendPoint,
   DiscountImpact,
   SiteSettings,
+  PudoLockerRef,
 } from "@contracts/types";
 
 /** Server-side delivery fees (ZAR) — the ONLY source of truth. Priced by locker
