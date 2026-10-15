@@ -141,13 +141,20 @@ function newOrderId(): string {
 // anything that changes products runs (see withProductsInvalidation at the bottom of this
 // file), and the version counter stops a read that started before a change from re-filling
 // the cache with stale data. Stock is still enforced in SQL when an order is placed.
-const PRODUCTS_CACHE_MS = 10_000;
+// Reading the catalogue also reads every stored photo (tens of MB), which is what the
+// database host bills for, so it is kept for minutes, not seconds: every write path above
+// already clears it, so a change still shows at once.
+const PRODUCTS_CACHE_MS = 5 * 60_000;
 let productsCache: { at: number; data: Product[] } | null = null;
 let productsVersion = 0;
+// Photos already read from the database, so a photo is fetched once between product changes.
+const imageCache = new Map<string, string | null>();
+const IMAGE_CACHE_MAX = 400;
 
 function invalidateProductsCache(): void {
   productsVersion++;
   productsCache = null;
+  imageCache.clear();
 }
 
 export async function listProducts(): Promise<Product[]> {
@@ -169,11 +176,22 @@ export async function findProduct(id: string): Promise<Product | null> {
  * place the real base64 leaves the DB; list/detail responses only ever carry
  * the URL (see photoUrl/toProduct above), which is what keeps them small. */
 export async function getProductImageRaw(id: string, angle: number | null): Promise<string | null> {
-  const [row] = await getDb().select({ image: products.image, images: products.images }).from(products).where(eq(products.id, id));
-  if (!row) return null;
-  if (angle == null) return row.image;
-  const extra = (row.images as string[] | null) ?? [];
-  return extra[angle] ?? null;
+  const key = `${id}|${angle ?? "cover"}`;
+  if (imageCache.has(key)) return imageCache.get(key) ?? null;
+  const version = productsVersion;
+  let value: string | null = null;
+  if (angle == null) {
+    const [row] = await getDb().select({ image: products.image }).from(products).where(eq(products.id, id));
+    value = row?.image ?? null;
+  } else {
+    const [row] = await getDb().select({ images: products.images }).from(products).where(eq(products.id, id));
+    value = ((row?.images as string[] | null) ?? [])[angle] ?? null;
+  }
+  if (version === productsVersion && value !== null) {
+    if (imageCache.size >= IMAGE_CACHE_MAX) imageCache.clear();
+    imageCache.set(key, value);
+  }
+  return value;
 }
 
 /** Signals the router uses to decide whether to fire a low-stock alert or an auto-draft Content Studio post. */
@@ -995,8 +1013,8 @@ export async function getSalesReport(from: Date, to: Date): Promise<SalesReport>
   const productIds = [...productAgg.keys()];
   const categoryById = new Map<string, Category>();
   if (productIds.length) {
-    const catalog = await getDb().select().from(products);
-    for (const p of catalog) categoryById.set(p.id, p.category as Category);
+    const catalog = await listProducts(); // from the in-memory catalogue, not a fresh read of every photo
+    for (const p of catalog) categoryById.set(p.id, p.category);
   }
 
   const topProducts: ReportProductRow[] = [...productAgg.entries()]
