@@ -17,6 +17,7 @@ import {
   setRefundStatus,
   setOrderStatus,
   setTrackingNumber,
+  setOrderLocker,
   markOrderPaid,
   listNotifications,
   markNotificationRead,
@@ -463,6 +464,27 @@ export const appRouter = createRouter({
           void sendShippedWhatsApp(updated).catch((e) => console.error("[whatsapp] shipped message failed:", e));
         }
         return updated;
+      }),
+    // Owner: move a locker order to a different locker (e.g. the customer chose the wrong one).
+    changeOrderLocker: publicQuery
+      .input(z.object({
+        token: adminToken,
+        id: z.string(),
+        locker: z.object({
+          id: z.string().min(1).max(80), name: z.string().min(1).max(160), address: z.string().max(240),
+          city: z.string().max(120), province: z.string().max(80),
+        }),
+      }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        try {
+          const updated = await setOrderLocker(input.id, input.locker);
+          if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+          return updated;
+        } catch (e) {
+          if (e instanceof TRPCError) throw e;
+          throw new TRPCError({ code: "BAD_REQUEST", message: e instanceof Error ? e.message : "Could not change the locker" });
+        }
       }),
     // ---- fulfilment pipeline: every paid order waits on the supplier ----
     markSupplierOrdered: publicQuery

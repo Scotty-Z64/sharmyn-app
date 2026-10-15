@@ -606,7 +606,7 @@ export default function Checkout() {
                   Pudo Locker Pickup — {formatPrice(pudoDeliveryFee(totalQty))} <span className="ml-1 rounded-full bg-gold-400/15 border border-gold-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold-500">Recommended</span>
                 </span>
                 <span className="block text-[12px] text-ink-500">
-                  Collect from a smart locker near you · 5–7 working days · Medium locker (1–2 items) R150, Large locker (3–4 items) R170
+                  Collect from a smart locker near you · 5–7 working days · Medium locker (1–2 items) R150, Large locker (3–4 items) R170. Your parcel is delivered to the locker you choose, not to a home address, so please check it carefully.
                 </span>
               </span>
             </label>

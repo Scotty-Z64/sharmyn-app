@@ -4,6 +4,8 @@ import { AlertTriangle, ChevronDown, Download, MapPin, PackageCheck, PackageOpen
 import type { Order, OrderStatus, Product } from '@/portal/lib/utils-shop';
 import { formatPrice } from '@/portal/lib/utils-shop';
 import { fulfilmentStage, orderLockerLabel } from '@contracts/types';
+import PudoLockerPicker from '@/components/checkout/PudoLockerPicker';
+import type { PudoLockerRef } from '@contracts/types';
 import type { Exchange, FulfilmentStage } from '@contracts/types';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
@@ -233,6 +235,9 @@ function OrderCard({ order }: { order: Order }) {
   const supplierMut = trpc.shop.markSupplierOrdered.useMutation();
   const stockMut = trpc.shop.markStockReceived.useMutation();
   const unmarkMut = trpc.shop.unmarkFulfilmentStage.useMutation();
+  const lockerMut = trpc.shop.changeOrderLocker.useMutation();
+  const [changingLocker, setChangingLocker] = useState(false);
+  const [newLocker, setNewLocker] = useState<PudoLockerRef | null>(null);
   const [open, setOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmEft, setConfirmEft] = useState(false);
@@ -250,6 +255,19 @@ function OrderCard({ order }: { order: Order }) {
       toast(`Order ${order.id} → ${STEP_LABEL[s]}`);
     } catch {
       toast('Could not update order — try again');
+    }
+  };
+
+  const saveLocker = async () => {
+    if (!newLocker || lockerMut.isPending) return;
+    try {
+      await lockerMut.mutateAsync({ token, id: order.id, locker: newLocker });
+      refresh();
+      toast(`Order ${order.id} will go to ${newLocker.name}`);
+      setChangingLocker(false);
+      setNewLocker(null);
+    } catch {
+      toast('Could not change the locker — try again');
     }
   };
 
@@ -425,6 +443,31 @@ function OrderCard({ order }: { order: Order }) {
                       <p className="text-sm font-semibold text-ink-900">{order.delivery.locker.name}</p>
                       <p>{order.delivery.locker.address}, {order.delivery.locker.city}, {order.delivery.locker.province}</p>
                     </>
+                  )}
+                  {order.delivery.method === 'pudo' && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                    <div className="pt-1.5">
+                      {!changingLocker ? (
+                        <button onClick={() => setChangingLocker(true)}
+                          className="h-9 px-3.5 rounded-full border border-gold-400 bg-white text-gold-500 text-[10.5px] font-semibold uppercase tracking-[0.08em] hover:bg-[#FBF3E2]">
+                          Change locker
+                        </button>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-[11px] text-ink-500">Pick the correct locker. The delivery price stays the same (it depends on the locker size, not the place).</p>
+                          <PudoLockerPicker selected={newLocker} onSelect={setNewLocker} />
+                          <div className="flex gap-2">
+                            <button onClick={() => void saveLocker()} disabled={!newLocker || lockerMut.isPending}
+                              className="h-9 px-4 rounded-full bg-gold-500 text-white text-[10.5px] font-semibold uppercase tracking-[0.08em] disabled:opacity-50">
+                              {lockerMut.isPending ? 'Saving…' : 'Save new locker'}
+                            </button>
+                            <button onClick={() => { setChangingLocker(false); setNewLocker(null); }}
+                              className="h-9 px-4 rounded-full border border-blush-100 bg-white text-ink-500 text-[10.5px] font-semibold uppercase tracking-[0.08em]">
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

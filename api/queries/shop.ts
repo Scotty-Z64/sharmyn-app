@@ -4,7 +4,8 @@ import { getDb } from "./connection";
 import { products, orders, orderPayments, orderProofs, notifications, siteSettings } from "@db/schema";
 import { UNPAID_HOLD_HOURS } from "../../src/config/business";
 import { summarisePayments, summariseOutstanding } from "../lib/payment-summary";
-import { isSizedCategory, pudoDeliveryFee, openingSpecialForCart } from "@contracts/types";
+import { isSizedCategory, pudoDeliveryFee, openingSpecialForCart   PudoLockerRef,
+} from "@contracts/types";
 import { openingSpecialEnabled } from "./flags";
 import type {
   Product,
@@ -779,6 +780,25 @@ export async function setTrackingNumber(id: string, trackingNumber: string | nul
     .set({ trackingNumber: cleaned, trackingSetAt })
     .where(eq(orders.id, id));
   return { ...existing, trackingNumber: cleaned, trackingSetAt: trackingSetAt ? trackingSetAt.toISOString() : null };
+}
+
+/**
+ * The owner moves a Pudo-locker order to a different locker (the customer picked the wrong one).
+ * The fee is by locker size, not place, so it doesn't change. Not allowed once delivered or cancelled.
+ */
+export async function setOrderLocker(id: string, locker: PudoLockerRef): Promise<Order | null> {
+  const existing = await findOrder(id);
+  if (!existing) return null;
+  if (existing.status === "delivered" || existing.status === "cancelled") throw new Error("This order can no longer be changed");
+  if (!existing.delivery || existing.delivery.method !== "pudo") throw new Error("This order is not a locker delivery");
+  const delivery = { ...existing.delivery, locker };
+  const lockerNote = `Locker: ${locker.name} — ${locker.address}, ${locker.city}, ${locker.province}`;
+  const parts = (existing.customer.notes || "").split(" · ").filter(Boolean);
+  const at = parts.findIndex((p) => p.startsWith("Locker:"));
+  if (at >= 0) parts[at] = lockerNote; else parts.push(lockerNote);
+  const customer = { ...existing.customer, notes: parts.join(" · ") };
+  await getDb().update(orders).set({ delivery, customer }).where(eq(orders.id, id));
+  return { ...existing, delivery, customer };
 }
 
 /** Owner confirmed the item(s) were ordered in from the supplier. */
