@@ -51,7 +51,7 @@ Header sample: any PDF (e.g. a sample invoice).
 ### sharmyn_payment_received — Header: **Document (PDF)**
 
 ```
-Hi {{1}}, we have received your payment for order {{2}} - thank you! 💛 Your invoice is attached. We will order your items now and send your tracking number as soon as your parcel ships. You can also track your order here: {{3}}
+Hi {{1}}, we have received your payment for order {{2}} - thank you! 💛 Your invoice is attached. We will order your items now and send your tracking number as soon as your parcel ships. You can also track your order here: {{3}} Thank you for shopping with Sharmyn 💛
 ```
 
 Examples: `{{1}}` Thandi · `{{2}}` K7M3QXA2 · `{{3}}` https://sharmyn.co.za/track?order=K7M3QXA2
@@ -59,7 +59,7 @@ Examples: `{{1}}` Thandi · `{{2}}` K7M3QXA2 · `{{3}}` https://sharmyn.co.za/tr
 ### sharmyn_order_shipped — no header
 
 ```
-Hi {{1}}, your Sharmyn order {{2}} is on its way 📦 Courier tracking number: {{3}}. Track your parcel here: {{4}}
+Hi {{1}}, your Sharmyn order {{2}} is on its way 📦 Courier tracking number: {{3}}. Track your parcel here: {{4}} Thank you for shopping with Sharmyn 💛
 ```
 
 Examples: `{{1}}` Thandi · `{{2}}` K7M3QXA2 · `{{3}}` TCG123456789 · `{{4}}` https://sharmyn.co.za/track?order=K7M3QXA2
@@ -67,7 +67,7 @@ Examples: `{{1}}` Thandi · `{{2}}` K7M3QXA2 · `{{3}}` TCG123456789 · `{{4}}` 
 ### sharmyn_payment_issue — no header
 
 ```
-Hi {{1}}, we could not confirm your payment for order {{2}}: {{3}}. Please check it and send your proof of payment again on the Track Order page at sharmyn.co.za. Your order is still being held for you. Need help? WhatsApp {{4}}
+Hi {{1}}, we could not confirm your payment for order {{2}}: {{3}}. Please check it and send your proof of payment again on the Track Order page at sharmyn.co.za. Your order is still being held for you. Need help? WhatsApp {{4}} and we will gladly assist.
 ```
 
 Examples: `{{1}}` Thandi · `{{2}}` K7M3QXA2 · `{{3}}` The money is not showing in our account yet · `{{4}}` +27616455670
