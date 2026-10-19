@@ -819,6 +819,96 @@ export async function setOrderLocker(id: string, locker: PudoLockerRef): Promise
   return { ...existing, delivery, customer };
 }
 
+/**
+ * The owner confirms what each item on an order really cost when the stock was fetched (the supplier
+ * price can differ from the usual one). The order's cost prices drive profit reporting. With
+ * updateProducts the product's usual cost price is changed too, for future orders.
+ */
+async function setOrderItemCostsImpl(id: string, costs: number[], updateProducts: boolean): Promise<Order | null> {
+  const existing = await findOrder(id);
+  if (!existing) return null;
+  if (costs.length !== existing.items.length) throw new Error("A cost is needed for every item on the order");
+  const items = existing.items.map((it, i) => ({ ...it, costPrice: Math.max(0, Math.round(costs[i])) }));
+  await getDb().update(orders).set({ items }).where(eq(orders.id, id));
+  if (updateProducts) {
+    const byProduct = new Map<string, number>();
+    items.forEach((it) => byProduct.set(it.productId, it.costPrice));
+    for (const [productId, cost] of byProduct) {
+      await getDb().update(products).set({ costPrice: cost }).where(eq(products.id, productId));
+    }
+  }
+  return { ...existing, items };
+}
+
+/**
+ * Replace one line of an order with another product (the original is not available). The old item's
+ * stock goes back, the new item's stock comes off, and the order total and invoice follow. The price
+ * stays the same as the old line unless the owner sets a different one. Not allowed once delivered or cancelled.
+ */
+async function swapOrderItemImpl(
+  id: string,
+  index: number,
+  newProductId: string,
+  newSize: string | null,
+  price: number | null
+): Promise<{ order: Order; difference: number } | null> {
+  return getDb().transaction(async (tx) => {
+    const [row] = await tx.select().from(orders).where(eq(orders.id, id)).limit(1);
+    if (!row) return null;
+    if (row.status === "delivered" || row.status === "cancelled") throw new Error("This order can no longer be changed");
+    const items = [...(row.items as OrderItem[])];
+    const old = items[index];
+    if (!old) throw new Error("That item is not on the order");
+
+    const [rep] = await tx.select().from(products).where(eq(products.id, newProductId)).limit(1);
+    if (!rep) throw new Error("That replacement product no longer exists");
+    const repSizes = (rep.sizes as Record<string, number> | null) ?? null;
+    if (repSizes && Object.keys(repSizes).length > 0) {
+      if (!newSize) throw new Error("Choose a size for the replacement");
+      if ((repSizes[newSize] ?? 0) < old.qty) throw new Error(`Size ${newSize} of the replacement is out of stock`);
+    } else if (rep.quantity < old.qty) {
+      throw new Error("The replacement is out of stock");
+    }
+
+    // Old item back to stock (the product may have been deleted already: then there is nothing to restore).
+    const oldPath = old.size ? "$.\"" + old.size + "\"" : null;
+    await tx.execute(sql`UPDATE products SET quantity = quantity + ${old.qty} WHERE id = ${old.productId}`);
+    if (oldPath) {
+      await tx.execute(
+        sql`UPDATE products SET sizes = JSON_SET(sizes, ${oldPath}, COALESCE(JSON_EXTRACT(sizes, ${oldPath}), 0) + ${old.qty}) WHERE id = ${old.productId} AND sizes IS NOT NULL`
+      );
+    }
+    await tx.execute(sql`UPDATE products SET availability = 'in-stock' WHERE id = ${old.productId} AND quantity > 0 AND availability = 'sold-out'`);
+
+    // New item off stock.
+    await tx.execute(sql`UPDATE products SET quantity = quantity - ${old.qty} WHERE id = ${newProductId}`);
+    if (repSizes && newSize) {
+      const newPath = "$.\"" + newSize + "\"";
+      await tx.execute(
+        sql`UPDATE products SET sizes = JSON_SET(sizes, ${newPath}, COALESCE(JSON_EXTRACT(sizes, ${newPath}), 0) - ${old.qty}) WHERE id = ${newProductId}`
+      );
+    }
+    await tx.execute(sql`UPDATE products SET availability = 'sold-out' WHERE id = ${newProductId} AND quantity <= 0`);
+
+    items[index] = {
+      productId: rep.id,
+      name: rep.name,
+      price: price != null ? Math.max(0, Math.round(price)) : old.price,
+      costPrice: rep.costPrice,
+      oldPrice: null,
+      qty: old.qty,
+      size: repSizes && newSize ? newSize : null,
+    };
+    const oldTotal = row.total;
+    const total = items.reduce((s, i) => s + i.price * i.qty, 0) + ((row.delivery as OrderDelivery | null)?.fee ?? 0);
+    const customer = row.customer as OrderCustomer;
+    const note = `Item swapped: ${old.name} → ${rep.name}`;
+    const nextCustomer = { ...customer, notes: [customer.notes, note].filter(Boolean).join(" · ") };
+    await tx.update(orders).set({ items, total, customer: nextCustomer }).where(eq(orders.id, id));
+    return { order: toOrder({ ...row, items, total, customer: nextCustomer }), difference: total - oldTotal };
+  });
+}
+
 /** Owner confirmed the item(s) were ordered in from the supplier. */
 export async function markSupplierOrdered(id: string): Promise<Order | null> {
   const existing = await findOrder(id);
@@ -1155,4 +1245,6 @@ export const renumberProducts = withProductsInvalidation(renumberProductsImpl);
 export const adjustStock = withProductsInvalidation(adjustStockImpl);
 export const bulkAdjustPrice = withProductsInvalidation(bulkAdjustPriceImpl);
 export const placeOrderTx = withProductsInvalidation(placeOrderTxImpl);
+export const setOrderItemCosts = withProductsInvalidation(setOrderItemCostsImpl);
+export const swapOrderItem = withProductsInvalidation(swapOrderItemImpl);
 export const cancelOrderTx = withProductsInvalidation(cancelOrderTxImpl);

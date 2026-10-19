@@ -151,6 +151,199 @@ function WaybillSection({ order }: { order: Order }) {
 }
 
 /** Swap a purchased item for a different product, linked to this invoice — wrong size, changed their mind, etc. */
+const MODAL_BACKDROP = 'fixed inset-0 z-[80] bg-ink-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4';
+const MODAL_CARD = 'w-full max-w-md bg-white rounded-2xl shadow-xl p-6 border-t-2 border-gold-400/60 max-h-[85vh] overflow-y-auto';
+const LABEL = 'block mt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500';
+
+/** What each item really cost when the stock was fetched: confirm the usual cost, or enter what was actually paid. */
+function CostModal({ order, mode, onClose }: { order: Order; mode: 'receive' | 'edit'; onClose: () => void }) {
+  const { token, toast, refresh } = usePortal();
+  const mut = trpc.shop.confirmOrderCosts.useMutation();
+  const [same, setSame] = useState<boolean[]>(() => order.items.map(() => true));
+  const [actual, setActual] = useState<string[]>(() => order.items.map((it) => String(it.costPrice)));
+  const [updateProducts, setUpdateProducts] = useState(false);
+
+  const costs = order.items.map((it, i) => (same[i] ? it.costPrice : Math.max(0, Math.round(Number(actual[i]) || 0))));
+  const changed = order.items.some((it, i) => costs[i] !== it.costPrice);
+
+  const submit = async () => {
+    if (mut.isPending) return;
+    try {
+      await mut.mutateAsync({ token, id: order.id, costs, updateProducts: updateProducts && changed, markStockReceived: mode === 'receive' });
+      refresh();
+      toast(mode === 'receive' ? 'Costs confirmed. Marked stock received, ready to pack' : 'Cost prices saved');
+      onClose();
+    } catch {
+      toast('Could not save the costs, try again');
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP} onClick={onClose}>
+      <motion.div initial={{ y: 30, scale: 0.97, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }}
+        exit={{ y: 20, scale: 0.97, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={MODAL_CARD}>
+        <h3 className="font-display text-xl font-semibold text-ink-900">Confirm cost prices</h3>
+        <p className="mt-1 text-sm text-ink-500">
+          Is the cost on each item what you paid at the supplier? If not, choose No and enter the price you really paid, so the profit figures stay right.
+        </p>
+        <div className="mt-4 space-y-4">
+          {order.items.map((it, i) => (
+            <div key={i} className="rounded-xl border border-blush-100 p-3">
+              <p className="text-sm font-semibold text-ink-900">{it.name}{it.size ? ` (size ${it.size})` : ''} · Qty {it.qty}</p>
+              <p className="text-xs text-ink-500">Selling price {formatPrice(it.price)} · Cost on file {formatPrice(it.costPrice)}</p>
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => setSame((a) => a.map((v, j) => (j === i ? true : v)))}
+                  className={`h-9 px-4 rounded-full text-[11px] font-semibold uppercase tracking-[0.08em] border ${same[i] ? 'bg-gold-500 text-white border-gold-500' : 'bg-white text-ink-500 border-blush-100'}`}>
+                  Yes, {formatPrice(it.costPrice)}
+                </button>
+                <button onClick={() => setSame((a) => a.map((v, j) => (j === i ? false : v)))}
+                  className={`h-9 px-4 rounded-full text-[11px] font-semibold uppercase tracking-[0.08em] border ${!same[i] ? 'bg-gold-500 text-white border-gold-500' : 'bg-white text-ink-500 border-blush-100'}`}>
+                  No, change it
+                </button>
+              </div>
+              {!same[i] && (
+                <div className="mt-2">
+                  <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500">What did you actually pay for each one? (R)</label>
+                  <input type="number" min={0} inputMode="numeric" value={actual[i]}
+                    onChange={(e) => setActual((a) => a.map((v, j) => (j === i ? e.target.value : v)))}
+                    className="mt-1 w-full h-11 px-4 rounded-full border border-blush-100 bg-white text-sm" />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {changed && (
+          <label className="mt-4 flex items-start gap-2 text-xs text-ink-500">
+            <input type="checkbox" checked={updateProducts} onChange={(e) => setUpdateProducts(e.target.checked)} className="mt-0.5 accent-rose-600" />
+            <span>Also use these as the usual cost price for these products from now on (leave unticked for a once-off discount)</span>
+          </label>
+        )}
+        <div className="mt-5 flex gap-2">
+          <button onClick={onClose} className="h-11 px-5 rounded-full border border-blush-100 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500">Cancel</button>
+          <button onClick={() => void submit()} disabled={mut.isPending}
+            className="flex-1 h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.1em] disabled:opacity-60">
+            {mut.isPending ? 'Saving…' : mode === 'receive' ? 'Confirm and mark stock received' : 'Save cost prices'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/** An item on the order is not available: swap that line for another product, and tell the customer. */
+function SwapItemModal({ order, index, products, onClose }: { order: Order; index: number; products: Product[]; onClose: () => void }) {
+  const { token, toast, refresh } = usePortal();
+  const mut = trpc.shop.swapOrderItem.useMutation();
+  const cancelMut = trpc.shop.adminCancelOrder.useMutation();
+  const item = order.items[index];
+  const [query, setQuery] = useState('');
+  const [newId, setNewId] = useState('');
+  const [size, setSize] = useState('');
+  const [price, setPrice] = useState(String(item.price));
+
+  const inStock = (p: Product) => p.id !== item.productId && p.quantity > 0;
+  const options = products.filter(inStock).filter((p) => {
+    const q = query.trim().toLowerCase();
+    return !q || p.name.toLowerCase().includes(q) || String(p.refNumber) === q.replace('#', '');
+  }).slice(0, 40);
+  const chosen = products.find((p) => p.id === newId);
+  const sizeKeys = chosen?.sizes ? Object.entries(chosen.sizes).filter(([, n]) => n >= item.qty).map(([k]) => k) : [];
+  const newPrice = Math.max(0, Math.round(Number(price) || 0));
+  const difference = (newPrice - item.price) * item.qty;
+  const phone = toIntlPhoneZA(order.customer.phone);
+  const msgIntro = `Hi ${order.customer.name}, unfortunately "${item.name}" from your Sharmyn order ${order.id} is no longer available.`;
+
+  const swap = async () => {
+    if (!chosen || mut.isPending) return;
+    if (chosen.sizes && Object.keys(chosen.sizes).length > 0 && !size) { toast('Choose a size for the replacement'); return; }
+    try {
+      const res = await mut.mutateAsync({ token, id: order.id, index, newProductId: chosen.id, newSize: size || null, price: newPrice });
+      refresh();
+      toast(res.difference === 0 ? 'Item swapped. Same total.' : res.difference > 0 ? `Item swapped. The customer owes ${formatPrice(res.difference)} more.` : `Item swapped. ${formatPrice(-res.difference)} is due back to the customer.`);
+      onClose();
+    } catch {
+      toast('Could not swap the item. Check the replacement is in stock and try again');
+    }
+  };
+
+  const cancelForRefund = async () => {
+    if (cancelMut.isPending) return;
+    try { await cancelMut.mutateAsync({ token, id: order.id }); refresh(); toast('Order cancelled. Stock restored.'); onClose(); }
+    catch { toast('Could not cancel, try again'); }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={MODAL_BACKDROP} onClick={onClose}>
+      <motion.div initial={{ y: 30, scale: 0.97, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }}
+        exit={{ y: 20, scale: 0.97, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={MODAL_CARD}>
+        <h3 className="font-display text-xl font-semibold text-ink-900">Item not available</h3>
+        <p className="mt-1 text-sm text-ink-500">{item.name}{item.size ? ` (size ${item.size})` : ''} on order {order.id}.</p>
+
+        <div className="mt-3 rounded-xl bg-blush-50 p-3 text-xs text-ink-500">
+          <p className="font-semibold text-ink-900">1. Tell the customer first</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {order.customer.phone && (
+              <a target="_blank" rel="noopener noreferrer"
+                href={waLink(phone, `${msgIntro} You can choose a replacement (tell us which one) or cancel the order for a full refund. Please reply with what you would like.`)}
+                className="h-9 px-4 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-semibold uppercase tracking-[0.08em] grid place-items-center">
+                WhatsApp them
+              </a>
+            )}
+            {order.customer.email && (
+              <a href={`mailto:${order.customer.email}?subject=${encodeURIComponent(`Your Sharmyn order ${order.id}`)}&body=${encodeURIComponent(`${msgIntro}\n\nYou can choose a replacement (tell us which one) or cancel the order for a full refund. Please reply with what you would like.\n\nSharmyn`)}`}
+                className="h-9 px-4 rounded-full bg-white border border-blush-100 text-ink-500 text-[11px] font-semibold uppercase tracking-[0.08em] grid place-items-center">
+                E-mail them
+              </a>
+            )}
+          </div>
+        </div>
+
+        <p className="mt-4 text-sm font-semibold text-ink-900">2. When they choose a replacement</p>
+        <label className={LABEL}>Find the replacement</label>
+        <input value={query} onChange={(e) => { setQuery(e.target.value); setNewId(''); setSize(''); }} placeholder="Search by name or item number"
+          className="mt-1.5 w-full h-11 px-4 rounded-full border border-blush-100 bg-white text-sm" />
+        <select value={newId} onChange={(e) => { setNewId(e.target.value); setSize(''); }}
+          className="mt-2 w-full h-11 px-4 rounded-full border border-blush-100 bg-white text-sm">
+          <option value="">Choose a product in stock…</option>
+          {options.map((p) => <option key={p.id} value={p.id}>#{p.refNumber} {p.name.slice(0, 60)} — {formatPrice(p.price)}</option>)}
+        </select>
+        {chosen && sizeKeys.length > 0 && (
+          <>
+            <label className={LABEL}>Size</label>
+            <select value={size} onChange={(e) => setSize(e.target.value)} className="mt-1.5 w-full h-11 px-4 rounded-full border border-blush-100 bg-white text-sm">
+              <option value="">Choose a size…</option>
+              {sizeKeys.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+          </>
+        )}
+        {chosen && (
+          <>
+            <label className={LABEL}>Price per item for this order (R)</label>
+            <input type="number" min={0} inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)}
+              className="mt-1.5 w-full h-11 px-4 rounded-full border border-blush-100 bg-white text-sm" />
+            <p className="mt-1 text-xs text-ink-500">
+              {difference === 0 ? 'Same price as the original, so the total does not change.'
+                : difference > 0 ? `${formatPrice(difference)} more than before: the customer pays the difference.`
+                : `${formatPrice(-difference)} less than before: send the difference back.`}
+            </p>
+          </>
+        )}
+        <button onClick={() => void swap()} disabled={!chosen || mut.isPending}
+          className="mt-4 w-full h-11 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.1em] disabled:opacity-50">
+          {mut.isPending ? 'Swapping…' : 'Swap the item'}
+        </button>
+
+        <p className="mt-5 text-sm font-semibold text-ink-900">Or, if they want to cancel</p>
+        <button onClick={() => void cancelForRefund()} disabled={cancelMut.isPending}
+          className="mt-2 w-full h-11 rounded-full border border-rose-600 text-rose-600 text-[11px] font-semibold uppercase tracking-[0.1em] disabled:opacity-50">
+          Cancel the whole order (refund due if paid)
+        </button>
+        <button onClick={onClose} className="mt-3 w-full h-10 text-xs text-ink-500 underline">Close</button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function ExchangeModal({ order, products, onClose }: { order: Order; products: Product[]; onClose: () => void }) {
   const { token, toast, refresh } = usePortal();
   const recordMut = trpc.shop.recordExchange.useMutation();
@@ -236,6 +429,8 @@ function OrderCard({ order }: { order: Order }) {
   const stockMut = trpc.shop.markStockReceived.useMutation();
   const unmarkMut = trpc.shop.unmarkFulfilmentStage.useMutation();
   const lockerMut = trpc.shop.changeOrderLocker.useMutation();
+  const [costMode, setCostMode] = useState<'receive' | 'edit' | null>(null);
+  const [swapIndex, setSwapIndex] = useState<number | null>(null);
   const [changingLocker, setChangingLocker] = useState(false);
   const [newLocker, setNewLocker] = useState<PudoLockerRef | null>(null);
   const [open, setOpen] = useState(false);
@@ -326,11 +521,6 @@ function OrderCard({ order }: { order: Order }) {
     try { await supplierMut.mutateAsync({ token, id: order.id }); refresh(); toast('Marked ordered from supplier'); }
     catch { toast('Could not update — try again'); }
   };
-  const markStock = async () => {
-    if (stockMut.isPending) return;
-    try { await stockMut.mutateAsync({ token, id: order.id }); refresh(); toast('Marked stock received — ready to pack'); }
-    catch { toast('Could not update — try again'); }
-  };
   const undoStage = async (stage: 'supplier' | 'stock') => {
     if (unmarkMut.isPending) return;
     try { await unmarkMut.mutateAsync({ token, id: order.id, stage }); refresh(); }
@@ -418,10 +608,22 @@ function OrderCard({ order }: { order: Order }) {
                         <p className="text-sm text-ink-900 truncate">{it.name}</p>
                         <p className="text-xs text-ink-500">Qty {it.qty}</p>
                       </div>
-                      <p className="text-sm font-semibold text-ink-900">{formatPrice(it.price * it.qty)}</p>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-ink-900">{formatPrice(it.price * it.qty)}</p>
+                        {order.status !== 'delivered' && order.status !== 'cancelled' && (
+                          <button onClick={() => setSwapIndex(i)} className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-rose-600 underline">
+                            Item unavailable?
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
+                {order.paymentStatus === 'paid' && (
+                  <button onClick={() => setCostMode('edit')} className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-gold-500 underline">
+                    Edit cost prices
+                  </button>
+                )}
               </div>
 
               {/* customer */}
@@ -565,7 +767,7 @@ ${eftInstructionsText(order.id, order.total)}`
                           className="h-10 px-3 rounded-full border border-blush-100 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-500 hover:bg-blush-50">
                           Undo
                         </button>
-                        <button onClick={() => void markStock()} disabled={stockMut.isPending}
+                        <button onClick={() => setCostMode('receive')} disabled={stockMut.isPending}
                           className="flex-1 h-10 rounded-full bg-gold-500 text-white text-[11px] font-semibold uppercase tracking-[0.1em] hover:bg-gold-400 transition-colors disabled:opacity-50">
                           Mark stock received
                         </button>
@@ -723,6 +925,10 @@ ${eftInstructionsText(order.id, order.total)}`
                 )}
                 {exchanging && (
                   <ExchangeModal order={order} products={products} onClose={() => setExchanging(false)} />
+                )}
+                {costMode && <CostModal order={order} mode={costMode} onClose={() => setCostMode(null)} />}
+                {swapIndex !== null && order.items[swapIndex] && (
+                  <SwapItemModal order={order} index={swapIndex} products={products} onClose={() => setSwapIndex(null)} />
                 )}
               </AnimatePresence>
 

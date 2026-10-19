@@ -18,6 +18,8 @@ import {
   setOrderStatus,
   setTrackingNumber,
   setOrderLocker,
+  setOrderItemCosts,
+  swapOrderItem,
   markOrderPaid,
   listNotifications,
   markNotificationRead,
@@ -496,6 +498,47 @@ export const appRouter = createRouter({
       .mutation(async ({ input }) => {
         assertAdminToken(input.token);
         return markSupplierOrdered(input.id);
+      }),
+    // Owner confirms what each item really cost (the supplier price can differ) before, or after, stock is received.
+    confirmOrderCosts: publicQuery
+      .input(z.object({
+        token: adminToken,
+        id: z.string(),
+        costs: z.array(z.number().min(0).max(1_000_000)).min(1).max(30),
+        updateProducts: z.boolean().default(false),
+        markStockReceived: z.boolean().default(false),
+      }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        try {
+          const updated = await setOrderItemCosts(input.id, input.costs, input.updateProducts);
+          if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+          return input.markStockReceived ? (await markStockReceived(input.id)) ?? updated : updated;
+        } catch (e) {
+          if (e instanceof TRPCError) throw e;
+          throw new TRPCError({ code: "BAD_REQUEST", message: e instanceof Error ? e.message : "Could not save the costs" });
+        }
+      }),
+    // Owner: an item on the order is not available, so swap that line for another product.
+    swapOrderItem: publicQuery
+      .input(z.object({
+        token: adminToken,
+        id: z.string(),
+        index: z.number().int().min(0).max(29),
+        newProductId: z.string().min(1).max(64),
+        newSize: z.string().max(10).nullable().default(null),
+        price: z.number().min(0).max(1_000_000).nullable().default(null),
+      }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        try {
+          const result = await swapOrderItem(input.id, input.index, input.newProductId, input.newSize, input.price);
+          if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+          return result;
+        } catch (e) {
+          if (e instanceof TRPCError) throw e;
+          throw new TRPCError({ code: "BAD_REQUEST", message: e instanceof Error ? e.message : "Could not swap the item" });
+        }
       }),
     markStockReceived: publicQuery
       .input(z.object({ token: adminToken, id: z.string() }))
