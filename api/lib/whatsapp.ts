@@ -22,13 +22,15 @@ import { insertNotification } from "../queries/shop";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
+// Template names. Each can be overridden with an environment setting, so a template that has to be
+// recreated on Meta under a new name (an approved name cannot be reused straight away) needs no code change.
 export const WHATSAPP_TEMPLATES = {
-  payment: "sharmyn_order_payment",
-  received: "sharmyn_payment_received",
-  shipped: "sharmyn_order_shipped",
-  paymentIssue: "sharmyn_payment_issue",
-  ownerProofAlert: "sharmyn_owner_proof_alert",
-} as const;
+  get payment(): string { return process.env.WHATSAPP_TEMPLATE_PAYMENT || "sharmyn_order_payment"; },
+  get received(): string { return process.env.WHATSAPP_TEMPLATE_RECEIVED || "sharmyn_payment_received"; },
+  get shipped(): string { return process.env.WHATSAPP_TEMPLATE_SHIPPED || "sharmyn_order_shipped"; },
+  get paymentIssue(): string { return process.env.WHATSAPP_TEMPLATE_ISSUE || "sharmyn_payment_issue"; },
+  get ownerProofAlert(): string { return process.env.WHATSAPP_TEMPLATE_OWNER_ALERT || "sharmyn_owner_proof_alert"; },
+};
 
 export type WhatsAppKind = "payment" | "received" | "shipped" | "issue" | "owner_proof";
 
