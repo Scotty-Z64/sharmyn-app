@@ -918,6 +918,11 @@ export async function listNotifications(): Promise<OwnerNotification[]> {
   return rows.map(toNotification);
 }
 
+/** Once an order is delivered or cancelled its alerts have done their job, so they stop counting on the Orders badge. */
+export async function markOrderNotificationsRead(orderId: string): Promise<void> {
+  await getDb().update(notifications).set({ read: true }).where(eq(notifications.orderId, orderId));
+}
+
 export async function markNotificationRead(id: string): Promise<void> {
   await getDb().update(notifications).set({ read: true }).where(eq(notifications.id, id));
 }

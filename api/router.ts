@@ -21,6 +21,7 @@ import {
   markOrderPaid,
   listNotifications,
   markNotificationRead,
+  markOrderNotificationsRead,
   getSalesReport,
   markSupplierOrdered,
   markStockReceived,
@@ -346,6 +347,9 @@ export const appRouter = createRouter({
       .mutation(async ({ input }) => {
         assertAdminToken(input.token);
         const order = await setOrderStatus(input.id, input.status);
+        if (order && (input.status === "delivered" || input.status === "cancelled")) {
+          void markOrderNotificationsRead(input.id).catch((e) => console.error("[notify] could not clear order alerts:", e));
+        }
         if (order && (input.status === "shipped" || input.status === "delivered")) {
           const type = input.status === "shipped" ? "order_shipped" : "order_delivered";
           void notifyCustomer(type, order).catch((e) => console.error("[notify]", e));
