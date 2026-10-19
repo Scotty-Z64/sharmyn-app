@@ -71,9 +71,20 @@ export default function WhatsAppPanel() {
 
 /** Inside an open order: what the automatic WhatsApps for it did, and why any failed. */
 export function OrderMessages({ orderId }: { orderId: string }) {
-  const { token } = usePortal();
+  const { token, toast } = usePortal();
   const q = trpc.shop.orderMessages.useQuery({ token, id: orderId }, { staleTime: 15_000 });
+  const resendMut = trpc.shop.resendOrderWhatsApp.useMutation();
   const rows = q.data ?? [];
+  const resend = async (kind: 'payment' | 'received' | 'shipped') => {
+    if (resendMut.isPending) return;
+    try {
+      const res = await resendMut.mutateAsync({ token, id: orderId, kind });
+      toast(res.ok ? 'WhatsApp sent again' : res.reason ?? 'It did not send. See the reason in the list');
+    } catch {
+      toast('Could not send it, try again');
+    }
+    void q.refetch();
+  };
   if (q.isLoading || rows.length === 0) return null;
   return (
     <div className="rounded-xl border border-blush-100 bg-white p-3">
@@ -86,6 +97,12 @@ export function OrderMessages({ orderId }: { orderId: string }) {
               <span className="font-semibold text-ink-900">{KIND_LABEL[m.kind] ?? m.kind}</span>
               <span className="text-ink-500"> · {when(m.at)}{m.ok && m.delivery && m.delivery !== 'sent' ? ` · ${m.delivery}` : ''}</span>
               <span className={`block ${m.ok ? 'text-ink-500' : 'text-rose-600'}`}>{m.detail}</span>
+              {!m.ok && (m.kind === 'payment' || m.kind === 'received' || m.kind === 'shipped') && (
+                <button onClick={() => void resend(m.kind as 'payment' | 'received' | 'shipped')} disabled={resendMut.isPending}
+                  className="mt-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-gold-500 underline disabled:opacity-50">
+                  {resendMut.isPending ? 'Sending…' : 'Send again'}
+                </button>
+              )}
             </span>
           </li>
         ))}

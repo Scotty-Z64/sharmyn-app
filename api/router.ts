@@ -38,7 +38,7 @@ import {
   decidePaymentProofs,
 } from "./queries/shop";
 import { paymentNotice } from "./lib/payment-notice";
-import { sendOrderPaymentWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp, whatsappStatus, sendWhatsAppTest, fetchWhatsAppMedia } from "./lib/whatsapp";
+import { sendOrderPaymentWhatsApp, sendPaymentReceivedWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp, whatsappStatus, sendWhatsAppTest, fetchWhatsAppMedia } from "./lib/whatsapp";
 import { listMessages } from "./queries/messages";
 import { listInbound, getInboundMedia, setInboundHandled } from "./queries/inbound";
 import { openingSpecialEnabled, setOpeningSpecialEnabled } from "./queries/flags";
@@ -422,6 +422,23 @@ export const appRouter = createRouter({
         return { ok: true as const };
       }),
     // Does the saved WhatsApp token + phone number work right now? (catches an expired token early)
+    // Owner: send one of the automatic WhatsApp messages again (after fixing why it failed).
+    resendOrderWhatsApp: publicQuery
+      .input(z.object({ token: adminToken, id: z.string(), kind: z.enum(["payment", "received", "shipped"]) }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        const order = await findOrder(input.id);
+        if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+        try {
+          const sent =
+            input.kind === "payment" ? await sendOrderPaymentWhatsApp(order)
+            : input.kind === "received" ? await sendPaymentReceivedWhatsApp(order)
+            : await sendShippedWhatsApp(order);
+          return { ok: sent, reason: sent ? null : "Nothing was sent (WhatsApp is not set up, or the order has no waybill yet)." };
+        } catch {
+          return { ok: false, reason: "WhatsApp rejected it. The reason is in the order's message list." };
+        }
+      }),
     // Owner portal: the payment-deadline countdown (null when no deadline is set). Public on purpose: it holds nothing secret and the login screen shows it too.
     paymentNotice: publicQuery.query(() => {
       return paymentNotice();

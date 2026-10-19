@@ -100,11 +100,13 @@ async function sendTemplate(to: string, name: string, components: Component[], l
   });
   const body = (await res.json().catch(() => ({}))) as {
     messages?: { id?: string }[];
-    error?: { message?: string; code?: number };
+    error?: { message?: string; code?: number; error_user_msg?: string; error_data?: { details?: string } };
   };
   const id = body.messages?.[0]?.id;
   if (!res.ok || !id) {
-    throw new Error(`WHATSAPP_SEND_FAILED:${res.status}:${body.error?.code ?? ""}:${(body.error?.message ?? "").slice(0, 200)}`);
+    // Meta puts the useful part ("which parameter, why") in error_data.details / error_user_msg.
+    const detail = [body.error?.message, body.error?.error_data?.details, body.error?.error_user_msg].filter(Boolean).join(" ");
+    throw new Error(`WHATSAPP_SEND_FAILED:${res.status}:${body.error?.code ?? ""}:${detail.slice(0, 400)}`);
   }
   return id;
 }
