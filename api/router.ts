@@ -38,7 +38,7 @@ import {
   decidePaymentProofs,
 } from "./queries/shop";
 import { paymentNotice } from "./lib/payment-notice";
-import { sendOrderPaymentWhatsApp, sendPaymentReceivedWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp, whatsappStatus, sendWhatsAppTest, fetchWhatsAppMedia } from "./lib/whatsapp";
+import { webhookDiagnostics, sendOrderPaymentWhatsApp, sendPaymentReceivedWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp, whatsappStatus, sendWhatsAppTest, fetchWhatsAppMedia } from "./lib/whatsapp";
 import { listMessages } from "./queries/messages";
 import { listInbound, getInboundMedia, setInboundHandled } from "./queries/inbound";
 import { openingSpecialEnabled, setOpeningSpecialEnabled, lastWebhookEvent } from "./queries/flags";
@@ -449,6 +449,13 @@ export const appRouter = createRouter({
       const [status, lastEvent] = await Promise.all([whatsappStatus(), lastWebhookEvent()]);
       return { ...status, lastEvent };
     }),
+    // Owner/Zane: ask Meta how the webhook is wired; fix=true also turns on the "Subscribe webhooks" switch.
+    whatsappWebhookCheck: publicQuery
+      .input(z.object({ token: adminToken, fix: z.boolean().default(false) }))
+      .mutation(async ({ input }) => {
+        assertAdminToken(input.token);
+        return { lines: await webhookDiagnostics(input.fix) };
+      }),
     // Sends Meta's built-in test message to a number, to check the setup without placing an order.
     sendWhatsAppTest: publicQuery
       .input(z.object({ token: adminToken, to: z.string().min(7).max(20) }))

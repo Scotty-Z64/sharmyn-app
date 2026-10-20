@@ -295,3 +295,53 @@ export async function sendWhatsAppTest(rawNumber: string): Promise<string> {
     throw new Error(explainError(e));
   }
 }
+
+/**
+ * Asks Meta how the webhook is wired, using the shop's own token and app secret, so a silent webhook
+ * can be diagnosed without guessing which switch in Meta's dashboard is off. With fix=true it also
+ * subscribes the app to the WhatsApp Business Account (the "Subscribe webhooks" switch).
+ * No secrets are returned.
+ */
+export async function webhookDiagnostics(fix: boolean): Promise<string[]> {
+  const out: string[] = [];
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const secret = process.env.WHATSAPP_APP_SECRET;
+  const appId = process.env.WHATSAPP_APP_ID || "1609852840870817";
+  const waba = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "1636178894575060";
+  if (!token) return ["The access token is not set on the server."];
+  const get = async (path: string, bearer: string) => {
+    const res = await fetch(`${GRAPH}/${path}`, { headers: { Authorization: `Bearer ${bearer}` } });
+    return { ok: res.ok, status: res.status, body: (await res.json().catch(() => ({}))) as any };
+  };
+
+  // 1. Is the app subscribed to this WhatsApp Business Account? (the "Subscribe webhooks" switch)
+  const subs = await get(`${waba}/subscribed_apps`, token);
+  if (!subs.ok) out.push(`Could not read the account's subscriptions: ${subs.body?.error?.message ?? subs.status}`);
+  else {
+    const apps = (subs.body?.data ?? []) as { whatsapp_business_api_data?: { id?: string; name?: string } }[];
+    const names = apps.map((a) => a.whatsapp_business_api_data?.name ?? a.whatsapp_business_api_data?.id ?? "?");
+    out.push(apps.length ? `Subscribed to this WhatsApp account: ${names.join(", ")}` : "NOT subscribed: the app is not subscribed to this WhatsApp Business Account (the 'Subscribe webhooks' switch is off).");
+  }
+  if (fix) {
+    const res = await fetch(`${GRAPH}/${waba}/subscribed_apps`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+    const body = (await res.json().catch(() => ({}))) as any;
+    out.push(res.ok && body?.success ? "Fix applied: the app is now subscribed to the WhatsApp Business Account." : `Fix failed: ${body?.error?.message ?? res.status}`);
+  }
+
+  // 2. What callback URL and fields does the app itself have saved?
+  if (secret) {
+    const app = await get(`${appId}/subscriptions`, `${appId}|${secret}`);
+    if (!app.ok) out.push(`Could not read the app's webhook settings: ${app.body?.error?.message ?? app.status}`);
+    else {
+      const rows = (app.body?.data ?? []) as { object?: string; callback_url?: string; active?: boolean; fields?: { name: string }[] }[];
+      const w = rows.find((r) => r.object === "whatsapp_business_account");
+      if (!w) out.push("The app has NO webhook saved for the WhatsApp Business Account.");
+      else {
+        out.push(`App webhook callback: ${w.callback_url} (${w.active ? "active" : "NOT active"})`);
+        const fields = (w.fields ?? []).map((f) => f.name);
+        out.push(`Subscribed fields: ${fields.join(", ") || "none"}${fields.includes("messages") ? "" : " . 'messages' is NOT subscribed."}`);
+      }
+    }
+  } else out.push("The app secret is not set, so the app's own webhook settings cannot be read.");
+  return out;
+}
