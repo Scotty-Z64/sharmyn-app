@@ -28,7 +28,7 @@ export default function WhatsAppPanel() {
     setResult(null);
     try {
       await testMut.mutateAsync({ token, to });
-      setResult({ ok: true, text: 'Sent. Check that phone for Meta\u2019s "Hello World" message.' });
+      setResult({ ok: true, text: 'Sent. That phone should get a message starting "Sharmyn team: a customer has sent proof of payment for order TEST". If it does not arrive, a note appears in your alerts with the reason.' });
     } catch (e) {
       setResult({ ok: false, text: e instanceof Error ? e.message : 'The test message could not be sent.' });
     }
