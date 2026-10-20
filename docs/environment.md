@@ -15,7 +15,8 @@ Changing a value in Render redeploys the site (about 3 minutes).
 | `EMAIL_FROM` | Optional | Sender shown on emails (needs the domain verified in Resend). |
 | `WHATSAPP_PHONE_NUMBER_ID` | For automatic WhatsApp | The sending number's ID from Meta (API Setup). |
 | `WHATSAPP_ACCESS_TOKEN` 🔒 | For automatic WhatsApp | A **permanent System User token** (see `whatsapp-setup.md`). A token copied from API Setup expires after 24 hours. |
-| `OWNER_WHATSAPP` | For the "check the bank" alert | The phone that gets the proof-of-payment alert. Must be a verified recipient while on Meta's test number. |
+| `OWNER_WHATSAPP` | Optional | Extra phones for the owner alerts, separated by commas (for example Ben's own). The Sharmyn number, +27 61 645 5670, **always** gets them. |
+| `WHATSAPP_OWNER_ORDER_ALERT` | Optional | Set to `on` once the `sharmyn_owner_new_order` template is approved on Meta, to WhatsApp the owner phone(s) for every new order. |
 | `WHATSAPP_TEMPLATE_PAYMENT` / `_RECEIVED` / `_SHIPPED` / `_ISSUE` / `_OWNER_ALERT` | Optional | Use a different Meta template name for that message (for example `sharmyn_payment_received_v2`). Defaults are the `sharmyn_…` names in `docs/whatsapp-setup.md`. |
 | `PAYMENT_NOTICE_DEADLINE` | Optional | An ISO date-time (e.g. `2026-10-15T23:59:59+02:00`). While set, the owner portal shows a payment countdown banner. Delete it to remove the banner. `PAYMENT_NOTICE_AMOUNT` (default 7500) sets the amount shown. |
 | `WHATSAPP_VERIFY_TOKEN` | For incoming messages | Any long random text; Meta sends it back once when the webhook is saved (see `whatsapp-setup.md` 3c). |

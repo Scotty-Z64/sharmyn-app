@@ -9,6 +9,7 @@ const KIND_LABEL: Record<string, string> = {
   shipped: 'Shipped + tracking',
   issue: 'Payment problem notice',
   owner_proof: 'Proof-of-payment alert to you',
+  owner_order: 'New-order alert to you',
 };
 
 const when = (iso: string) =>

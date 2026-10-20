@@ -30,9 +30,10 @@ export const WHATSAPP_TEMPLATES = {
   get shipped(): string { return process.env.WHATSAPP_TEMPLATE_SHIPPED || "sharmyn_order_shipped"; },
   get paymentIssue(): string { return process.env.WHATSAPP_TEMPLATE_ISSUE || "sharmyn_payment_issue"; },
   get ownerProofAlert(): string { return process.env.WHATSAPP_TEMPLATE_OWNER_ALERT || "sharmyn_owner_proof_alert"; },
+  get ownerNewOrder(): string { return process.env.WHATSAPP_TEMPLATE_OWNER_NEW_ORDER || "sharmyn_owner_new_order"; },
 };
 
-export type WhatsAppKind = "payment" | "received" | "shipped" | "issue" | "owner_proof";
+export type WhatsAppKind = "payment" | "received" | "shipped" | "issue" | "owner_proof" | "owner_order";
 
 export function whatsappEnabled(): boolean {
   return !!(process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN);
@@ -119,6 +120,7 @@ const KIND_LABEL: Record<WhatsAppKind, string> = {
   shipped: "shipping message",
   issue: "payment-problem message",
   owner_proof: "proof-of-payment alert",
+  owner_order: "new-order alert",
 };
 
 async function notifyFailure(order: Order, kind: WhatsAppKind, why: string): Promise<void> {
@@ -244,18 +246,49 @@ export async function fetchWhatsAppMedia(mediaId: string, maxBytes: number): Pro
  * set OWNER_WHATSAPP to the phone Ben actually carries.)
  */
 export function ownerWhatsAppNumber(): string | null {
-  const digits = toIntlPhoneZA(process.env.OWNER_WHATSAPP || BUSINESS.whatsapp);
-  return /^\d{9,15}$/.test(digits) ? digits : null;
+  return ownerWhatsAppNumbers()[0] ?? null;
+}
+
+/**
+ * Every phone that gets the owner alerts. The Sharmyn business number is ALWAYS one of them, whatever
+ * is set on the server, so the alerts cannot be switched off by a missing or wrong setting. OWNER_WHATSAPP
+ * may add more phones (separate several with commas), for example Ben's own.
+ */
+export function ownerWhatsAppNumbers(): string[] {
+  const extra = (process.env.OWNER_WHATSAPP || "").split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
+  const all = [BUSINESS.whatsapp, ...extra].map((n) => toIntlPhoneZA(n)).filter((d) => /^\d{9,15}$/.test(d));
+  return [...new Set(all)];
+}
+
+/** Sends one owner alert to every owner phone. True if at least one was accepted by WhatsApp. */
+async function alertOwners(order: Order, kind: WhatsAppKind, template: string, parameters: Record<string, unknown>[]): Promise<boolean> {
+  let any = false;
+  for (const to of ownerWhatsAppNumbers()) {
+    try {
+      if (await deliver(order, kind, to, template, [{ type: "body", parameters }])) any = true;
+    } catch {
+      /* deliver() already recorded the failure and raised the alert; carry on to the next phone */
+    }
+  }
+  return any;
 }
 
 /** A customer sent proof of payment: tell the owner to check the bank for the order's reference. */
 export async function sendOwnerProofWhatsApp(order: Order): Promise<boolean> {
   if (!whatsappEnabled()) return false;
-  return deliver(order, "owner_proof", ownerWhatsAppNumber(), WHATSAPP_TEMPLATES.ownerProofAlert, [
-    {
-      type: "body",
-      parameters: [text(order.id), text(order.customer.name), text(`R${order.total}`), text(`${BUSINESS.website}/manage`)],
-    },
+  return alertOwners(order, "owner_proof", WHATSAPP_TEMPLATES.ownerProofAlert, [
+    text(order.id), text(order.customer.name), text(`R${order.total}`), text(`${BUSINESS.website}/manage`),
+  ]);
+}
+
+/**
+ * A new order came in: tell the owner. Needs its own approved template (sharmyn_owner_new_order), so it
+ * stays off until WHATSAPP_OWNER_ORDER_ALERT=on is set on the server.
+ */
+export async function sendOwnerNewOrderWhatsApp(order: Order): Promise<boolean> {
+  if (!whatsappEnabled() || process.env.WHATSAPP_OWNER_ORDER_ALERT !== "on") return false;
+  return alertOwners(order, "owner_order", WHATSAPP_TEMPLATES.ownerNewOrder, [
+    text(order.id), text(order.customer.name), text(`R${order.total}`), text(`${BUSINESS.website}/manage`),
   ]);
 }
 

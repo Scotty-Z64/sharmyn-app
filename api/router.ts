@@ -38,7 +38,7 @@ import {
   decidePaymentProofs,
 } from "./queries/shop";
 import { paymentNotice } from "./lib/payment-notice";
-import { webhookDiagnostics, sendOrderPaymentWhatsApp, sendPaymentReceivedWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp, whatsappStatus, sendWhatsAppTest, fetchWhatsAppMedia } from "./lib/whatsapp";
+import { webhookDiagnostics, sendOwnerNewOrderWhatsApp, sendOrderPaymentWhatsApp, sendPaymentReceivedWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp, whatsappStatus, sendWhatsAppTest, fetchWhatsAppMedia } from "./lib/whatsapp";
 import { listMessages } from "./queries/messages";
 import { listInbound, getInboundMedia, setInboundHandled } from "./queries/inbound";
 import { openingSpecialEnabled, setOpeningSpecialEnabled, lastWebhookEvent } from "./queries/flags";
@@ -229,6 +229,7 @@ export const appRouter = createRouter({
           // Everything is paid by EFT: WhatsApp the customer the banking details, their
           // payment reference and the itemised invoice straight away.
           void sendOrderPaymentWhatsApp(order).catch((e) => console.error("[whatsapp] order payment message failed:", e));
+          void sendOwnerNewOrderWhatsApp(order).catch((e) => console.error("[whatsapp] new-order alert failed:", e));
           return order;
         } catch (e) {
           if (e instanceof Error && e.message.startsWith("OUT_OF_STOCK:")) {
