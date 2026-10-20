@@ -290,7 +290,11 @@ export async function sendWhatsAppTest(rawNumber: string): Promise<string> {
   const to = toIntlPhoneZA(rawNumber);
   if (!/^\d{9,15}$/.test(to)) throw new Error("That does not look like a valid cellphone number.");
   try {
-    return await sendTemplate(to, "hello_world", [], "en_US");
+    // Meta's own "hello_world" can only be sent from Meta's public test numbers, so a real number is tested with
+    // our own approved owner-alert message, filled in with obviously-test values.
+    return await sendTemplate(to, WHATSAPP_TEMPLATES.ownerProofAlert, [
+      { type: "body", parameters: [text("TEST"), text("Test customer"), text("R0"), text(`${BUSINESS.website}/manage`)] },
+    ]);
   } catch (e) {
     throw new Error(explainError(e));
   }
