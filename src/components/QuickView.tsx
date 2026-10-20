@@ -49,12 +49,13 @@ export default function QuickView() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={() => setQuickView(null)}
             className="fixed inset-0 z-[80] bg-ink-900/35" />
+          {/* The wrapper does the centring (flex), so the slide-in animation on the panel cannot undo it. */}
+          <div className="fixed inset-0 z-[81] flex items-end justify-center md:items-center md:p-4 pointer-events-none">
           <motion.div
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="fixed bottom-0 inset-x-0 z-[81] bg-white h-[88svh] overflow-y-auto
-              md:top-1/2 md:bottom-auto md:left-1/2 md:right-auto md:h-auto md:max-h-[88vh]
-              md:-translate-x-1/2 md:-translate-y-1/2 md:max-w-3xl md:w-full md:mx-4
+            className="pointer-events-auto relative bg-white w-full h-[88svh] overflow-y-auto overscroll-contain
+              md:h-auto md:max-h-[92svh] md:max-w-3xl
               border-t-2 border-gold-400 md:border"
             style={{ maxWidth: 'min(48rem, 100vw)' }}>
             <button onClick={() => setQuickView(null)} aria-label="Close"
@@ -158,6 +159,7 @@ export default function QuickView() {
               </div>
             </div>
           </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>

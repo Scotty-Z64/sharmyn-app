@@ -33,12 +33,13 @@ export default function SizeGuideModal() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={() => setSizeGuideOpen(false)}
             className="fixed inset-0 z-[90] bg-ink-900/35" />
+          {/* The wrapper does the centring (flex), so the slide-in animation on the panel cannot undo it. */}
+          <div className="fixed inset-0 z-[91] flex items-end justify-center md:items-center md:p-4 pointer-events-none">
           <motion.div
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="fixed bottom-0 inset-x-0 z-[91] bg-white rounded-t-3xl max-h-[88svh] overflow-y-auto
-              md:top-1/2 md:bottom-auto md:left-1/2 md:right-auto md:h-auto md:max-h-[85vh] md:rounded-3xl
-              md:-translate-x-1/2 md:-translate-y-1/2 md:max-w-lg md:w-full md:mx-4
+            className="pointer-events-auto relative bg-white rounded-t-3xl w-full max-h-[88svh] overflow-y-auto overscroll-contain
+              md:max-h-[92svh] md:rounded-3xl md:max-w-lg
               border-t-2 border-gold-400 md:border"
             style={{ maxWidth: 'min(32rem, 100vw)' }}>
             <button onClick={() => setSizeGuideOpen(false)} aria-label="Close"
@@ -91,6 +92,7 @@ export default function SizeGuideModal() {
               <p className="mt-5 text-center text-xs text-ink-500 italic">Right size, better fit. 💛</p>
             </div>
           </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>
