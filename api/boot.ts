@@ -35,7 +35,7 @@ app.post("/api/webhooks/whatsapp", async (c) => {
   }
   try {
     const r = await handleWhatsAppWebhook(JSON.parse(raw));
-    void recordWebhookEvent(`received OK: ${r.messages} message(s), ${r.statuses} receipt(s)`);
+    void recordWebhookEvent(`received OK: ${r.messages} message(s), ${r.statuses} receipt(s)${r.detail ? " - " + r.detail : ""}`);
   } catch (e) {
     console.error("[whatsapp-in] webhook error:", e);
     void recordWebhookEvent("received, but processing failed (see server log)");

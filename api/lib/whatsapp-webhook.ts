@@ -48,7 +48,7 @@ function realDeps(): InboundDeps {
  * Handles one verified webhook body. Receipts first (cheap), then customer messages one by one. A failure on one
  * message is logged and does not stop the rest; the caller always answers Meta 200 so it does not retry forever.
  */
-export async function handleWhatsAppWebhook(payload: unknown, deps: InboundDeps = realDeps()): Promise<{ messages: number; statuses: number }> {
+export async function handleWhatsAppWebhook(payload: unknown, deps: InboundDeps = realDeps()): Promise<{ messages: number; statuses: number; detail: string }> {
   const { messages, statuses } = parseWebhook(payload, process.env.WHATSAPP_PHONE_NUMBER_ID);
   for (const s of statuses) {
     try {
@@ -58,6 +58,13 @@ export async function handleWhatsAppWebhook(payload: unknown, deps: InboundDeps 
           type: "whatsapp_failed",
           message: `WhatsApp could not deliver a message for order ${failed.orderId}: ${explainWhatsApp(s.errorCode, s.errorText ?? "")} Use the WhatsApp button on the order to send it by hand.`,
           orderId: failed.orderId,
+        });
+      } else if (s.status === "failed") {
+        // A message with no order behind it (a test, or the owner's own alert): still tell the owner why it did not arrive.
+        await insertNotification({
+          type: "whatsapp_failed",
+          message: `A WhatsApp message to ${s.recipient ? "+" + s.recipient : "a customer"} could not be delivered: ${explainWhatsApp(s.errorCode, s.errorText ?? "")}`,
+          orderId: null,
         });
       }
     } catch (e) {
@@ -73,7 +80,8 @@ export async function handleWhatsAppWebhook(payload: unknown, deps: InboundDeps 
       }
     }
   }
-  return { messages: messages.length, statuses: statuses.length };
+  const detail = statuses.map((s) => `${s.status}${s.recipient ? " to ..." + s.recipient.slice(-4) : ""}${s.errorCode ? " (error " + s.errorCode + ")" : ""}`).join("; ");
+  return { messages: messages.length, statuses: statuses.length, detail };
 }
 
 export { verifyMetaSignature };

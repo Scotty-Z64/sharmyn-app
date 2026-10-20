@@ -137,6 +137,31 @@ export function trimTransparent(img: HTMLImageElement): Drawable {
   }
 }
 
+/**
+ * Catalogue photos (1080x1350) carry the small "Sh" mark in their bottom-left corner. If that goes through
+ * background removal it counts as part of the "product": the shoe ends up small and a second "Sh" sits next
+ * to it. The product sits in the upper part of those photos and the mark starts at about 80% of the height,
+ * so the bottom strip is cut off first. Only the catalogue's own 4:5 photos are touched.
+ */
+export async function stripBrandMark(src: string): Promise<string> {
+  try {
+    const img = await loadImage(src);
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w || !h || Math.abs(h / w - 1.25) > 0.02) return src;
+    const keep = Math.round(h * 0.785);
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = keep;
+    const ctx = c.getContext('2d');
+    if (!ctx) return src;
+    ctx.drawImage(img, 0, 0, w, keep, 0, 0, w, keep);
+    return c.toDataURL('image/jpeg', 0.92);
+  } catch {
+    return src;
+  }
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -402,7 +427,8 @@ export function renderPost(canvas: HTMLCanvasElement, o: RenderOpts) {
   }
 
   // restocked
-  const bannerY = H * 0.115, bannerH = H * 0.088;
+  // The maroon band grows with the headline (never smaller than its normal height), so enlarged text stays inside it.
+  const bannerY = H * 0.115, bannerH = H * 0.088 * Math.max(1, hp.k);
   ctx.fillStyle = accent;
   ctx.fillRect(0, bannerY, W, bannerH);
   ctx.fillStyle = '#FFFFFF';
@@ -1045,14 +1071,14 @@ export default function StudioTab() {
         <StepHeader n={1} title="Choose your photo" hint="Upload from your phone, or use a product photo" />
         <div className="mt-4 grid sm:grid-cols-2 gap-3">
           <button onClick={() => fileRef.current?.click()} disabled={polishingPhoto}
-            className="h-40 rounded-2xl border-2 border-dashed border-rose-300 bg-blush-50 grid place-items-center hover:bg-blush-100 transition disabled:opacity-80">
+            className="h-40 overflow-hidden rounded-2xl border-2 border-dashed border-rose-300 bg-blush-50 grid place-items-center hover:bg-blush-100 transition disabled:opacity-80">
             {polishingPhoto
               ? <span className="flex flex-col items-center gap-2 text-rose-500">
                   <Loader2 size={26} className="animate-spin" />
                   <span className="text-xs font-semibold uppercase tracking-[0.12em]">{polishingPct != null ? `Downloading… ${polishingPct}%` : 'Removing background…'}</span>
                 </span>
               : photoSrc
-              ? <img src={photoSrc} alt="Chosen" className="h-full w-full object-cover rounded-2xl" />
+              ? <img src={photoSrc} alt="Chosen" className="h-36 w-full object-contain rounded-2xl" />
               : <span className="flex flex-col items-center gap-2 text-rose-500">
                   <ImagePlus size={30} />
                   <span className="text-xs font-semibold uppercase tracking-[0.12em]">Upload a photo</span>
@@ -1307,7 +1333,7 @@ export default function StudioTab() {
               <div className="grid grid-cols-3 gap-2">
                 {products.filter((p) => p.image).map((p) => (
                   <button key={p.id} onClick={() => {
-                    void applyPhoto(p.image);
+                    void stripBrandMark(p.image).then((clean) => applyPhoto(clean));
                     setProductName(p.name);
                     setPrice((pr) => pr || String(p.price));
                     setHeadline((h) => h || (template === 'new-in' ? 'NEW IN STORE' : template === 'sale' ? 'SALE' : template === 'restocked' ? 'BACK IN STOCK' : p.name));

@@ -48,6 +48,7 @@ export interface ParsedStatus {
   status: string;
   errorCode?: number;
   errorText?: string;
+  recipient?: string; // the number the message went to
 }
 
 interface Dict { [k: string]: unknown }
@@ -86,7 +87,7 @@ export function parseWebhook(payload: unknown, ourPhoneNumberId?: string): { mes
         const s = obj(raw);
         if (!str(s.id) || !str(s.status)) continue;
         const e = obj(arr(s.errors)[0]);
-        statuses.push({ id: str(s.id), status: str(s.status), errorCode: typeof e.code === "number" ? e.code : undefined, errorText: str(e.message) || str(e.title) || undefined });
+        statuses.push({ id: str(s.id), status: str(s.status), recipient: str(s.recipient_id) || undefined, errorCode: typeof e.code === "number" ? e.code : undefined, errorText: str(e.message) || str(e.title) || undefined });
       }
     }
   }
