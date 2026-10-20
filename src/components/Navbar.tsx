@@ -8,7 +8,8 @@ import { BUSINESS } from '@/config/business';
 import { InstallButton } from '@/components/InstallPrompt';
 
 export const MENU_LINKS = [
-  { label: 'Sneakers', to: '/#sneakers' },
+  { label: 'Women Sneakers', to: '/#womens-sneakers' },
+  { label: 'Men Sneakers', to: '/#mens-sneakers' },
   { label: 'Shoes', to: '/#shoes' },
   { label: 'Jewellery', to: '/#jewellery' },
   { label: 'Handbags', to: '/#handbags' },

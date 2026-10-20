@@ -15,6 +15,7 @@ export const products = mysqlTable("products", {
   // varchar, not enum — categories/brands grow over time (see migrate-shoe-categories.ts,
   // which widened this from a fixed enum so adding "shoes" didn't need a column rebuild).
   category: varchar("category", { length: 20 }).notNull(),
+  gender: varchar("gender", { length: 10 }), // "women" | "men" | null (null counts as women) — sneakers/shoes only
   brand: varchar("brand", { length: 30 }), // sneakers/shoes only, e.g. "Nike", "Adidas Samba" — null for other categories
   price: int("price").notNull(), // ZAR — what the customer pays
   oldPrice: int("old_price"), // ZAR — pre-discount reference price, shown struck through; null = no discount shown

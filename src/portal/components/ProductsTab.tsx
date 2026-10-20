@@ -111,6 +111,7 @@ export default function ProductsTab() {
       id: editing?.id ?? 'p-' + Date.now().toString(36),
       name: draft.name.trim(),
       category: draft.category,
+      gender: sized && draft.gender ? draft.gender : null,
       brand: sized && draft.brand ? draft.brand : null,
       price: Math.round(Number(draft.price)),
       oldPrice: draft.oldPrice ? Math.round(Number(draft.oldPrice)) : null,
@@ -209,7 +210,7 @@ export default function ProductsTab() {
                       <span className="font-mono text-ink-500">#{p.refNumber}</span> {p.name}
                     </p>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500 mt-0.5">
-                      {catLabel(p.category)}{p.brand ? ` · ${p.brand}` : ''} · {p.quantity} in stock
+                      {catLabel(p.category)}{p.category === 'sneakers' || p.category === 'shoes' ? ` · ${p.gender === 'men' ? 'Men' : 'Women'}` : ''}{p.brand ? ` · ${p.brand}` : ''} · {p.quantity} in stock
                     </p>
                     <p className="font-display text-base font-semibold text-ink-900 mt-1">{formatPrice(p.price)}</p>
                     {p.costPrice > 0 && (

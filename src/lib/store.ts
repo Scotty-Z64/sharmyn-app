@@ -20,6 +20,8 @@ export type {
   OrderItem,
   PudoLockerRef,
 } from '@contracts/types';
+import type { Gender } from '@contracts/types';
+export type { Gender } from '@contracts/types';
 export { SHOE_BRANDS, isSizedCategory, pudoDeliveryFee, lockerBoxLabel, LOCKER_BOXES, openingSpecialForCart, OPENING_SPECIAL_OFF, OPENING_SPECIAL_MIN_QTY, discountPercent, HERO_ASPECTS } from '@contracts/types';
 import type { HeroAspect } from '@contracts/types';
 
@@ -158,3 +160,32 @@ export const CATEGORIES: { key: Category; label: string; tagline: string }[] = [
   { key: 'bags', label: 'Bags', tagline: 'Totes, backpacks and everyday bags' },
   { key: 'clothing', label: 'Clothing', tagline: 'Everyday elegance' },
 ];
+
+/**
+ * The storefront ranges (round icons, menu, catalogue sections), in display order. Women and Men
+ * Sneakers are two views of the one "sneakers" category, told apart by the product's gender.
+ */
+export interface Collection {
+  key: string;
+  label: string;
+  category: Category;
+  gender?: Gender;
+  img: string;
+  tagline: string;
+}
+export const COLLECTIONS: Collection[] = [
+  { key: 'shoes', label: 'Shoes', category: 'shoes', img: '/collection-shoes.png', tagline: 'Ladies footwear for every occasion' },
+  { key: 'womens-sneakers', label: 'Women Sneakers', category: 'sneakers', gender: 'women', img: '/collection-womens-sneakers.png', tagline: 'Street-soft soles' },
+  { key: 'mens-sneakers', label: 'Men Sneakers', category: 'sneakers', gender: 'men', img: '/collection-mens-sneakers.png', tagline: 'Street-ready soles' },
+  { key: 'jewellery', label: 'Jewellery', category: 'jewellery', img: '/collection-jewellery.png', tagline: 'Pieces made to shine' },
+  { key: 'handbags', label: 'Handbags', category: 'handbags', img: '/collection-handbags.png', tagline: 'Carry the moment' },
+  { key: 'bags', label: 'Bags', category: 'bags', img: '/collection-bags.png', tagline: 'Totes, backpacks and everyday bags' },
+  { key: 'clothing', label: 'Clothing', category: 'clothing', img: '/collection-clothing.png', tagline: 'Everyday elegance' },
+];
+
+/** Which gender a product belongs to for the storefront: unset counts as women. */
+export const productGender = (p: { gender?: Gender | null }): Gender => p.gender ?? 'women';
+
+/** Does this product belong in this range? */
+export const inCollection = (p: { category: Category; gender?: Gender | null }, c: Collection): boolean =>
+  p.category === c.category && (!c.gender || productGender(p) === c.gender);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { COLLECTIONS, inCollection, productGender } from "../../src/lib/store";
 import {
   fulfilmentStage,
   lockerBoxLabel,
@@ -112,5 +113,33 @@ describe("fulfilment stages", () => {
     expect(fulfilmentStage({ ...base, supplierOrderedAt: "2026-10-01" })).toBe("awaiting_stock");
     expect(fulfilmentStage({ ...base, supplierOrderedAt: "2026-10-01", stockReceivedAt: "2026-10-02" })).toBe("ready_to_pack");
     expect(fulfilmentStage({ ...base, supplierOrderedAt: "2026-10-01", stockReceivedAt: "2026-10-02", trackingSetAt: "2026-10-03" })).toBe("packed");
+  });
+});
+
+describe("storefront ranges (Shoes, Women Sneakers, Men Sneakers, then the rest)", () => {
+  it("lists the ranges in the order the shop asked for", () => {
+    expect(COLLECTIONS.map((c) => c.label)).toEqual(["Shoes", "Women Sneakers", "Men Sneakers", "Jewellery", "Handbags", "Bags", "Clothing"]);
+  });
+  it("counts a sneaker with no gender as women", () => {
+    expect(productGender({})).toBe("women");
+    expect(productGender({ gender: null })).toBe("women");
+    expect(productGender({ gender: "men" })).toBe("men");
+  });
+  it("puts each sneaker in exactly one of the two ranges", () => {
+    const women = COLLECTIONS.find((c) => c.key === "womens-sneakers")!;
+    const men = COLLECTIONS.find((c) => c.key === "mens-sneakers")!;
+    const unset = { category: "sneakers" as const };
+    const man = { category: "sneakers" as const, gender: "men" as const };
+    expect(inCollection(unset, women)).toBe(true);
+    expect(inCollection(unset, men)).toBe(false);
+    expect(inCollection(man, women)).toBe(false);
+    expect(inCollection(man, men)).toBe(true);
+  });
+  it("keeps other categories out of the sneaker ranges and uses their own range", () => {
+    const women = COLLECTIONS.find((c) => c.key === "womens-sneakers")!;
+    const handbags = COLLECTIONS.find((c) => c.key === "handbags")!;
+    expect(inCollection({ category: "handbags" as const }, women)).toBe(false);
+    expect(inCollection({ category: "handbags" as const }, handbags)).toBe(true);
+    expect(inCollection({ category: "bags" as const }, handbags)).toBe(false);
   });
 });

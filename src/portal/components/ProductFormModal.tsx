@@ -174,6 +174,7 @@ export const SNEAKER_SIZES = ['3', '3.5', '4', '4.5', '5', '5.5', '6', '6.5', '7
 export interface Draft {
   name: string;
   category: Category;
+  gender: '' | 'women' | 'men'; // '' = women (the default) — sneakers/shoes only
   brand: string; // '' = none — sneakers/shoes only
   price: string;
   oldPrice: string; // '' = no discount shown
@@ -194,6 +195,7 @@ export function draftFrom(p?: Product): Draft {
   return {
     name: p?.name ?? '',
     category: p?.category ?? 'sneakers',
+    gender: p?.gender ?? '',
     brand: p?.brand ?? '',
     price: p ? String(p.price) : '',
     oldPrice: p?.oldPrice ? String(p.oldPrice) : '',
@@ -938,6 +940,19 @@ export default function ProductFormModal({
                 : <p className="mt-1.5 text-xs text-rose-600">Was Price must be higher than the Selling Price to show a discount.</p>;
             })()}
           </div>
+
+          {isSizedCategory(d.category) && (
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
+                Who are they for? <span className="text-ink-500/60 normal-case font-normal">(decides if it shows under Women or Men Sneakers)</span>
+              </label>
+              <select value={d.gender} onChange={(e) => set('gender', e.target.value as Draft['gender'])} className={`mt-2 ${input}`}>
+                <option value="">Women (default)</option>
+                <option value="women">Women</option>
+                <option value="men">Men</option>
+              </select>
+            </div>
+          )}
 
           {isSizedCategory(d.category) && (
             <div>

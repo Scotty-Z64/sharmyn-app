@@ -4,22 +4,13 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { Search, X } from 'lucide-react';
 import { trpc } from '@/providers/trpc';
 import { useShop } from '@/lib/shop';
-import { CATEGORIES, SHOE_BRANDS, resolveAvailability, heroAspectClass, type Category, type Product } from '@/lib/store';
+import { COLLECTIONS, SHOE_BRANDS, resolveAvailability, heroAspectClass, inCollection, type Collection, type Product } from '@/lib/store';
 import ProductCard from '@/components/ProductCard';
 import QuickView from '@/components/QuickView';
 import SearchOverlay from '@/components/SearchOverlay';
 import { useOpeningSpecial } from '@/lib/promo';
 
-const BRAND_CATEGORIES: Category[] = ['sneakers', 'shoes'];
-
-const COLLECTION_CIRCLES: { key: Category; label: string; img: string }[] = [
-  { key: 'sneakers', label: 'Sneakers', img: '/collection-sneakers.png' },
-  { key: 'shoes', label: 'Shoes', img: '/collection-sneakers.png' },
-  { key: 'jewellery', label: 'Jewellery', img: '/collection-jewellery.png' },
-  { key: 'handbags', label: 'Handbags', img: '/collection-handbags.png' },
-  { key: 'bags', label: 'Bags', img: '/collection-bags.png' },
-  { key: 'clothing', label: 'Clothing', img: '/collection-clothing.png' },
-];
+const BRAND_CATEGORIES = ['sneakers', 'shoes'];
 
 function scrollToId(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -87,15 +78,15 @@ function Hero() {
 }
 
 /* ---------------- Category circles ---------------- */
-function CategoryCircles({ onPick }: { onPick: (c: Category) => void }) {
+function CategoryCircles({ onPick }: { onPick: (c: Collection) => void }) {
   const { products } = useShop();
-  const empty = (k: Category) => products.length > 0 && !products.some((p) => p.category === k);
+  const empty = (c: Collection) => products.length > 0 && !products.some((p) => inCollection(p, c));
   return (
     <section className="py-8">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="flex gap-5 sm:gap-8 overflow-x-auto no-scrollbar justify-start sm:justify-center pb-2">
-          {COLLECTION_CIRCLES.map((c, i) => (
-            <motion.button key={c.key} onClick={() => onPick(c.key)}
+          {COLLECTIONS.map((c, i) => (
+            <motion.button key={c.key} onClick={() => onPick(c)}
               initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }} transition={{ duration: 0.4, delay: i * 0.06 }}
               className="shrink-0 flex flex-col items-center gap-2 group">
@@ -106,7 +97,7 @@ function CategoryCircles({ onPick }: { onPick: (c: Category) => void }) {
               <span className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.1em] text-ink-900 text-center max-w-[90px] leading-tight">
                 {c.label}
               </span>
-              {empty(c.key) && <span className="-mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-gold-500">Coming soon</span>}
+              {empty(c) && <span className="-mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-gold-500">Coming soon</span>}
             </motion.button>
           ))}
         </div>
@@ -135,13 +126,15 @@ function ComingSoon({ label }: { label: string }) {
 /* ---------------- Catalog ---------------- */
 type AvailFilter = 'all' | 'in-stock' | 'sold-out' | 'back-soon';
 
-function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; setActiveCat: (c: Category | 'all') => void }) {
+function Catalog({ activeKey, setActiveKey }: { activeKey: string; setActiveKey: (k: string) => void }) {
   const { products, productsLoading } = useShop();
   const [query, setQuery] = useState('');
   const [avail, setAvail] = useState<AvailFilter>('all');
   const [brandFilter, setBrandFilter] = useState<string>('all');
 
-  const showBrandFilter = BRAND_CATEGORIES.includes(activeCat as Category);
+  const activeCol = COLLECTIONS.find((c) => c.key === activeKey) ?? null;
+  const activeCat = activeCol ? activeCol.category : 'all';
+  const showBrandFilter = BRAND_CATEGORIES.includes(activeCat);
   useEffect(() => { if (!showBrandFilter) setBrandFilter('all'); }, [showBrandFilter]);
 
   const matches = useMemo(() => {
@@ -160,18 +153,18 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
 
   // How many products each pill would show (ignoring availability/search), so an empty
   // category or brand says "Coming soon" instead of silently showing nothing.
-  const catCount = (k: Category) => products.filter((p) => p.category === k).length;
-  const brandCount = (b: string) => products.filter((p) => p.category === activeCat && p.brand === b).length;
-  const catTotal = activeCat === 'all' ? -1 : catCount(activeCat);
+  const colCount = (c: Collection) => products.filter((p) => inCollection(p, c)).length;
+  const brandCount = (b: string) => products.filter((p) => activeCol && inCollection(p, activeCol) && p.brand === b).length;
+  const catTotal = activeCol ? colCount(activeCol) : -1;
   const comingSoonLabel: string | null =
     productsLoading || !products.length
       ? null
-      : activeCat !== 'all' && catTotal === 0
-        ? (CATEGORIES.find((c) => c.key === activeCat)?.label ?? 'this range')
+      : activeCol && catTotal === 0
+        ? activeCol.label
         : showBrandFilter && brandFilter !== 'all' && brandCount(brandFilter) === 0
           ? brandFilter
           : null;
-  const noMatches = activeCat !== 'all' && comingSoonLabel === null && !productsLoading && matches.length === 0;
+  const noMatches = !!activeCol && comingSoonLabel === null && !productsLoading && !matches.some((p) => inCollection(p, activeCol));
 
   // Starred (featured) products come first and are drawn larger — see ProductCard.
   const gridFor = (list: Product[]) => (
@@ -208,12 +201,12 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
             )}
           </div>
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-            {(['all', ...CATEGORIES.map((c) => c.key)] as const).map((c) => (
-              <button key={c} onClick={() => setActiveCat(c as Category | 'all')}
+            {([{ key: 'all', label: 'All' }, ...COLLECTIONS] as { key: string; label: string; category?: string; gender?: string }[]).map((c) => (
+              <button key={c.key} onClick={() => setActiveKey(c.key)}
                 className={`shrink-0 h-11 px-4 text-[11px] font-semibold uppercase tracking-[0.12em] border transition-colors ${
-                  activeCat === c ? 'bg-gold-400 text-white border-gold-400' : 'bg-white text-ink-900 border-gold-400/40 hover:border-gold-400'}`}>
-                {c === 'all' ? 'All' : c}
-                {c !== 'all' && products.length > 0 && catCount(c as Category) === 0 && <span className="ml-1.5 text-[8.5px] tracking-[0.1em] opacity-70">Soon</span>}
+                  activeKey === c.key ? 'bg-gold-400 text-white border-gold-400' : 'bg-white text-ink-900 border-gold-400/40 hover:border-gold-400'}`}>
+                {c.label}
+                {c.key !== 'all' && products.length > 0 && colCount(c as Collection) === 0 && <span className="ml-1.5 text-[8.5px] tracking-[0.1em] opacity-70">Soon</span>}
               </button>
             ))}
             <select value={avail} onChange={(e) => setAvail(e.target.value as AvailFilter)} aria-label="Availability"
@@ -262,8 +255,8 @@ function Catalog({ activeCat, setActiveCat }: { activeCat: Category | 'all'; set
         ) : noMatches ? (
           <p className="text-ink-500 text-sm py-12 text-center">Nothing matches these filters — try a different brand or availability.</p>
         ) : (
-          CATEGORIES.filter((c) => activeCat === 'all' || activeCat === c.key).map((c) => {
-            const list = matches.filter((p) => p.category === c.key);
+          COLLECTIONS.filter((c) => activeKey === 'all' || activeKey === c.key).map((c) => {
+            const list = matches.filter((p) => inCollection(p, c));
             if (!list.length) return null;
             return (
               <div key={c.key} id={c.key} className="scroll-mt-36">
@@ -300,22 +293,24 @@ function OpeningSpecialBanner() {
 
 /* ---------------- Home page ---------------- */
 export default function Home() {
-  const [activeCat, setActiveCat] = useState<Category | 'all'>('all');
+  const [activeKey, setActiveKey] = useState<string>('all');
   // Menu / footer links look like "/#sneakers". The router does not scroll to those by itself, and
   // empty ranges have no section to scroll to, so open that range in the catalogue instead.
   const { hash } = useLocation();
   useEffect(() => {
     const key = hash.replace('#', '');
     if (!key) return;
-    if (CATEGORIES.some((c) => c.key === key)) {
-      setActiveCat(key as Category);
+    // older links used #sneakers: send them to Women Sneakers
+    const target = key === 'sneakers' ? 'womens-sneakers' : key;
+    if (COLLECTIONS.some((c) => c.key === target)) {
+      setActiveKey(target);
       setTimeout(() => scrollToId('shop'), 80);
     } else if (key === 'contact') {
       setTimeout(() => scrollToId('contact'), 80);
     }
   }, [hash]);
-  const onPickCollection = (c: Category) => {
-    setActiveCat(c);
+  const onPickCollection = (c: Collection) => {
+    setActiveKey(c.key);
     setTimeout(() => scrollToId('shop'), 50);
   };
   return (
@@ -323,7 +318,7 @@ export default function Home() {
       <Hero />
       <CategoryCircles onPick={onPickCollection} />
       <OpeningSpecialBanner />
-      <Catalog activeCat={activeCat} setActiveCat={setActiveCat} />
+      <Catalog activeKey={activeKey} setActiveKey={setActiveKey} />
       <QuickView />
       <SearchOverlay />
     </>

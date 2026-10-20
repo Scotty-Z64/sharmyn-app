@@ -4,7 +4,8 @@ import { BUSINESS, waLink } from '@/config/business';
 import { WhatsAppIcon } from './WhatsAppFloat';
 
 const SHOP_LINKS = [
-  { label: 'Sneakers', to: '/#sneakers' },
+  { label: 'Women Sneakers', to: '/#womens-sneakers' },
+  { label: 'Men Sneakers', to: '/#mens-sneakers' },
   { label: 'Shoes', to: '/#shoes' },
   { label: 'Jewellery', to: '/#jewellery' },
   { label: 'Handbags', to: '/#handbags' },
