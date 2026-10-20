@@ -20,20 +20,25 @@ app.get("/api/webhooks/whatsapp", async (c) => {
 });
 app.post("/api/webhooks/whatsapp", async (c) => {
   const secret = process.env.WHATSAPP_APP_SECRET;
+  const { recordWebhookEvent } = await import("./queries/flags");
   if (!secret) {
     console.error("[whatsapp-in] webhook called but WHATSAPP_APP_SECRET is not set");
+    void recordWebhookEvent("call refused: the app secret is not set on the server");
     return c.json({ error: "WEBHOOK_NOT_CONFIGURED" }, 503);
   }
   const raw = await c.req.text();
   const { verifyMetaSignature, handleWhatsAppWebhook } = await import("./lib/whatsapp-webhook");
   if (!verifyMetaSignature(raw, c.req.header("x-hub-signature-256"), secret)) {
     console.error("[whatsapp-in] rejected: missing or invalid signature (is WHATSAPP_APP_SECRET the Meta app secret?)");
+    void recordWebhookEvent("call refused: bad signature (check WHATSAPP_APP_SECRET)");
     return c.json({ error: "Unauthorized" }, 401);
   }
   try {
-    await handleWhatsAppWebhook(JSON.parse(raw));
+    const r = await handleWhatsAppWebhook(JSON.parse(raw));
+    void recordWebhookEvent(`received OK: ${r.messages} message(s), ${r.statuses} receipt(s)`);
   } catch (e) {
     console.error("[whatsapp-in] webhook error:", e);
+    void recordWebhookEvent("received, but processing failed (see server log)");
   }
   return c.json({ ok: true });
 });

@@ -248,6 +248,8 @@ export interface WhatsAppStatus {
   number?: string;
   name?: string;
   problem?: string;
+  /** What Meta last sent to our webhook, if anything. */
+  lastEvent?: string | null;
 }
 
 export type StudioPostStatus = "draft" | "ready" | "posted";

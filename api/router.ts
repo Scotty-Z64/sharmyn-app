@@ -41,7 +41,7 @@ import { paymentNotice } from "./lib/payment-notice";
 import { sendOrderPaymentWhatsApp, sendPaymentReceivedWhatsApp, sendShippedWhatsApp, sendPaymentIssueWhatsApp, sendOwnerProofWhatsApp, whatsappStatus, sendWhatsAppTest, fetchWhatsAppMedia } from "./lib/whatsapp";
 import { listMessages } from "./queries/messages";
 import { listInbound, getInboundMedia, setInboundHandled } from "./queries/inbound";
-import { openingSpecialEnabled, setOpeningSpecialEnabled } from "./queries/flags";
+import { openingSpecialEnabled, setOpeningSpecialEnabled, lastWebhookEvent } from "./queries/flags";
 import { parseProofDataUrl, MAX_PROOFS_PER_ORDER } from "./lib/proof";
 import { photoPolishEnabled, polishImage } from "./lib/photo";
 import { publishToInstagram } from "./lib/meta";
@@ -443,9 +443,10 @@ export const appRouter = createRouter({
     paymentNotice: publicQuery.query(() => {
       return paymentNotice();
     }),
-    whatsappStatus: publicQuery.input(z.object({ token: adminToken })).query(({ input }) => {
+    whatsappStatus: publicQuery.input(z.object({ token: adminToken })).query(async ({ input }) => {
       assertAdminToken(input.token);
-      return whatsappStatus();
+      const [status, lastEvent] = await Promise.all([whatsappStatus(), lastWebhookEvent()]);
+      return { ...status, lastEvent };
     }),
     // Sends Meta's built-in test message to a number, to check the setup without placing an order.
     sendWhatsAppTest: publicQuery

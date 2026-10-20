@@ -50,3 +50,20 @@ export async function openingSpecialEnabled(): Promise<boolean> {
 export async function setOpeningSpecialEnabled(enabled: boolean): Promise<void> {
   await setFlag("opening_special", enabled ? "on" : "off");
 }
+
+/** The last call Meta made to the WhatsApp webhook (time and what happened), so a silent webhook can be diagnosed. */
+export async function recordWebhookEvent(summary: string): Promise<void> {
+  try {
+    await setFlag("wa_last_webhook", `${new Date().toISOString().slice(0, 19)}Z ${summary}`.slice(0, 100));
+  } catch (e) {
+    console.error("[flags] could not record the webhook event:", e);
+  }
+}
+
+export async function lastWebhookEvent(): Promise<string | null> {
+  try {
+    return await getFlag("wa_last_webhook");
+  } catch {
+    return null;
+  }
+}

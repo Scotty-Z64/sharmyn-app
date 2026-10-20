@@ -53,6 +53,7 @@ export default function WhatsAppPanel() {
         )}
       </div>
       {s?.ok && <p className="mt-2 text-xs text-ink-500">Sending from {s.number}{s.name ? ` (${s.name})` : ''}.</p>}
+      <p className="mt-1 text-[11px] text-ink-500">Last message from Meta to the shop: {s?.lastEvent ?? 'nothing received yet'}</p>
       {s && !s.ok && <p className="mt-2 text-xs text-rose-600">{s.problem}</p>}
       {s && !s.ok && <p className="mt-1 text-[11px] text-ink-500">Until it is fixed, use the WhatsApp buttons on each order. Nothing else is affected.</p>}
 
