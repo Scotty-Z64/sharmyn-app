@@ -14,7 +14,7 @@ export const MENU_LINKS = [
   { label: 'Jewellery', to: '/#jewellery' },
   { label: 'Handbags', to: '/#handbags' },
   { label: 'Bags', to: '/#bags' },
-  { label: 'Clothing', to: '/#clothing' },
+  { label: "Women's Clothing", to: '/#clothing' },
   { label: 'Track Order', to: '/track' },
   { label: 'Contact', to: '/#contact' },
 ];

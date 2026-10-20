@@ -118,7 +118,7 @@ describe("fulfilment stages", () => {
 
 describe("storefront ranges (Shoes, Women Sneakers, Men Sneakers, then the rest)", () => {
   it("lists the ranges in the order the shop asked for", () => {
-    expect(COLLECTIONS.map((c) => c.label)).toEqual(["Shoes", "Women Sneakers", "Men Sneakers", "Jewellery", "Handbags", "Bags", "Clothing"]);
+    expect(COLLECTIONS.map((c) => c.label)).toEqual(["Shoes", "Women Sneakers", "Men Sneakers", "Jewellery", "Handbags", "Bags", "Women's Clothing"]);
   });
   it("counts a sneaker with no gender as women", () => {
     expect(productGender({})).toBe("women");

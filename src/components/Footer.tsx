@@ -10,7 +10,7 @@ const SHOP_LINKS = [
   { label: 'Jewellery', to: '/#jewellery' },
   { label: 'Handbags', to: '/#handbags' },
   { label: 'Bags', to: '/#bags' },
-  { label: 'Clothing', to: '/#clothing' },
+  { label: "Women's Clothing", to: '/#clothing' },
 ];
 
 export default function Footer() {

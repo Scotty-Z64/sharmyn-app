@@ -180,7 +180,7 @@ export const COLLECTIONS: Collection[] = [
   { key: 'jewellery', label: 'Jewellery', category: 'jewellery', img: '/collection-jewellery.png', tagline: 'Pieces made to shine' },
   { key: 'handbags', label: 'Handbags', category: 'handbags', img: '/collection-handbags.png', tagline: 'Carry the moment' },
   { key: 'bags', label: 'Bags', category: 'bags', img: '/collection-bags.png', tagline: 'Totes, backpacks and everyday bags' },
-  { key: 'clothing', label: 'Clothing', category: 'clothing', img: '/collection-clothing.png', tagline: 'Everyday elegance' },
+  { key: 'clothing', label: "Women's Clothing", category: 'clothing', img: '/collection-clothing.png', tagline: 'Everyday elegance' },
 ];
 
 /** Which gender a product belongs to for the storefront: unset counts as women. */
