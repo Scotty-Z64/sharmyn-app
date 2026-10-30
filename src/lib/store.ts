@@ -24,6 +24,7 @@ import type { Gender } from '@contracts/types';
 export type { Gender } from '@contracts/types';
 export { SHOE_BRANDS, isSizedCategory, pudoDeliveryFee, lockerBoxLabel, LOCKER_BOXES, openingSpecialForCart, OPENING_SPECIAL_OFF, OPENING_SPECIAL_MIN_QTY, discountPercent, HERO_ASPECTS } from '@contracts/types';
 import type { HeroAspect } from '@contracts/types';
+import { SHOE_BRANDS } from '@contracts/types';
 
 /** Banner shape presets — a fixed ratio at every screen size when chosen;
  * null (the default) keeps the original 4:3-on-phones/16:9-on-desktop pair. */
@@ -169,7 +170,7 @@ export interface Collection {
   key: string;
   label: string;
   category: Category;
-  gender?: Gender;
+  gender?: 'women' | 'men'; // the sneaker ranges only; unisex products show under both
   img: string;
   tagline: string;
 }
@@ -186,6 +187,22 @@ export const COLLECTIONS: Collection[] = [
 /** Which gender a product belongs to for the storefront: unset counts as women. */
 export const productGender = (p: { gender?: Gender | null }): Gender => p.gender ?? 'women';
 
-/** Does this product belong in this range? */
+/** Does this product belong in this range? A unisex pair belongs to both the Women and the Men range. */
 export const inCollection = (p: { category: Category; gender?: Gender | null }, c: Collection): boolean =>
-  p.category === c.category && (!c.gender || productGender(p) === c.gender);
+  p.category === c.category && (!c.gender || productGender(p) === c.gender || productGender(p) === 'unisex');
+
+/** Adidas styles that are women's only: left off the Men range's brand tabs unless a pair of that style is listed there. */
+export const WOMENS_LEANING_BRANDS: readonly string[] = ['Adidas Samba', 'Adidas Spezial'];
+
+/** The brand tabs to show above a range's products. */
+export const brandsForRange = (c: Collection | null, products: { category: Category; gender?: Gender | null; brand?: string | null }[]): string[] =>
+  SHOE_BRANDS.filter((b) => !(c?.gender === 'men' && WOMENS_LEANING_BRANDS.includes(b) && !products.some((p) => inCollection(p, c) && p.brand === b)));
+
+/** Every shoe size the boutique stocks: 3 to 12 in half sizes. Women's run 3 to 8.5, men's 6 to 12, unisex covers both. */
+export const SHOE_SIZES: string[] = Array.from({ length: 19 }, (_, i) => String(3 + i / 2));
+const SIZE_RANGE: Record<Gender, [number, number]> = { women: [3, 8.5], men: [6, 12], unisex: [3, 12] };
+export const shoeSizesFor = (g: Gender): string[] => SHOE_SIZES.filter((s) => Number(s) >= SIZE_RANGE[g][0] && Number(s) <= SIZE_RANGE[g][1]);
+
+/** The sizes a customer is offered for a pair: a men's pair never lists a size under 6, whatever stock is recorded for it. */
+export const sizesForCustomer = (p: { gender?: Gender | null; sizes?: Record<string, number> | null }): [string, number][] =>
+  Object.entries(p.sizes ?? {}).filter(([s]) => p.gender !== 'men' || Number(s) >= 6).sort(([a], [b]) => Number(a) - Number(b));

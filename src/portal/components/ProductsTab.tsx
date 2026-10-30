@@ -210,7 +210,7 @@ export default function ProductsTab() {
                       <span className="font-mono text-ink-500">#{p.refNumber}</span> {p.name}
                     </p>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold-500 mt-0.5">
-                      {catLabel(p.category)}{p.category === 'sneakers' || p.category === 'shoes' ? ` · ${p.gender === 'men' ? 'Men' : 'Women'}` : ''}{p.brand ? ` · ${p.brand}` : ''} · {p.quantity} in stock
+                      {catLabel(p.category)}{p.category === 'sneakers' || p.category === 'shoes' ? ` · ${p.gender === 'men' ? 'Men' : p.gender === 'unisex' ? 'Unisex' : 'Women'}` : ''}{p.brand ? ` · ${p.brand}` : ''} · {p.quantity} in stock
                     </p>
                     <p className="font-display text-base font-semibold text-ink-900 mt-1">{formatPrice(p.price)}</p>
                     {p.costPrice > 0 && (

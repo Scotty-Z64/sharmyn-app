@@ -8,6 +8,7 @@ import { imageReadErrorMessage, MAX_UPLOAD_BYTES } from '@/lib/image-upload-erro
 import { loadImg, drawSandBackdrop, drawWordmark, PRODUCT_TEMPLATE_SRC, WORDMARK_SRC } from '@/lib/studio-visuals';
 import { removeBackgroundClient } from '@/lib/bg-removal';
 import { detectLikelyHandInCutout } from '@/lib/hand-detect';
+import { SHOE_SIZES, shoeSizesFor, type Gender } from '@/lib/store';
 import { trpc } from '@/providers/trpc';
 import { usePortal } from '@/portal/lib/portal';
 import { Thumb } from './bits';
@@ -169,12 +170,11 @@ async function compositeStudio(src: string, cutout: boolean, userScale = 1): Pro
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 
-export const SNEAKER_SIZES = ['3', '3.5', '4', '4.5', '5', '5.5', '6', '6.5', '7', '7.5', '8', '8.5'];
 
 export interface Draft {
   name: string;
   category: Category;
-  gender: '' | 'women' | 'men'; // '' = women (the default) — sneakers/shoes only
+  gender: Gender; // sneakers/shoes only; new products start as unisex, which lists under both Women and Men Sneakers
   brand: string; // '' = none — sneakers/shoes only
   price: string;
   oldPrice: string; // '' = no discount shown
@@ -195,12 +195,12 @@ export function draftFrom(p?: Product): Draft {
   return {
     name: p?.name ?? '',
     category: p?.category ?? 'sneakers',
-    gender: p?.gender ?? '',
+    gender: p ? p.gender ?? 'women' : 'unisex', // saved before genders existed = women
     brand: p?.brand ?? '',
     price: p ? String(p.price) : '',
     oldPrice: p?.oldPrice ? String(p.oldPrice) : '',
     costPrice: p?.costPrice ? String(p.costPrice) : '',
-    sizes: Object.fromEntries(SNEAKER_SIZES.map((s) => [s, p?.sizes?.[s] ? String(p.sizes[s]) : ''])),
+    sizes: Object.fromEntries([...new Set([...SHOE_SIZES, ...Object.keys(p?.sizes ?? {})])].map((s) => [s, p?.sizes?.[s] ? String(p.sizes[s]) : ''])),
     description: p?.description ?? '',
     image: p?.image ?? '',
     images: p?.images ?? [],
@@ -221,6 +221,8 @@ export default function ProductFormModal({
   const [imgErr, setImgErr] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((p) => ({ ...p, [k]: v }));
+  // The size boxes for who the shoe is for, plus any other size that already has stock so it never drops out of view.
+  const sizesShown = Object.keys(d.sizes).filter((s) => shoeSizesFor(d.gender).includes(s) || Number(d.sizes[s]) > 0).sort((x, y) => Number(x) - Number(y));
 
   // Photoroom — paid alternate to the free in-browser tool below.
   const { token } = usePortal();
@@ -944,12 +946,12 @@ export default function ProductFormModal({
           {isSizedCategory(d.category) && (
             <div>
               <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
-                Who are they for? <span className="text-ink-500/60 normal-case font-normal">(decides if it shows under Women or Men Sneakers)</span>
+                Who are they for? <span className="text-ink-500/60 normal-case font-normal">(decides where it shows: Women Sneakers, Men Sneakers, or both)</span>
               </label>
-              <select value={d.gender} onChange={(e) => set('gender', e.target.value as Draft['gender'])} className={`mt-2 ${input}`}>
-                <option value="">Women (default)</option>
-                <option value="women">Women</option>
-                <option value="men">Men</option>
+              <select value={d.gender} onChange={(e) => set('gender', e.target.value as Gender)} className={`mt-2 ${input}`}>
+                <option value="unisex">Unisex (shows under Women and Men Sneakers)</option>
+                <option value="women">Women only</option>
+                <option value="men">Men only</option>
               </select>
             </div>
           )}
@@ -991,8 +993,11 @@ export default function ProductFormModal({
               <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-500">
                 Stock by size * <span className="text-ink-500/60 normal-case font-normal">(how many of each size you have — leave a size at 0 to hide it from customers)</span>
               </label>
+              <p className="mt-1 text-[11px] text-ink-500">
+                {d.gender === 'men' ? "Men's sizes run 6 to 12." : d.gender === 'unisex' ? 'Unisex shows sizes 3 to 12, so women and men can both find theirs.' : "Women's sizes run 3 to 8.5."}
+              </p>
               <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {SNEAKER_SIZES.map((s) => {
+                {sizesShown.map((s) => {
                   const qty = d.sizes[s] ?? '';
                   const hasStock = Number(qty) > 0;
                   return (

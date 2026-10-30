@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COLLECTIONS, inCollection, productGender } from "../../src/lib/store";
+import { COLLECTIONS, brandsForRange, inCollection, productGender, shoeSizesFor, sizesForCustomer } from "../../src/lib/store";
 import {
   fulfilmentStage,
   lockerBoxLabel,
@@ -141,5 +141,46 @@ describe("storefront ranges (Shoes, Women Sneakers, Men Sneakers, then the rest)
     expect(inCollection({ category: "handbags" as const }, women)).toBe(false);
     expect(inCollection({ category: "handbags" as const }, handbags)).toBe(true);
     expect(inCollection({ category: "bags" as const }, handbags)).toBe(false);
+  });
+});
+
+describe("unisex sneakers, men's sizes and the Men range's brand tabs", () => {
+  const women = COLLECTIONS.find((c) => c.key === "womens-sneakers")!;
+  const men = COLLECTIONS.find((c) => c.key === "mens-sneakers")!;
+  it("lists a unisex pair under both Women Sneakers and Men Sneakers, and still keeps the rest apart", () => {
+    const unisex = { category: "sneakers" as const, gender: "unisex" as const };
+    expect(inCollection(unisex, women)).toBe(true);
+    expect(inCollection(unisex, men)).toBe(true);
+    expect(inCollection({ category: "sneakers" as const, gender: "women" as const }, men)).toBe(false);
+    expect(inCollection({ category: "sneakers" as const, gender: "men" as const }, women)).toBe(false);
+  });
+  it("gives men sizes 6 to 12, women 3 to 8.5 and unisex the whole 3 to 12 run", () => {
+    expect(shoeSizesFor("men")[0]).toBe("6");
+    expect(shoeSizesFor("men").at(-1)).toBe("12");
+    expect(shoeSizesFor("men")).toContain("9.5");
+    expect(shoeSizesFor("women")[0]).toBe("3");
+    expect(shoeSizesFor("women").at(-1)).toBe("8.5");
+    expect(shoeSizesFor("unisex")).toHaveLength(19);
+  });
+  it("never offers a customer a men's size under 6, but leaves women's and unisex sizes alone", () => {
+    const sizes = { "3": 5, "5.5": 5, "6": 5, "8.5": 5, "10": 2 };
+    expect(sizesForCustomer({ gender: "men", sizes }).map(([s]) => s)).toEqual(["6", "8.5", "10"]);
+    expect(sizesForCustomer({ gender: "unisex", sizes }).map(([s]) => s)).toEqual(["3", "5.5", "6", "8.5", "10"]);
+    expect(sizesForCustomer({ gender: null, sizes }).map(([s]) => s)).toEqual(["3", "5.5", "6", "8.5", "10"]);
+    expect(sizesForCustomer({ gender: "men", sizes: null })).toEqual([]);
+  });
+  it("leaves Adidas Samba and Spezial off the Men range's brand tabs until a men's pair of that style exists", () => {
+    const products = [
+      { category: "sneakers" as const, gender: null, brand: "Adidas Samba" },
+      { category: "sneakers" as const, gender: "men" as const, brand: "Nike" },
+    ];
+    const onMen = brandsForRange(men, products);
+    expect(onMen).not.toContain("Adidas Samba");
+    expect(onMen).not.toContain("Adidas Spezial");
+    expect(onMen).toContain("Nike");
+    expect(brandsForRange(women, products)).toContain("Adidas Samba");
+    expect(brandsForRange(women, products)).toContain("Adidas Spezial");
+    // a unisex Samba is for men too, so its tab appears
+    expect(brandsForRange(men, [...products, { category: "sneakers" as const, gender: "unisex" as const, brand: "Adidas Samba" }])).toContain("Adidas Samba");
   });
 });

@@ -2,20 +2,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { FileText, Footprints, Ruler, X } from 'lucide-react';
 import { useShop } from '@/lib/shop';
 
-const SIZE_ROWS: Array<{ sa: string; cm: string }> = [
-  { sa: '3', cm: '22 cm' },
-  { sa: '3.5', cm: '22.5 cm' },
-  { sa: '4', cm: '23 cm' },
-  { sa: '4.5', cm: '23.5 cm' },
-  { sa: '5', cm: '24 cm' },
-  { sa: '5.5', cm: '24.5 cm' },
-  { sa: '6', cm: '25 cm' },
-  { sa: '6.5', cm: '25.5 cm' },
-  { sa: '7', cm: '26 cm' },
-  { sa: '7.5', cm: '26.5 cm' },
-  { sa: '8', cm: '27 cm' },
-  { sa: '8.5', cm: '27.5 cm' },
-];
+// SA 3 is 22 cm and every full size adds 1 cm, so the chart carries on to men's size 12 (31 cm).
+const SIZE_ROWS: Array<{ sa: string; cm: string }> = Array.from({ length: 19 }, (_, i) => ({ sa: String(3 + i / 2), cm: `${22 + i / 2} cm` }));
 
 const STEPS = [
   { icon: FileText, text: 'Get a piece of paper and a pen.' },

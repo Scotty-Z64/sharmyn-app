@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Minus, Plus, X } from 'lucide-react';
 import { useShop } from '@/lib/shop';
-import { addToCart, formatPrice, resolveAvailability, isSizedCategory, discountPercent } from '@/lib/store';
+import { addToCart, formatPrice, resolveAvailability, isSizedCategory, discountPercent, sizesForCustomer } from '@/lib/store';
 import { AvailabilityBadge, LowStockBadge, DiscountBadge } from './ProductCard';
 import { BUSINESS, waLink } from '@/config/business';
 import { WhatsAppIcon } from './WhatsAppFloat';
@@ -24,7 +24,7 @@ export default function QuickView() {
   const p = quickView;
   const resolved = p ? resolveAvailability(p) : null;
   const status = p && resolved && p.quantity === 0 && resolved.status === 'in-stock' ? 'sold-out' : resolved?.status;
-  const sizeEntries = p?.sizes ? Object.entries(p.sizes).sort(([a], [b]) => Number(a) - Number(b)) : [];
+  const sizeEntries = p ? sizesForCustomer(p) : [];
   const needsSize = !!p && isSizedCategory(p.category) && sizeEntries.length > 0;
   const stockForSize = size ? (p?.sizes?.[size] ?? 0) : p?.quantity ?? 0;
   const addMax = needsSize ? stockForSize : (p?.quantity ?? 1);

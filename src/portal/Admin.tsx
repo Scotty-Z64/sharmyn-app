@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Bell, Download, Eye, EyeOff, Loader2, LogOut } from 'lucide-react';
 import { trpc } from '@/providers/trpc';
 import { PortalProvider, clearPortalToken, readPortalToken, storePortalToken, usePortal } from '@/portal/lib/portal';
+import { useTabletLandscape } from '@/portal/lib/landscape';
 import InstallPrompt, { InstallButton } from '@/components/InstallPrompt';
 import OverviewTab, { useStats } from '@/portal/components/OverviewTab';
 import ProductsTab from '@/portal/components/ProductsTab';
@@ -251,6 +252,7 @@ function Dashboard() {
 
 export default function Admin() {
   const [token, setToken] = useState<string | null>(() => readPortalToken());
+  useTabletLandscape();
 
   return (
     <>

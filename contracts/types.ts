@@ -30,14 +30,19 @@ export type ProofStatus = "pending" | "accepted" | "rejected";
 export type RefundStatus = "none" | "pending" | "refunded";
 export type DeliveryMethod = "pudo" | "door";
 
-/** Who a pair of shoes is for. Products with no value count as women (the boutique is women's fashion). */
-export type Gender = "women" | "men";
+/**
+ * Who a pair of shoes is for. "unisex" shows under both Women and Men Sneakers. Products saved before this
+ * existed have no value and count as women (the boutique started as women's fashion).
+ */
+export type Gender = "women" | "men" | "unisex";
+export const GENDERS: readonly Gender[] = ["women", "men", "unisex"];
+export const isGender = (v: unknown): v is Gender => typeof v === "string" && (GENDERS as readonly string[]).includes(v);
 
 export interface Product {
   id: string;
   name: string;
   category: Category;
-  gender?: Gender | null; // sneakers/shoes: who they are for. null/unset counts as women.
+  gender?: Gender | null; // sneakers/shoes: who they are for. null/unset counts as women; unisex shows under both ranges.
   brand?: string | null; // sneakers/shoes only, e.g. "Nike", "Adidas Samba"
   price: number; // ZAR — what the customer pays
   oldPrice?: number | null; // ZAR — pre-discount reference price, shown struck through; null/unset = no discount shown

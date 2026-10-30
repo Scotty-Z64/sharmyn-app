@@ -4,7 +4,7 @@ import { getDb } from "./connection";
 import { products, orders, orderPayments, orderProofs, notifications, siteSettings } from "@db/schema";
 import { UNPAID_HOLD_HOURS } from "../../src/config/business";
 import { summarisePayments, summariseOutstanding } from "../lib/payment-summary";
-import { isSizedCategory, pudoDeliveryFee, openingSpecialForCart } from "@contracts/types";
+import { isGender, isSizedCategory, pudoDeliveryFee, openingSpecialForCart } from "@contracts/types";
 import { openingSpecialEnabled } from "./flags";
 import type {
   Product,
@@ -57,7 +57,7 @@ function toProduct(row: typeof products.$inferSelect): Product {
     id: row.id,
     name: row.name,
     category: row.category as Category,
-    gender: (row.gender === "men" || row.gender === "women" ? row.gender : null) as Product["gender"],
+    gender: (isGender(row.gender) ? row.gender : null) as Product["gender"],
     brand: row.brand ?? null,
     price: row.price,
     oldPrice: row.oldPrice ?? null,
@@ -246,7 +246,7 @@ async function upsertProductImpl(
     id: p.id,
     name: p.name,
     category: p.category,
-    gender: p.gender === "men" || p.gender === "women" ? p.gender : null,
+    gender: isGender(p.gender) ? p.gender : null,
     brand: p.brand?.trim() || null,
     price: Math.round(p.price),
     oldPrice: p.oldPrice != null && p.oldPrice > 0 ? Math.round(p.oldPrice) : null,

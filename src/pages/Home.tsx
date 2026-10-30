@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { Search, X } from 'lucide-react';
 import { trpc } from '@/providers/trpc';
 import { useShop } from '@/lib/shop';
-import { COLLECTIONS, SHOE_BRANDS, resolveAvailability, heroAspectClass, inCollection, type Collection, type Product } from '@/lib/store';
+import { COLLECTIONS, brandsForRange, resolveAvailability, heroAspectClass, inCollection, type Collection, type Product } from '@/lib/store';
 import ProductCard from '@/components/ProductCard';
 import QuickView from '@/components/QuickView';
 import SearchOverlay from '@/components/SearchOverlay';
@@ -135,7 +135,8 @@ function Catalog({ activeKey, setActiveKey }: { activeKey: string; setActiveKey:
   const activeCol = COLLECTIONS.find((c) => c.key === activeKey) ?? null;
   const activeCat = activeCol ? activeCol.category : 'all';
   const showBrandFilter = BRAND_CATEGORIES.includes(activeCat);
-  useEffect(() => { if (!showBrandFilter) setBrandFilter('all'); }, [showBrandFilter]);
+  const brands = useMemo(() => brandsForRange(activeCol, products), [activeCol, products]);
+  useEffect(() => { if (!showBrandFilter || (brandFilter !== 'all' && !brands.includes(brandFilter))) setBrandFilter('all'); }, [showBrandFilter, brands, brandFilter]);
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -223,7 +224,7 @@ function Catalog({ activeKey, setActiveKey }: { activeKey: string; setActiveKey:
           {showBrandFilter && (
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
               <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-500">Brand:</span>
-              {(['all', ...SHOE_BRANDS] as const).map((b) => (
+              {['all', ...brands].map((b) => (
                 <button key={b} onClick={() => setBrandFilter(b)}
                   className={`shrink-0 h-9 px-3.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] rounded-full border transition-colors ${
                     brandFilter === b ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-ink-900 border-blush-100 hover:border-rose-300'}`}>

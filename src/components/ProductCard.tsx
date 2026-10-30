@@ -1,7 +1,7 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { motion } from 'framer-motion';
 import type { Product } from '@/lib/store';
-import { addToCart, formatPrice, resolveAvailability, isSizedCategory, discountPercent } from '@/lib/store';
+import { addToCart, formatPrice, resolveAvailability, isSizedCategory, discountPercent, sizesForCustomer } from '@/lib/store';
 import { useShop } from '@/lib/shop';
 
 export function AvailabilityBadge({ product }: { product: Product }) {
@@ -55,7 +55,7 @@ export default function ProductCard({ product, index = 0 }: { product: Product; 
   const resolved = resolveAvailability(product);
   const status = product.quantity === 0 && resolved.status === 'in-stock' ? 'sold-out' : resolved.status;
 
-  const needsSize = isSizedCategory(product.category) && !!product.sizes && Object.keys(product.sizes).length > 0;
+  const needsSize = isSizedCategory(product.category) && sizesForCustomer(product).length > 0;
 
   const onAdd = (e: ReactMouseEvent) => {
     e.stopPropagation();
