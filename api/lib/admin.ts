@@ -6,7 +6,7 @@
 // Token = `${expMs}.${hmac}` where hmac = HMAC-SHA256(`exp:${expMs}`, secret),
 // secret derived from ADMIN_PASSWORD + APP_SECRET. Fails CLOSED when
 // ADMIN_PASSWORD is unset: every admin procedure throws PRECONDITION_FAILED.
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 
 // 30d, paired with client-side localStorage (not sessionStorage) token
@@ -15,8 +15,31 @@ import { TRPCError } from "@trpc/server";
 // regression; logging out is still one tap away.
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
+// A password the owner chose inside the portal is kept as a salted hash (never the password itself).
+// While one is set it replaces ADMIN_PASSWORD from Render: the old password stops working and every
+// login made with it is cut off, because tokens are signed with the stored hash instead. Clearing it
+// (delete the "admin_pw_hash" row from app_flags) hands control back to ADMIN_PASSWORD.
+const HASH_PREFIX = "s1";
+let storedHash: string | null = null;
+
+export function hashAdminPassword(password: string): string {
+  const salt = randomBytes(16);
+  return `${HASH_PREFIX}$${salt.toString("base64url")}$${scryptSync(password, salt, 32).toString("base64url")}`;
+}
+
+function parseHash(h: string | null): { salt: Buffer; key: Buffer } | null {
+  const [prefix, salt, key] = (h ?? "").split("$");
+  if (prefix !== HASH_PREFIX || !salt || !key) return null;
+  return { salt: Buffer.from(salt, "base64url"), key: Buffer.from(key, "base64url") };
+}
+
+/** Called with the hash read from the database (null = none). A value that cannot be read is ignored, so Render's password still gets the owner in. */
+export function setStoredAdminHash(h: string | null): void {
+  storedHash = parseHash(h) ? h : null;
+}
+
 export function adminConfigured(): boolean {
-  return !!process.env.ADMIN_PASSWORD;
+  return !!process.env.ADMIN_PASSWORD || !!storedHash;
 }
 
 function adminPassword(): string {
@@ -31,10 +54,15 @@ function adminPassword(): string {
 }
 
 function secret(): string {
-  return `${adminPassword()}|${process.env.APP_SECRET ?? ""}`;
+  return `${storedHash ?? adminPassword()}|${process.env.APP_SECRET ?? ""}`;
 }
 
 export function verifyAdminPassword(password: string): boolean {
+  const parsed = parseHash(storedHash);
+  if (parsed) {
+    const got = scryptSync(password, parsed.salt, parsed.key.length);
+    return got.length === parsed.key.length && timingSafeEqual(got, parsed.key);
+  }
   const expected = adminPassword();
   const a = Buffer.from(password);
   const b = Buffer.from(expected);

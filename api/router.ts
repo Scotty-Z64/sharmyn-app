@@ -53,7 +53,9 @@ import {
   updateStudioPost,
 } from "./queries/studio";
 import { createExchange, listExchangesForOrder, markExchangeSlipSent } from "./queries/exchanges";
-import { adminConfigured, verifyAdminPassword, issueAdminToken, assertAdminToken, rateLimit, clientIp } from "./lib/admin";
+import { adminConfigured, hashAdminPassword, verifyAdminPassword, issueAdminToken, assertAdminToken, setStoredAdminHash, rateLimit, clientIp } from "./lib/admin";
+import { refreshAdminAuth } from "./queries/admin-password";
+import { saveAdminPasswordHash } from "./queries/flags";
 import { notifyOwner, notifyCustomer, notifyLowStock, notifyProofReceived, sendInvoice, sendExchangeSlip } from "./lib/notify";
 import type { Order } from "@contracts/types";
 import { HERO_ASPECTS } from "@contracts/types";
@@ -251,6 +253,25 @@ export const appRouter = createRouter({
       }
       return { ok: true as const, token: issueAdminToken(), expiresInMs: 12 * 60 * 60 * 1000 };
     }),
+    // The owner changes the portal password here, so it never needs a trip to Render. Everyone else who is
+    // logged in is signed out at once (their tokens were made with the old password); this device gets a new token.
+    changeAdminPassword: publicQuery
+      .input(z.object({ token: adminToken, currentPassword: z.string().max(200), newPassword: z.string().min(10).max(200) }))
+      .mutation(async ({ input, ctx }) => {
+        rateLimit(`changeAdminPassword:${clientIp(ctx.req)}`, 5);
+        assertAdminToken(input.token);
+        await refreshAdminAuth(true);
+        if (!verifyAdminPassword(input.currentPassword)) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "The current password is not right" });
+        }
+        if (input.newPassword === input.currentPassword) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a password that is different from the current one" });
+        }
+        const hash = hashAdminPassword(input.newPassword);
+        await saveAdminPasswordHash(hash);
+        setStoredAdminHash(hash);
+        return { ok: true as const, token: issueAdminToken() };
+      }),
     adminProducts: publicQuery.input(z.object({ token: adminToken })).query(async ({ input }) => {
       assertAdminToken(input.token);
       await ensureProductNumbering(); // once per server start: closes any gaps in the catalog numbers

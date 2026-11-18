@@ -9,7 +9,7 @@ Changing a value in Render redeploys the site (about 3 minutes).
 | `DATABASE_URL` 🔒 | Yes | The TiDB Cloud database holding products, orders, payments and logs. |
 | `APP_ID`, `APP_SECRET` 🔒 | Yes | Internal app identity and signing secret. |
 | `NODE_ENV` | Yes | Must be `production` on Render. |
-| `ADMIN_PASSWORD` 🔒 | Yes | The owner password for `/manage`. Keep it private; change it if anyone who should not have it has seen it. |
+| `ADMIN_PASSWORD` 🔒 | Yes | The starting owner password for `/manage`. The owner can choose a new one in the portal (Overview → Portal password); that choice is stored as a hash and replaces this one, and everyone logged in with the old one is signed out. To go back to this one, delete the `admin_pw_hash` row from the `app_flags` table. |
 | `OWNER_EMAIL` | Recommended | Where order, proof-of-payment, low-stock and weekly-report emails go. |
 | `RESEND_API_KEY` 🔒 | Recommended | Sends emails (invoices, order updates). Without it, emails are skipped. See `email-setup.md`. |
 | `EMAIL_FROM` | Optional | Sender shown on emails (needs the domain verified in Resend). |

@@ -67,3 +67,14 @@ export async function lastWebhookEvent(): Promise<string | null> {
     return null;
   }
 }
+
+/** The password hash the owner set in the portal, read fresh from the database (null = none set). */
+export async function readAdminPasswordHash(): Promise<string | null> {
+  await ensureTable();
+  const [row] = await getDb().select().from(appFlags).where(eq(appFlags.key, "admin_pw_hash"));
+  return row?.value ?? null;
+}
+
+export async function saveAdminPasswordHash(hash: string): Promise<void> {
+  await setFlag("admin_pw_hash", hash);
+}

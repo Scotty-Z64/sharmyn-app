@@ -103,6 +103,7 @@ app.get("/api/invoice/:orderId", async (c) => {
 app.get("/api/report.pdf", async (c) => {
   const token = c.req.query("token") ?? "";
   const { assertAdminToken } = await import("./lib/admin");
+  await (await import("./queries/admin-password")).refreshAdminAuth();
   try {
     assertAdminToken(token);
   } catch {
@@ -129,6 +130,7 @@ app.get("/api/report.pdf", async (c) => {
 app.get("/api/order-list.pdf", async (c) => {
   const token = c.req.query("token") ?? "";
   const { assertAdminToken } = await import("./lib/admin");
+  await (await import("./queries/admin-password")).refreshAdminAuth();
   try {
     assertAdminToken(token);
   } catch {

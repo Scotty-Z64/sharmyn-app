@@ -23,7 +23,7 @@ const STATUS_MESSAGES: Partial<Record<OrderStatus, string>> = {
   pending: 'Order received! We\u2019ll confirm it shortly.',
   processing: 'We\u2019re wrapping your pieces with love.',
   shipped: 'Your parcel is on its way! Expected in 2\u20133 days.',
-  delivered: 'Delivered \u2014 enjoy your Sharmyn pieces, gorgeous!',
+  delivered: 'Delivered: Thank you for your Trust & Support!',
   cancelled: 'This order has been cancelled. Any payment will be refunded.',
 };
 
