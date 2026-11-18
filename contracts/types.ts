@@ -28,7 +28,14 @@ export type PaymentGateway = "eft";
 /** A customer's uploaded proof of payment: waiting for the owner, accepted (payment confirmed) or rejected (with a reason). */
 export type ProofStatus = "pending" | "accepted" | "rejected";
 export type RefundStatus = "none" | "pending" | "refunded";
-export type DeliveryMethod = "pudo" | "door";
+export type DeliveryMethod = "pudo" | "door" | "collect";
+
+/** Towns where customers collect from us (no courier) while collection is switched on in the portal. */
+export const COLLECTION_TOWNS = ["Krugersdorp", "Hartbeespoort"] as const;
+/** Is this city (as a Pudo locker spells it, or a customer types it) one of the collection towns? "Harties" counts. */
+export function isCollectionTown(city: string): boolean {
+  return /krugersdorp|harte?beespoort|harties/i.test(city);
+}
 
 /**
  * Who a pair of shoes is for. "unisex" shows under both Women and Men Sneakers. Products saved before this
@@ -89,6 +96,7 @@ export interface PudoLockerRef {
 export interface OrderDelivery {
   method: DeliveryMethod;
   locker?: PudoLockerRef;
+  pickup?: string; // "collect" orders: where and when to collect, as it read when the order was placed
   fee: number;
 }
 
@@ -213,7 +221,7 @@ export function fulfilmentStage(o: Pick<Order, "paymentStatus" | "supplierOrdere
 export interface PublicOrder {
   id: string;
   items: { name: string; qty: number; price: number; size?: string | null }[];
-  delivery: { method: DeliveryMethod; locker?: PudoLockerRef; fee: number } | null;
+  delivery: { method: DeliveryMethod; locker?: PudoLockerRef; pickup?: string; fee: number } | null;
   trackingNumber: string | null;
   total: number;
   status: OrderStatus;

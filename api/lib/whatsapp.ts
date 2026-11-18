@@ -199,7 +199,7 @@ export async function sendPaymentIssueWhatsApp(order: Order, reason: string): Pr
 
 /** Parcel on its way: courier tracking number + the track-your-order link. Needs a tracking number. */
 export async function sendShippedWhatsApp(order: Order): Promise<boolean> {
-  if (!whatsappEnabled() || !order.trackingNumber) return false;
+  if (!whatsappEnabled() || !order.trackingNumber || order.delivery?.method === "collect") return false;
   return deliver(order, "shipped", customerWhatsAppNumber(order), WHATSAPP_TEMPLATES.shipped, [
     { type: "body", parameters: [text(firstName(order)), text(order.id), text(order.trackingNumber), text(trackLink(order))] },
   ]);

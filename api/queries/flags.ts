@@ -11,6 +11,10 @@ function ensureTable(): Promise<void> {
       flag_key VARCHAR(40) NOT NULL PRIMARY KEY,
       flag_value VARCHAR(100) NOT NULL
     )`);
+    // The collection address and hours need more room than an on/off switch does.
+    await getDb().execute(sql`ALTER TABLE app_flags MODIFY flag_value VARCHAR(500) NOT NULL`).catch((e) => {
+      console.error("[flags] could not widen app_flags.flag_value:", e);
+    });
   })().catch((e) => {
     tableReady = null;
     throw e;
@@ -77,4 +81,28 @@ export async function readAdminPasswordHash(): Promise<string | null> {
 
 export async function saveAdminPasswordHash(hash: string): Promise<void> {
   await setFlag("admin_pw_hash", hash);
+}
+
+/**
+ * Collection ("collect from us") for the towns we do not courier to. Only counts as on when the owner has
+ * switched it on AND typed where to collect. If the setting cannot be read, collection is off.
+ */
+export async function collectionSettings(): Promise<{ enabled: boolean; info: string }> {
+  try {
+    const info = ((await getFlag("collect_info")) ?? "").trim();
+    return { enabled: (await getFlag("collect_on")) === "on" && info.length > 0, info };
+  } catch (e) {
+    console.error("[flags] could not read the collection setting:", e);
+    return { enabled: false, info: "" };
+  }
+}
+
+/** What the portal shows and edits: the switch and the text, even while one of them is missing. */
+export async function collectionSettingsForOwner(): Promise<{ on: boolean; info: string }> {
+  return { on: (await getFlag("collect_on")) === "on", info: ((await getFlag("collect_info")) ?? "").trim() };
+}
+
+export async function saveCollectionSettings(on: boolean, info: string): Promise<void> {
+  await setFlag("collect_info", info.trim().slice(0, 400));
+  await setFlag("collect_on", on ? "on" : "off");
 }

@@ -114,7 +114,7 @@ export const waInbound = mysqlTable("wa_inbound", {
 // api/queries/flags.ts). Today: the Opening Special.
 export const appFlags = mysqlTable("app_flags", {
   key: varchar("flag_key", { length: 40 }).primaryKey(),
-  value: varchar("flag_value", { length: 100 }).notNull(),
+  value: varchar("flag_value", { length: 500 }).notNull(),
 });
 
 export const studioPosts = mysqlTable("studio_posts", {

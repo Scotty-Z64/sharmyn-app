@@ -4,8 +4,8 @@ import { getDb } from "./connection";
 import { products, orders, orderPayments, orderProofs, notifications, siteSettings } from "@db/schema";
 import { UNPAID_HOLD_HOURS } from "../../src/config/business";
 import { summarisePayments, summariseOutstanding } from "../lib/payment-summary";
-import { isGender, isSizedCategory, pudoDeliveryFee, openingSpecialForCart } from "@contracts/types";
-import { openingSpecialEnabled } from "./flags";
+import { isCollectionTown, isGender, isSizedCategory, pudoDeliveryFee, openingSpecialForCart } from "@contracts/types";
+import { openingSpecialEnabled, collectionSettings } from "./flags";
 import type {
   Product,
   Order,
@@ -33,8 +33,8 @@ import type {
 /** Server-side delivery fees (ZAR) — the ONLY source of truth. Priced by locker
  * size (Medium R150 for 1–2 items, Large R170 for 3–4) — see pudoDeliveryFee (contracts/types.ts). */
 function deliveryFeeFor(method: OrderDeliveryInput["method"], totalQty: number): number {
-  void method; // priced by locker size, whichever way it is delivered
-  return pudoDeliveryFee(totalQty);
+  if (method === "collect") return 0; // collected from us: no courier, no fee
+  return pudoDeliveryFee(totalQty); // priced by locker size, whichever way it is delivered
 }
 
 const UNPAID_TTL_MS = UNPAID_HOLD_HOURS * 60 * 60 * 1000; // lazy sweep: cancel pending+unpaid after the hold window (shared with the checkout wording)
@@ -114,7 +114,7 @@ export function toPublicOrder(order: Order): PublicOrder {
     id: order.id,
     items: order.items.map((i) => ({ name: i.name, qty: i.qty, price: i.price, size: i.size ?? null })),
     delivery: order.delivery
-      ? { method: order.delivery.method, locker: order.delivery.locker, fee: order.delivery.fee }
+      ? { method: order.delivery.method, locker: order.delivery.locker, pickup: order.delivery.pickup, fee: order.delivery.fee }
       : null,
     trackingNumber: order.trackingNumber ?? null,
     total: order.total,
@@ -594,9 +594,20 @@ async function placeOrderTxImpl(
     specialOn
   );
 
+  // Collection: allowed only while the owner has it switched on, and while it is on, no courier locker in
+  // the collection towns (the customer collects from us instead).
+  const collection = await collectionSettings();
+  let pickup: string | undefined;
+  if (deliveryInput.method === "collect") {
+    if (!collection.enabled) throw new Error("COLLECTION_UNAVAILABLE");
+    pickup = collection.info;
+  } else if (collection.enabled && deliveryInput.locker && isCollectionTown(deliveryInput.locker.city)) {
+    throw new Error("COLLECT_ONLY_AREA");
+  }
   const delivery: OrderDelivery = {
     method: deliveryInput.method,
     locker: deliveryInput.method === "pudo" ? deliveryInput.locker : undefined,
+    ...(pickup ? { pickup } : {}),
     fee: deliveryFeeFor(deliveryInput.method, totalQty),
   };
 

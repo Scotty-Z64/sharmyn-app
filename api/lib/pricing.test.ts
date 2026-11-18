@@ -7,6 +7,7 @@ import {
   openingSpecialForCart,
   orderLockerLabel,
   pudoDeliveryFee,
+  isCollectionTown,
 } from "../../contracts/types";
 
 describe("locker delivery pricing (Medium R150 for 1-2 items, Large R170 for 3-4)", () => {
@@ -182,5 +183,18 @@ describe("unisex sneakers, men's sizes and the Men range's brand tabs", () => {
     expect(brandsForRange(women, products)).toContain("Adidas Spezial");
     // a unisex Samba is for men too, so its tab appears
     expect(brandsForRange(men, [...products, { category: "sneakers" as const, gender: "unisex" as const, brand: "Adidas Samba" }])).toContain("Adidas Samba");
+  });
+});
+
+describe("collection towns (Krugersdorp and Hartbeespoort)", () => {
+  it("recognises the towns however a locker or a customer spells them", () => {
+    for (const c of ["Krugersdorp", "krugersdorp", "Hartbeespoort", "Hartebeespoort", "Harties", "Krugersdorp North"]) {
+      expect(isCollectionTown(c), c).toBe(true);
+    }
+  });
+  it("does not catch other towns, even ones with similar names", () => {
+    for (const c of ["Johannesburg", "Brits", "Britstown", "Muldersdrift", "Randburg", ""]) {
+      expect(isCollectionTown(c), c).toBe(false);
+    }
   });
 });

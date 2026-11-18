@@ -11,6 +11,7 @@ export type NotificationType = "new_order" | "paid" | "cancel_request" | "low_st
 const DELIVERY_LABEL: Record<string, string> = {
   pudo: "Pudo Locker Pickup",
   door: "Door Delivery",
+  collect: "Collect from us",
 };
 
 /** Where-and-who-to-send-it fulfilment block — the part of the email that actually
@@ -25,6 +26,9 @@ function deliveryInstructions(order: Order): string {
       `  Send to locker: ${d.locker.name}`,
       `  Locker address: ${d.locker.address}, ${d.locker.city}, ${d.locker.province}`,
     ].join("\n");
+  }
+  if (d.method === "collect") {
+    return [`Delivery method: ${label} (free). The customer collects, so no courier is needed.`, `  Collection details given to the customer: ${d.pickup ?? "-"}`].join("\n");
   }
   if (d.method === "door") {
     return [
@@ -158,8 +162,12 @@ function customerBody(type: CustomerEmailType, order: Order, note?: string): str
   const track = `Track your order any time: reply to this email with your order number ${order.id}, or use the tracking page on the store with this order number and the email address you checked out with.`;
   const intro: Record<CustomerEmailType, string> = {
     order_placed: `Hi ${order.customer.name}, thank you for your order! Here's what we've got:`,
-    order_shipped: `Hi ${order.customer.name}, your order is on its way!${order.trackingNumber ? ` Tracking/waybill number: ${order.trackingNumber}.` : ""}`,
-    order_delivered: `Hi ${order.customer.name}, your order has been delivered — we hope you love it!`,
+    order_shipped: order.delivery?.method === "collect"
+      ? `Hi ${order.customer.name}, your order is ready for collection! ${order.delivery.pickup ?? ""}`.trim()
+      : `Hi ${order.customer.name}, your order is on its way!${order.trackingNumber ? ` Tracking/waybill number: ${order.trackingNumber}.` : ""}`,
+    order_delivered: order.delivery?.method === "collect"
+      ? `Hi ${order.customer.name}, thank you for collecting your order — we hope you love it!`
+      : `Hi ${order.customer.name}, your order has been delivered — we hope you love it!`,
     order_cancelled: `Hi ${order.customer.name}, order ${order.id} has been cancelled. Any payment made will be refunded.`,
     payment_rejected: `Hi ${order.customer.name}, we could not confirm your payment for order ${order.id}${note ? `: ${note}` : "."} Please check it and send your proof of payment again (on the Track Order page, or by WhatsApp to ${BUSINESS.whatsapp}), and quote ${order.id} as the reference. Your order is still being held for you.`,
   };

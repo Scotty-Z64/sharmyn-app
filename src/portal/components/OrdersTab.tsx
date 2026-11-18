@@ -78,6 +78,7 @@ const REFUND_LABEL: Record<string, string> = {
 const DELIVERY_LABEL: Record<string, string> = {
   pudo: 'Pudo Locker Pickup',
   door: 'Door Delivery',
+  collect: 'Collect from us',
 };
 
 function WaybillSection({ order }: { order: Order }) {
@@ -640,6 +641,9 @@ function OrderCard({ order }: { order: Order }) {
                   <p className="flex items-center gap-1.5 font-semibold uppercase tracking-[0.14em] text-[10px] text-gold-500">
                     <MapPin size={12} /> {DELIVERY_LABEL[order.delivery.method] ?? 'Delivery'}{orderLockerLabel(order) ? ` (${orderLockerLabel(order)})` : ''} · {order.delivery.fee === 0 ? 'Free' : formatPrice(order.delivery.fee)}
                   </p>
+                  {order.delivery.method === 'collect' && (
+                    <p className="whitespace-pre-line text-sm text-ink-900">{order.delivery.pickup ?? 'The customer collects.'}</p>
+                  )}
                   {order.delivery.method === 'pudo' && order.delivery.locker && (
                     <>
                       <p className="text-sm font-semibold text-ink-900">{order.delivery.locker.name}</p>

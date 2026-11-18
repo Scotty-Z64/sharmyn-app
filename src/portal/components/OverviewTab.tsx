@@ -6,6 +6,7 @@ import { usePortal } from '@/portal/lib/portal';
 import { CountUp, Thumb } from './bits';
 import WhatsAppPanel from './WhatsAppPanel';
 import ChangePasswordPanel from './ChangePasswordPanel';
+import CollectionPanel from './CollectionPanel';
 import PromoPanel from './PromoPanel';
 
 function isToday(iso: string): boolean {
@@ -115,6 +116,7 @@ export default function OverviewTab({ goTo }: { goTo: (t: 'products' | 'stock' |
       <PromoPanel />
 
       <WhatsAppPanel />
+      <CollectionPanel />
       <ChangePasswordPanel />
 
       {/* Daily reconciliation */}

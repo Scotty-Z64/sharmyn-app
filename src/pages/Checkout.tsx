@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Copy, Crown, Loader2, Lock, PackageOpen } from 'lucide-react';
+import { ArrowLeft, Copy, Crown, Loader2, Lock, MapPin, PackageOpen } from 'lucide-react';
 import { useShop } from '@/lib/shop';
 import { trpc } from '@/providers/trpc';
-import { clearCart, formatPrice, formatAddress, pudoDeliveryFee, lockerBoxLabel, openingSpecialForCart } from '@/lib/store';
+import { clearCart, formatPrice, formatAddress, isCollectionTown, pudoDeliveryFee, lockerBoxLabel, openingSpecialForCart } from '@/lib/store';
 import { useOpeningSpecial } from '@/lib/promo';
 import type { Order, OrderDelivery, PudoLockerRef } from '@/lib/store';
 import PudoLockerPicker from '@/components/checkout/PudoLockerPicker';
@@ -18,7 +18,7 @@ const PROVINCES = [
   'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape',
 ];
 
-type DeliveryMethod = 'pudo' | 'door';
+type DeliveryMethod = 'pudo' | 'door' | 'collect';
 
 const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number];
 
@@ -93,6 +93,14 @@ export default function Checkout() {
 
   const utils = trpc.useUtils();
   const placeOrderMutation = trpc.shop.placeOrder.useMutation();
+  // "Collect from us": offered only while the owner has switched it on (and said where to collect).
+  const collection = trpc.shop.collectionInfo.useQuery(undefined, { staleTime: 60_000 });
+  const collectOn = !!collection.data?.enabled;
+  const collectInfo = collection.data?.info ?? '';
+  const collectTowns = (collection.data?.towns ?? ['Krugersdorp', 'Hartbeespoort']).join(' and ');
+  useEffect(() => {
+    if (!collectOn && delivery === 'collect') setDelivery('pudo');
+  }, [collectOn, delivery]);
 
   const lines = useMemo(
     () =>
@@ -116,7 +124,7 @@ export default function Checkout() {
   // Kept in sync with the server's actual charge (placeOrderTx) — this is
   // only what the customer is shown before submitting, never trusted as the
   // real price; the server recomputes it from the order's real item count.
-  const deliveryFee = pudoDeliveryFee(totalQty); // by locker size: Medium R150 (1–2 items), Large R170 (3–4 items)
+  const deliveryFee = delivery === 'collect' ? 0 : pudoDeliveryFee(totalQty); // by locker size: Medium R150 (1–2 items), Large R170 (3–4 items); collecting is free
   const total = subtotal + deliveryFee;
 
   const selectDelivery = (m: DeliveryMethod) => {
@@ -139,6 +147,12 @@ export default function Checkout() {
       toast('Please choose your Pudo locker');
       return;
     }
+    if (delivery === 'pudo' && locker && collectOn && isCollectionTown(locker.city)) {
+      setLockerError(true);
+      setShakeKey((k) => k + 1);
+      toast(`We don’t courier to ${collectTowns} — please choose “Collect from us” (free)`);
+      return;
+    }
     if (Object.keys(errs).length) {
       setErrors(errs);
       setShakeKey((k) => k + 1);
@@ -150,6 +164,7 @@ export default function Checkout() {
     const items = lines.map((l) => ({ productId: l.product.id, qty: l.qty, size: l.size ?? null }));
     const methodLabel =
       delivery === 'pudo' ? `Pudo Locker Pickup (${lockerBoxLabel(totalQty)}) ${formatPrice(deliveryFee)}`
+      : delivery === 'collect' ? 'Collect from us (free)'
       : `Door Delivery ${formatPrice(deliveryFee)}`;
     const deliveryInfo: OrderDelivery = {
       method: delivery,
@@ -167,6 +182,7 @@ export default function Checkout() {
           notes: [
             `Delivery: ${methodLabel}`,
             ...(delivery === 'pudo' && locker ? [`Locker: ${locker.name} — ${formatAddress(locker)}`] : []),
+            ...(delivery === 'collect' ? [`Collection: ${collectInfo}`] : []),
             form.notes.trim(),
           ].filter(Boolean).join(' · '),
         },
@@ -190,6 +206,11 @@ export default function Checkout() {
             const name = lines.find((l) => l.productId === productId)?.product.name ?? 'An item';
             toast(`Sorry, ${name} just sold out`);
             utils.shop.products.invalidate();
+          } else if (msg.includes('COLLECT_ONLY_AREA')) {
+            toast(`We don’t courier to ${collectTowns} — please choose “Collect from us” (free)`);
+          } else if (msg.includes('COLLECTION_UNAVAILABLE')) {
+            toast('Collecting from us is not available right now — please choose a Pudo locker');
+            utils.shop.collectionInfo.invalidate();
           } else if (msg.includes('SIZE_REQUIRED:')) {
             const productId = msg.split('SIZE_REQUIRED:')[1]?.split(/[\s"']/)[0];
             const name = lines.find((l) => l.productId === productId)?.product.name ?? 'An item';
@@ -358,9 +379,12 @@ export default function Checkout() {
             <div className="mt-1 border-t border-blush-100 pt-3 text-[13px] text-ink-500 space-y-1">
               {placed.delivery && (
                 <div className="flex justify-between">
-                  <span>{placed.delivery.method === 'pudo' ? 'Pudo locker delivery' : 'Door delivery'}</span>
+                  <span>{placed.delivery.method === 'pudo' ? 'Pudo locker delivery' : placed.delivery.method === 'collect' ? 'Collect from us' : 'Door delivery'}</span>
                   <span>{placed.delivery.fee === 0 ? 'Free' : formatPrice(placed.delivery.fee)}</span>
                 </div>
+              )}
+              {placed.delivery?.method === 'collect' && placed.delivery.pickup && (
+                <p className="whitespace-pre-line rounded-lg bg-blush-50 px-3 py-2 text-ink-900">Collect from: {placed.delivery.pickup}</p>
               )}
               <div className="flex justify-between items-baseline text-ink-900">
                 <span className="font-semibold uppercase tracking-[0.14em] text-[12px]">Total</span>
@@ -441,8 +465,8 @@ export default function Checkout() {
           </div>
         )}
         <div className="flex justify-between text-ink-500">
-          <span>Delivery ({lockerBoxLabel(totalQty)})</span>
-          <span className="text-ink-900">{formatPrice(deliveryFee)}</span>
+          <span>{delivery === 'collect' ? 'Collect from us' : `Delivery (${lockerBoxLabel(totalQty)})`}</span>
+          <span className="text-ink-900">{delivery === 'collect' ? 'Free' : formatPrice(deliveryFee)}</span>
         </div>
         <div className="flex justify-between items-baseline pt-1">
           <span className="font-semibold text-ink-900">Total</span>
@@ -594,6 +618,27 @@ export default function Checkout() {
           {/* Delivery method */}
           <h3 className="font-display text-xl font-semibold text-ink-900 mt-7">Delivery Method</h3>
           <div className="mt-3 grid gap-3">
+            {collectOn && (
+              <label
+                className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition min-h-[44px] ${
+                  delivery === 'collect' ? 'border-rose-500 bg-blush-100/60 ring-2 ring-rose-500/20' : 'border-rose-300/50 bg-white'
+                }`}
+              >
+                <input type="radio" name="delivery" value="collect" checked={delivery === 'collect'} onChange={() => selectDelivery('collect')} className="accent-rose-600 h-4 w-4" />
+                <MapPin className="h-5 w-5 text-rose-500 shrink-0" />
+                <span className="flex-1">
+                  <span className="block text-[14px] font-semibold text-ink-900">
+                    Collect from us — Free <span className="ml-1 rounded-full bg-gold-400/15 border border-gold-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold-500">{collectTowns}</span>
+                  </span>
+                  <span className="block text-[12px] text-ink-500">
+                    For customers in {collectTowns}, where we do not use the courier. We will tell you when your order is ready.
+                  </span>
+                  {delivery === 'collect' && (
+                    <span className="mt-2 block whitespace-pre-line rounded-lg bg-white/80 px-3 py-2 text-[13px] font-medium text-ink-900">{collectInfo}</span>
+                  )}
+                </span>
+              </label>
+            )}
             <label
               className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition min-h-[44px] ${
                 delivery === 'pudo' ? 'border-rose-500 bg-blush-100/60 ring-2 ring-rose-500/20' : 'border-rose-300/50 bg-white'
@@ -606,7 +651,7 @@ export default function Checkout() {
                   Pudo Locker Pickup — {formatPrice(pudoDeliveryFee(totalQty))} <span className="ml-1 rounded-full bg-gold-400/15 border border-gold-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold-500">Recommended</span>
                 </span>
                 <span className="block text-[12px] text-ink-500">
-                  Collect from a smart locker near you · 5–7 working days · Medium locker (1–2 items) R150, Large locker (3–4 items) R170. Your parcel is delivered to the locker you choose, not to a home address, so please check it carefully.
+                  Collect from a smart locker near you · 5–7 working days · Medium locker (1–2 items) R150, Large locker (3–4 items) R170. Your parcel is delivered to the locker you choose, not to a home address, so please check it carefully.{collectOn ? ` Not offered for ${collectTowns}: please collect from us instead.` : ''}
                 </span>
               </span>
             </label>

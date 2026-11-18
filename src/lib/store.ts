@@ -22,7 +22,7 @@ export type {
 } from '@contracts/types';
 import type { Gender } from '@contracts/types';
 export type { Gender } from '@contracts/types';
-export { SHOE_BRANDS, isSizedCategory, pudoDeliveryFee, lockerBoxLabel, LOCKER_BOXES, openingSpecialForCart, OPENING_SPECIAL_OFF, OPENING_SPECIAL_MIN_QTY, discountPercent, HERO_ASPECTS } from '@contracts/types';
+export { COLLECTION_TOWNS, isCollectionTown, SHOE_BRANDS, isSizedCategory, pudoDeliveryFee, lockerBoxLabel, LOCKER_BOXES, openingSpecialForCart, OPENING_SPECIAL_OFF, OPENING_SPECIAL_MIN_QTY, discountPercent, HERO_ASPECTS } from '@contracts/types';
 import type { HeroAspect } from '@contracts/types';
 import { SHOE_BRANDS } from '@contracts/types';
 

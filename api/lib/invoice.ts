@@ -158,10 +158,13 @@ export async function buildInvoicePdf(order: Order, preloaded?: InvoiceProductDa
       // Expected delivery
       boxH = 44;
       doc.roundedRect(50, rowY, 495, boxH, 6).fillColor("#F3E9D4").fill();
-      doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text("Expected delivery", 65, rowY + 10);
+      const collect = order.delivery?.method === "collect";
+      doc.fillColor(INK).font("Helvetica-Bold").fontSize(10).text(collect ? "Collection" : "Expected delivery", 65, rowY + 10);
       doc.font("Helvetica").fontSize(10).fillColor(SOFT).text(
-        `Between ${formatDate(earliestDelivery)} and ${formatDate(latestDelivery)} (5–7 working days from payment).`,
-        65, rowY + 24, { width: 465 }
+        collect
+          ? `We will tell you when your order is ready to collect. ${order.delivery?.pickup ?? ""}`.trim().replace(/\s+/g, " ")
+          : `Between ${formatDate(earliestDelivery)} and ${formatDate(latestDelivery)} (5–7 working days from payment).`,
+        65, rowY + 24, { width: 465, height: 14, ellipsis: true }
       );
     } else if (bankConfigured()) {
       // How to pay — the banking details travel with the invoice
@@ -179,7 +182,7 @@ export async function buildInvoicePdf(order: Order, preloaded?: InvoiceProductDa
       col(65, rowY + 80, "Branch code", BANK.branchCode);
       col(290, rowY + 80, "Payment reference", order.id);
       doc.font("Helvetica").fontSize(8).fillColor(SOFT).text(
-        `IMPORTANT: use ${order.id} as your payment reference, otherwise we cannot match your payment. Then upload or WhatsApp your proof of payment to ${BUSINESS.whatsapp}. We hold your order for ${UNPAID_HOLD_HOURS} hours; delivery is 5–7 working days after payment.`,
+        `IMPORTANT: use ${order.id} as your payment reference, otherwise we cannot match your payment. Then upload or WhatsApp your proof of payment to ${BUSINESS.whatsapp}. We hold your order for ${UNPAID_HOLD_HOURS} hours; ${order.delivery?.method === "collect" ? "you collect it once it is ready" : "delivery is 5–7 working days after payment"}.`,
         65, rowY + 108, { width: 465 }
       );
     } else {

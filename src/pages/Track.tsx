@@ -27,6 +27,13 @@ const STATUS_MESSAGES: Partial<Record<OrderStatus, string>> = {
   cancelled: 'This order has been cancelled. Any payment will be refunded.',
 };
 
+// A collection order has no courier: the same four steps, worded for collecting.
+const COLLECT_LABELS: Partial<Record<OrderStatus, string>> = { shipped: 'Ready to collect', delivered: 'Collected' };
+const COLLECT_MESSAGES: Partial<Record<OrderStatus, string>> = {
+  shipped: 'Your order is ready for collection!',
+  delivered: 'Collected: Thank you for your Trust & Support!',
+};
+
 function stepIndex(status: OrderStatus): number {
   return STEPS.findIndex((s) => s.status === status);
 }
@@ -62,9 +69,11 @@ function useTypewriter(text: string, active: boolean): string {
 
 function StatusTimeline({ order }: { order: PublicOrder }) {
   const current = stepIndex(order.status);
+  const collect = order.delivery?.method === 'collect';
+  const steps = collect ? STEPS.map((s) => ({ ...s, label: COLLECT_LABELS[s.status] ?? s.label })) : STEPS;
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: '-40px' });
-  const message = useTypewriter(STATUS_MESSAGES[order.status] ?? '', inView);
+  const message = useTypewriter((collect ? COLLECT_MESSAGES[order.status] : undefined) ?? STATUS_MESSAGES[order.status] ?? '', inView);
 
   const timeFor = (status: OrderStatus): string | null => {
     const entry = [...order.statusHistory].reverse().find((h) => h.status === status);
@@ -96,11 +105,11 @@ function StatusTimeline({ order }: { order: PublicOrder }) {
             <motion.div
               className="h-full bg-gradient-to-r from-gold-400 to-rose-500"
               initial={{ width: '0%' }}
-              animate={inView ? { width: `${(current / (STEPS.length - 1)) * 100}%` } : undefined}
+              animate={inView ? { width: `${(current / (steps.length - 1)) * 100}%` } : undefined}
               transition={{ duration: 0.8, ease: EASE, delay: 0.3 }}
             />
           </div>
-          {STEPS.map((step, i) => {
+          {steps.map((step, i) => {
             const Icon = step.icon;
             const done = i < current;
             const isCurrent = i === current;
@@ -144,12 +153,12 @@ function StatusTimeline({ order }: { order: PublicOrder }) {
           <motion.div
             className="w-full bg-gradient-to-b from-gold-400 to-rose-500"
             initial={{ height: '0%' }}
-            animate={inView ? { height: `${(current / (STEPS.length - 1)) * 100}%` } : undefined}
+            animate={inView ? { height: `${(current / (steps.length - 1)) * 100}%` } : undefined}
             transition={{ duration: 0.8, ease: EASE, delay: 0.3 }}
           />
         </div>
         <div className="space-y-6">
-          {STEPS.map((step, i) => {
+          {steps.map((step, i) => {
             const Icon = step.icon;
             const done = i < current;
             const isCurrent = i === current;
@@ -208,6 +217,7 @@ function deliveryLabel(order: PublicOrder): string {
   if (!d) return 'Delivery to be arranged';
   if (d.method === 'pudo') return 'Pudo Locker Pickup';
   if (d.method === 'door') return 'Door delivery';
+  if (d.method === 'collect') return 'Collect from us';
   return 'Delivery'; // anything else (very old orders)
 }
 
@@ -422,13 +432,15 @@ export default function Track() {
                 {/* Delivery — POPIA-safe: locker name/city or generic label, never a street address */}
                 <div className="mt-6 rounded-xl border border-gold-400/40 bg-blush-50 p-4">
                   <p className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-gold-500">
-                    <MapPin className="h-3.5 w-3.5" /> {order.delivery?.method === 'pudo' ? 'Collect from' : 'Delivery'}
+                    <MapPin className="h-3.5 w-3.5" /> {order.delivery?.method === 'pudo' || order.delivery?.method === 'collect' ? 'Collect from' : 'Delivery'}
                   </p>
                   {order.delivery?.method === 'pudo' && order.delivery.locker ? (
                     <>
                       <p className="mt-1.5 text-[14px] font-semibold text-ink-900">{order.delivery.locker.name}</p>
                       <p className="text-[13px] text-ink-500">{order.delivery.locker.city}</p>
                     </>
+                  ) : order.delivery?.method === 'collect' && order.delivery.pickup ? (
+                    <p className="mt-1.5 whitespace-pre-line text-[14px] font-semibold text-ink-900">{order.delivery.pickup}</p>
                   ) : (
                     <p className="mt-1.5 text-[14px] font-semibold text-ink-900">{deliveryLabel(order)}</p>
                   )}
