@@ -4,7 +4,7 @@ import { getDb } from "./connection";
 import { products, orders, orderPayments, orderProofs, notifications, siteSettings } from "@db/schema";
 import { UNPAID_HOLD_HOURS } from "../../src/config/business";
 import { summarisePayments, summariseOutstanding } from "../lib/payment-summary";
-import { isCollectionTown, isGender, isSizedCategory, pudoDeliveryFee, openingSpecialForCart } from "@contracts/types";
+import { collectionKeyForCity, isGender, isSizedCategory, pudoDeliveryFee, openingSpecialForCart } from "@contracts/types";
 import { openingSpecialEnabled, collectionSettings } from "./flags";
 import type {
   Product,
@@ -599,10 +599,12 @@ async function placeOrderTxImpl(
   const collection = await collectionSettings();
   let pickup: string | undefined;
   if (deliveryInput.method === "collect") {
-    if (!collection.enabled) throw new Error("COLLECTION_UNAVAILABLE");
-    pickup = collection.info;
-  } else if (collection.enabled && deliveryInput.locker && isCollectionTown(deliveryInput.locker.city)) {
-    throw new Error("COLLECT_ONLY_AREA");
+    const point = collection.enabled ? collection.points.find((p) => p.key === deliveryInput.pickupPoint) : undefined;
+    if (!point) throw new Error("COLLECTION_UNAVAILABLE");
+    pickup = `${point.town}: ${point.info}`;
+  } else if (collection.enabled && deliveryInput.locker) {
+    const key = collectionKeyForCity(deliveryInput.locker.city);
+    if (key && collection.points.some((p) => p.key === key)) throw new Error("COLLECT_ONLY_AREA");
   }
   const delivery: OrderDelivery = {
     method: deliveryInput.method,

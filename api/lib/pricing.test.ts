@@ -8,6 +8,7 @@ import {
   orderLockerLabel,
   pudoDeliveryFee,
   isCollectionTown,
+  collectionKeyForCity,
 } from "../../contracts/types";
 
 describe("locker delivery pricing (Medium R150 for 1-2 items, Large R170 for 3-4)", () => {
@@ -196,5 +197,18 @@ describe("collection towns (Krugersdorp and Hartbeespoort)", () => {
     for (const c of ["Johannesburg", "Brits", "Britstown", "Muldersdrift", "Randburg", ""]) {
       expect(isCollectionTown(c), c).toBe(false);
     }
+  });
+});
+
+describe("the two collection places", () => {
+  it("tells Krugersdorp from Hartbeespoort, however a locker or a customer spells it", () => {
+    expect(collectionKeyForCity("Krugersdorp")).toBe("krugersdorp");
+    expect(collectionKeyForCity("Krugersdorp North")).toBe("krugersdorp");
+    expect(collectionKeyForCity("Hartbeespoort")).toBe("hartbeespoort");
+    expect(collectionKeyForCity("Hartebeespoortdam")).toBe("hartbeespoort");
+    expect(collectionKeyForCity("Harties")).toBe("hartbeespoort");
+  });
+  it("is null for every other town", () => {
+    for (const c of ["Johannesburg", "Brits", "Muldersdrift", "Randburg", ""]) expect(collectionKeyForCity(c), c).toBeNull();
   });
 });

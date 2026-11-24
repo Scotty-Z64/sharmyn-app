@@ -3,6 +3,7 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "./connection";
 import { appFlags } from "@db/schema";
+import { COLLECTION_POINTS, type CollectionKey } from "@contracts/types";
 
 let tableReady: Promise<void> | null = null;
 function ensureTable(): Promise<void> {
@@ -83,26 +84,42 @@ export async function saveAdminPasswordHash(hash: string): Promise<void> {
   await setFlag("admin_pw_hash", hash);
 }
 
+/** One place customers can collect from: its town and the address and hours the owner typed. */
+export interface CollectionPoint {
+  key: CollectionKey;
+  town: string;
+  info: string;
+}
+
 /**
- * Collection ("collect from us") for the towns we do not courier to. Only counts as on when the owner has
- * switched it on AND typed where to collect. If the setting cannot be read, collection is off.
+ * Collection ("collect from us") for the two towns we do not courier to. A place only counts when the owner has
+ * typed its address, and collection is only on when the owner has switched it on AND at least one place has an
+ * address. If the setting cannot be read, collection is off.
  */
-export async function collectionSettings(): Promise<{ enabled: boolean; info: string }> {
+export async function collectionSettings(): Promise<{ enabled: boolean; points: CollectionPoint[] }> {
   try {
-    const info = ((await getFlag("collect_info")) ?? "").trim();
-    return { enabled: (await getFlag("collect_on")) === "on" && info.length > 0, info };
+    const points: CollectionPoint[] = [];
+    for (const p of COLLECTION_POINTS) {
+      const info = ((await getFlag(`collect_${p.key}`)) ?? "").trim();
+      if (info) points.push({ key: p.key, town: p.town, info });
+    }
+    return { enabled: (await getFlag("collect_on")) === "on" && points.length > 0, points };
   } catch (e) {
     console.error("[flags] could not read the collection setting:", e);
-    return { enabled: false, info: "" };
+    return { enabled: false, points: [] };
   }
 }
 
-/** What the portal shows and edits: the switch and the text, even while one of them is missing. */
-export async function collectionSettingsForOwner(): Promise<{ on: boolean; info: string }> {
-  return { on: (await getFlag("collect_on")) === "on", info: ((await getFlag("collect_info")) ?? "").trim() };
+/** What the portal shows and edits: the switch and each place's text, even while one of them is missing. */
+export async function collectionSettingsForOwner(): Promise<{ on: boolean; krugersdorp: string; hartbeespoort: string }> {
+  return {
+    on: (await getFlag("collect_on")) === "on",
+    krugersdorp: ((await getFlag("collect_krugersdorp")) ?? "").trim(),
+    hartbeespoort: ((await getFlag("collect_hartbeespoort")) ?? "").trim(),
+  };
 }
 
-export async function saveCollectionSettings(on: boolean, info: string): Promise<void> {
-  await setFlag("collect_info", info.trim().slice(0, 400));
+export async function saveCollectionSettings(on: boolean, texts: Record<CollectionKey, string>): Promise<void> {
+  for (const p of COLLECTION_POINTS) await setFlag(`collect_${p.key}`, texts[p.key].trim().slice(0, 200) || " ");
   await setFlag("collect_on", on ? "on" : "off");
 }

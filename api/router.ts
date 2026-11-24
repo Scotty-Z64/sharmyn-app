@@ -58,7 +58,7 @@ import { refreshAdminAuth } from "./queries/admin-password";
 import { collectionSettings, collectionSettingsForOwner, saveAdminPasswordHash, saveCollectionSettings } from "./queries/flags";
 import { notifyOwner, notifyCustomer, notifyLowStock, notifyProofReceived, sendInvoice, sendExchangeSlip } from "./lib/notify";
 import type { Order } from "@contracts/types";
-import { HERO_ASPECTS, COLLECTION_TOWNS } from "@contracts/types";
+import { HERO_ASPECTS } from "@contracts/types";
 
 /** Fire-and-forget the invoice PDF exactly once per order, guarded by invoiceSentAt. */
 function sendInvoiceOnce(order: Order): void {
@@ -91,6 +91,7 @@ const customer = z.object({
 // Client sends method (+ locker for pudo) only; fee is computed server-side.
 const deliveryInput = z.object({
   method: z.enum(["pudo", "door", "collect"]),
+  pickupPoint: z.enum(["krugersdorp", "hartbeespoort"]).optional(),
   locker: z
     .object({
       id: z.string(),
@@ -222,20 +223,20 @@ export const appRouter = createRouter({
     // Collection for the towns we do not courier to. The storefront reads this to offer "collect from us".
     collectionInfo: publicQuery.query(async () => {
       const c = await collectionSettings();
-      return { enabled: c.enabled, info: c.enabled ? c.info : "", towns: [...COLLECTION_TOWNS] as string[] };
+      return { enabled: c.enabled, points: c.enabled ? c.points : [] };
     }),
     collectionAdmin: publicQuery.input(z.object({ token: adminToken })).query(async ({ input }) => {
       assertAdminToken(input.token);
       return collectionSettingsForOwner();
     }),
     setCollection: publicQuery
-      .input(z.object({ token: adminToken, on: z.boolean(), info: z.string().max(400) }))
+      .input(z.object({ token: adminToken, on: z.boolean(), krugersdorp: z.string().max(200), hartbeespoort: z.string().max(200) }))
       .mutation(async ({ input }) => {
         assertAdminToken(input.token);
-        if (input.on && !input.info.trim()) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Type where and when customers can collect before switching it on" });
+        if (input.on && !input.krugersdorp.trim() && !input.hartbeespoort.trim()) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Type where customers can collect (at least one place) before switching it on" });
         }
-        await saveCollectionSettings(input.on, input.info);
+        await saveCollectionSettings(input.on, { krugersdorp: input.krugersdorp, hartbeespoort: input.hartbeespoort });
         return collectionSettingsForOwner();
       }),
 

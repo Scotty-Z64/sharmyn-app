@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Copy, Crown, Loader2, Lock, MapPin, PackageOpen } from 'lucide-react';
 import { useShop } from '@/lib/shop';
 import { trpc } from '@/providers/trpc';
-import { clearCart, formatPrice, formatAddress, isCollectionTown, pudoDeliveryFee, lockerBoxLabel, openingSpecialForCart } from '@/lib/store';
+import { clearCart, formatPrice, formatAddress, collectionKeyForCity, pudoDeliveryFee, lockerBoxLabel, openingSpecialForCart } from '@/lib/store';
 import { useOpeningSpecial } from '@/lib/promo';
 import type { Order, OrderDelivery, PudoLockerRef } from '@/lib/store';
 import PudoLockerPicker from '@/components/checkout/PudoLockerPicker';
@@ -93,14 +93,16 @@ export default function Checkout() {
 
   const utils = trpc.useUtils();
   const placeOrderMutation = trpc.shop.placeOrder.useMutation();
-  // "Collect from us": offered only while the owner has switched it on (and said where to collect).
+  // "Collect in <town>": one option per place the owner has typed an address for, only while collection is switched on.
   const collection = trpc.shop.collectionInfo.useQuery(undefined, { staleTime: 60_000 });
-  const collectOn = !!collection.data?.enabled;
-  const collectInfo = collection.data?.info ?? '';
-  const collectTowns = (collection.data?.towns ?? ['Krugersdorp', 'Hartbeespoort']).join(' and ');
+  const collectPoints = collection.data?.enabled ? collection.data.points : [];
+  const collectOn = collectPoints.length > 0;
+  const collectTowns = collectPoints.map((p) => p.town).join(' and ');
+  const [pickupKey, setPickupKey] = useState<string>('');
+  const pickupPoint = collectPoints.find((p) => p.key === pickupKey) ?? null;
   useEffect(() => {
-    if (!collectOn && delivery === 'collect') setDelivery('pudo');
-  }, [collectOn, delivery]);
+    if (delivery === 'collect' && !pickupPoint) setDelivery('pudo');
+  }, [delivery, pickupPoint]);
 
   const lines = useMemo(
     () =>
@@ -147,10 +149,11 @@ export default function Checkout() {
       toast('Please choose your Pudo locker');
       return;
     }
-    if (delivery === 'pudo' && locker && collectOn && isCollectionTown(locker.city)) {
+    const lockerTown = delivery === 'pudo' && locker ? collectPoints.find((p) => p.key === collectionKeyForCity(locker.city)) : undefined;
+    if (lockerTown) {
       setLockerError(true);
       setShakeKey((k) => k + 1);
-      toast(`We don’t courier to ${collectTowns} — please choose “Collect from us” (free)`);
+      toast(`We don’t courier to ${lockerTown.town} — please choose “Collect in ${lockerTown.town}” (free)`);
       return;
     }
     if (Object.keys(errs).length) {
@@ -164,7 +167,7 @@ export default function Checkout() {
     const items = lines.map((l) => ({ productId: l.product.id, qty: l.qty, size: l.size ?? null }));
     const methodLabel =
       delivery === 'pudo' ? `Pudo Locker Pickup (${lockerBoxLabel(totalQty)}) ${formatPrice(deliveryFee)}`
-      : delivery === 'collect' ? 'Collect from us (free)'
+      : delivery === 'collect' ? `Collect in ${pickupPoint?.town ?? ''} (free)`
       : `Door Delivery ${formatPrice(deliveryFee)}`;
     const deliveryInfo: OrderDelivery = {
       method: delivery,
@@ -182,12 +185,12 @@ export default function Checkout() {
           notes: [
             `Delivery: ${methodLabel}`,
             ...(delivery === 'pudo' && locker ? [`Locker: ${locker.name} — ${formatAddress(locker)}`] : []),
-            ...(delivery === 'collect' ? [`Collection: ${collectInfo}`] : []),
+            ...(delivery === 'collect' ? [`Collection: ${pickupPoint?.town ?? ''}: ${pickupPoint?.info ?? ''}`] : []),
             form.notes.trim(),
           ].filter(Boolean).join(' · '),
         },
         items,
-        delivery: { method: deliveryInfo.method, locker: deliveryInfo.locker },
+        delivery: { method: deliveryInfo.method, locker: deliveryInfo.locker, pickupPoint: delivery === 'collect' ? pickupPoint?.key : undefined },
       },
       {
         onSuccess: (order) => {
@@ -618,27 +621,29 @@ export default function Checkout() {
           {/* Delivery method */}
           <h3 className="font-display text-xl font-semibold text-ink-900 mt-7">Delivery Method</h3>
           <div className="mt-3 grid gap-3">
-            {collectOn && (
-              <label
-                className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition min-h-[44px] ${
-                  delivery === 'collect' ? 'border-rose-500 bg-blush-100/60 ring-2 ring-rose-500/20' : 'border-rose-300/50 bg-white'
-                }`}
-              >
-                <input type="radio" name="delivery" value="collect" checked={delivery === 'collect'} onChange={() => selectDelivery('collect')} className="accent-rose-600 h-4 w-4" />
-                <MapPin className="h-5 w-5 text-rose-500 shrink-0" />
-                <span className="flex-1">
-                  <span className="block text-[14px] font-semibold text-ink-900">
-                    Collect from us — Free <span className="ml-1 rounded-full bg-gold-400/15 border border-gold-400/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold-500">{collectTowns}</span>
+            {collectPoints.map((p) => {
+              const picked = delivery === 'collect' && pickupKey === p.key;
+              return (
+                <label key={p.key}
+                  className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition min-h-[44px] ${
+                    picked ? 'border-rose-500 bg-blush-100/60 ring-2 ring-rose-500/20' : 'border-rose-300/50 bg-white'
+                  }`}
+                >
+                  <input type="radio" name="delivery" value={`collect-${p.key}`} checked={picked}
+                    onChange={() => { setPickupKey(p.key); selectDelivery('collect'); }} className="accent-rose-600 h-4 w-4" />
+                  <MapPin className="h-5 w-5 text-rose-500 shrink-0" />
+                  <span className="flex-1">
+                    <span className="block text-[14px] font-semibold text-ink-900">Collect in {p.town} — Free</span>
+                    <span className="block text-[12px] text-ink-500">
+                      For customers in {p.town}, where we do not use the courier. We will tell you when your order is ready.
+                    </span>
+                    {picked && (
+                      <span className="mt-2 block whitespace-pre-line rounded-lg bg-white/80 px-3 py-2 text-[13px] font-medium text-ink-900">{p.info}</span>
+                    )}
                   </span>
-                  <span className="block text-[12px] text-ink-500">
-                    For customers in {collectTowns}, where we do not use the courier. We will tell you when your order is ready.
-                  </span>
-                  {delivery === 'collect' && (
-                    <span className="mt-2 block whitespace-pre-line rounded-lg bg-white/80 px-3 py-2 text-[13px] font-medium text-ink-900">{collectInfo}</span>
-                  )}
-                </span>
-              </label>
-            )}
+                </label>
+              );
+            })}
             <label
               className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer transition min-h-[44px] ${
                 delivery === 'pudo' ? 'border-rose-500 bg-blush-100/60 ring-2 ring-rose-500/20' : 'border-rose-300/50 bg-white'

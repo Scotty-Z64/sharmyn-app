@@ -30,11 +30,21 @@ export type ProofStatus = "pending" | "accepted" | "rejected";
 export type RefundStatus = "none" | "pending" | "refunded";
 export type DeliveryMethod = "pudo" | "door" | "collect";
 
-/** Towns where customers collect from us (no courier) while collection is switched on in the portal. */
+/** The two places customers collect from us (no courier) while collection is switched on in the portal. Each has its own address. */
+export const COLLECTION_POINTS = [
+  { key: "krugersdorp", town: "Krugersdorp" },
+  { key: "hartbeespoort", town: "Hartbeespoort" },
+] as const;
+export type CollectionKey = (typeof COLLECTION_POINTS)[number]["key"];
 export const COLLECTION_TOWNS = ["Krugersdorp", "Hartbeespoort"] as const;
-/** Is this city (as a Pudo locker spells it, or a customer types it) one of the collection towns? "Harties" counts. */
+/** Which collection town a city is, as a Pudo locker spells it or a customer types it ("Harties" counts), or null. */
+export function collectionKeyForCity(city: string): CollectionKey | null {
+  if (/krugersdorp/i.test(city)) return "krugersdorp";
+  if (/harte?beespoort|harties/i.test(city)) return "hartbeespoort";
+  return null;
+}
 export function isCollectionTown(city: string): boolean {
-  return /krugersdorp|harte?beespoort|harties/i.test(city);
+  return collectionKeyForCity(city) !== null;
 }
 
 /**
@@ -104,6 +114,7 @@ export interface OrderDelivery {
 export interface OrderDeliveryInput {
   method: DeliveryMethod;
   locker?: PudoLockerRef;
+  pickupPoint?: CollectionKey; // "collect" orders: which of the two collection places
 }
 
 export interface OrderCustomer {
