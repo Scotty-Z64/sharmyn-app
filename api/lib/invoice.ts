@@ -205,9 +205,11 @@ export async function buildInvoicePdf(order: Order, preloaded?: InvoiceProductDa
     doc.font("Helvetica").fontSize(10).fillColor(SOFT);
     doc.text(`Order number: ${order.id}`, 65, rowY + 25, { width: 465 });
     doc.text(
-      order.trackingNumber
-        ? `Courier tracking number: ${order.trackingNumber}`
-        : "Your courier tracking number will be sent to you as soon as your parcel ships.",
+      order.delivery?.method === "collect"
+        ? "No courier is used: we will tell you when your order is ready to collect."
+        : order.trackingNumber
+          ? `Courier tracking number: ${order.trackingNumber}`
+          : "Your courier tracking number will be sent to you as soon as your parcel ships.",
       65, rowY + 39, { width: 465 }
     );
     doc.fillColor(GOLD).text(`Track your order any time: ${trackUrl}`, 65, rowY + 53, { width: 465 });
